@@ -338,6 +338,9 @@ void BattleActionsController::reorderPossibleActionsPriority(const CStack * stac
 	auto assignPriority = [&](const PossiblePlayerBattleAction & item
 						  ) -> uint8_t //large lambda assigning priority which would have to be part of possibleActions without it
 	{
+		if(!item.isActivationAvailable())
+			return 100;
+
 		switch(item.get())
 		{
 			case PossiblePlayerBattleAction::AIMED_SPELL_CREATURE:
@@ -814,6 +817,9 @@ std::string BattleActionsController::actionGetStatusMessageBlocked(PossiblePlaye
 
 bool BattleActionsController::actionIsLegal(PossiblePlayerBattleAction action, const BattleHex & targetHex)
 {
+	if(!action.isActivationAvailable())
+		return false;
+
 	const CStack * targetStack = getStackForHex(targetHex);
 	bool targetStackOwned = targetStack && targetStack->unitOwner() == owner.curInt->playerID;
 
@@ -1276,6 +1282,24 @@ void BattleActionsController::activateStack()
 		possibleActions = getPossibleActionsForStack(s);
 		owner.windowObject->setPossibleActions(possibleActions);
 	}
+}
+
+void BattleActionsController::updateActivationAvailability()
+{
+	const CStack * stack = owner.stacksController->getActiveStack();
+	if(!stack)
+		return;
+
+	const auto updatedActions = getPossibleActionsForStack(stack);
+	for(auto & action : possibleActions)
+	{
+		auto updated = std::ranges::find(updatedActions, action);
+		if(updated != updatedActions.end())
+			action = *updated;
+	}
+
+	owner.windowObject->updateActivationAvailability(updatedActions);
+	ENGINE->fakeMouseMove();
 }
 
 void BattleActionsController::onHexRightClicked(const BattleHex & clickedHex)

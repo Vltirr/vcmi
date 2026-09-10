@@ -1,0 +1,12 @@
+{
+	"core:ogreMage": {
+		"abilities": {
+			"castsBloodlust": {
+				"activation": {
+					"costs": {"focus": 1},
+					"consumeUses": false
+				}
+			}
+		}
+	}
+}

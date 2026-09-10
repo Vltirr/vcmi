@@ -752,6 +752,11 @@ void BattleWindow::setPossibleActions(const std::vector<PossiblePlayerBattleActi
 	unitActionWindow->setPossibleActions(actions);
 }
 
+void BattleWindow::updateActivationAvailability(const std::vector<PossiblePlayerBattleAction> & actions)
+{
+	unitActionWindow->updateActivationAvailability(actions);
+}
+
 void BattleWindow::bAutofightf()
 {
 	if (owner.actionsController->heroSpellcastingModeActive())
@@ -967,14 +972,37 @@ void BattleWindow::showAll(Canvas & to)
 	if(owner.curInt->cb->getMapHeader()->battleOnly)
 		to.fillTexture(ENGINE->renderHandler().loadImage(ImagePath::builtin("DiBoxBck"), EImageBlitMode::OPAQUE));
 	CIntObject::showAll(to);
+	showFocus(to);
 
 	if (ENGINE->screenDimensions().x != 800 || ENGINE->screenDimensions().y !=600)
 		to.drawBorder(Rect(pos.x-1, pos.y - (queue && queue->embedded ? 1 : 0), pos.w+2, pos.h+1 + (queue && queue->embedded ? 1 : 0)), Colors::BRIGHT_YELLOW);
 }
 
+void BattleWindow::showFocus(Canvas & to)
+{
+	const auto battle = owner.getBattle();
+	const int capacity = battle->getFocusCapacity();
+	if(!capacity)
+		return;
+	const auto rules = battle->getBattle()->getFocusRules();
+	for(const auto side : {BattleSide::ATTACKER, BattleSide::DEFENDER})
+	{
+		const int x = pos.x + (side == BattleSide::ATTACKER ? 10 : 605);
+		const int y = pos.y + 100;
+		std::string text = LIBRARY->generaltexth->translate("vcmi.battle.focus.title") + ": "
+			+ std::to_string(battle->getFocusCharges(side)) + "/" + std::to_string(capacity);
+		text += " (" + std::to_string(battle->getFocusPoints(side) % rules.pointsPerCharge)
+			+ "/" + std::to_string(rules.pointsPerCharge) + ")";
+		to.drawColor(Rect(x, y, 185, 24), Colors::BLACK);
+		to.drawBorder(Rect(x, y, 185, 24), Colors::BRIGHT_YELLOW);
+		to.drawText(Point(x + 92, y + 12), FONT_SMALL, Colors::BRIGHT_YELLOW, ETextAlignment::CENTER, text);
+	}
+}
+
 void BattleWindow::show(Canvas & to)
 {
 	CIntObject::show(to);
+	showFocus(to);
 	GAME->interface()->cingconsole->show(to);
 }
 

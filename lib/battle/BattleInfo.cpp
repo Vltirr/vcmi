@@ -11,6 +11,7 @@
 #include "BattleInfo.h"
 
 #include "BattleLayout.h"
+#include "../IGameSettings.h"
 #include "CObstacleInstance.h"
 #include "bonuses/Limiters.h"
 #include "bonuses/Updaters.h"
@@ -27,6 +28,24 @@
 #include "../ObstacleHandler.h"
 
 #include <vstd/RNG.h>
+
+FocusRules BattleInfo::getFocusRules() const
+{
+	return FocusRules(cb->getSettings().getValue(EGameSettings::COMBAT_FOCUS));
+}
+
+int32_t BattleInfo::getFocusPoints(BattleSide side) const
+{
+	if(side != BattleSide::ATTACKER && side != BattleSide::DEFENDER)
+		return 0;
+	return getFocusRules().clamp(getSide(side).focusPoints);
+}
+
+void BattleInfo::setFocusPoints(BattleSide side, int32_t points)
+{
+	if(side == BattleSide::ATTACKER || side == BattleSide::DEFENDER)
+		getSide(side).focusPoints = getFocusRules().clamp(points);
+}
 
 const SideInBattle & BattleInfo::getSide(BattleSide side) const
 {

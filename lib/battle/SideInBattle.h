@@ -29,6 +29,7 @@ struct DLL_LINKAGE SideInBattle : public GameCallbackHolder
 	int32_t enchanterCounter = 0; //tends to pass through 0, so sign is needed
 	int32_t initialMana = 0;
 	int32_t additionalMana = 0;
+	int32_t focusPoints = 0;
 
 	void init(const CGHeroInstance * Hero, const CArmedInstance * Army, const CGTownInstance * town);
 	const CArmedInstance * getArmy() const;
@@ -44,5 +45,9 @@ struct DLL_LINKAGE SideInBattle : public GameCallbackHolder
 		h & enchanterCounter;
 		h & initialMana;
 		h & additionalMana;
+		if(h.hasFeature(Handler::Version::BATTLE_FOCUS))
+			h & focusPoints;
+		else
+			focusPoints = 0;
 	}
 };

@@ -13,6 +13,23 @@
 
 ///BattleProxy
 
+FocusRules BattleProxy::getFocusRules() const
+{
+	return subject->getBattle()->getFocusRules();
+}
+
+int32_t BattleProxy::getFocusPoints(BattleSide side) const
+{
+	const auto it = focusPoints.find(side);
+	return it == focusPoints.end() ? subject->getFocusPoints(side) : it->second;
+}
+
+void BattleProxy::setFocusPoints(BattleSide side, int32_t points)
+{
+	if(side == BattleSide::ATTACKER || side == BattleSide::DEFENDER)
+		focusPoints[side] = getFocusRules().clamp(points);
+}
+
 BattleProxy::BattleProxy(Subject subject_): 
 	subject(std::move(subject_))
 {}

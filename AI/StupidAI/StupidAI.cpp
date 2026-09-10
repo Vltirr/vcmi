@@ -12,6 +12,7 @@
 #include "../../lib/CStack.h"
 #include "../../lib/CCreatureHandler.h"
 #include "../../lib/battle/BattleAction.h"
+#include "../../lib/battle/Activation.h"
 #include "../../lib/battle/BattleInfo.h"
 #include "../../lib/battle/CPlayerBattleCallback.h"
 #include "../../lib/callback/CBattleCallback.h"
@@ -129,6 +130,12 @@ void CStupidAI::activeStack(const BattleID & battleID, const CStack * stack)
 
 	if(stack->isCatapult())
 	{
+		if(!battle::isActivationAvailable(*cb->getBattle(battleID), stack, EActionType::CATAPULT, SpellID::NONE))
+		{
+			cb->battleMakeUnitAction(battleID, BattleAction::makeDefend(stack));
+			return;
+		}
+
 		BattleAction attack;
 		static const std::vector<int> wallHexes = {50, 183, 182, 130, 78, 29, 12, 95};
 		auto seletectedHex = *RandomGeneratorUtil::nextItem(wallHexes, CRandomGenerator::getDefault());

@@ -1496,6 +1496,12 @@ void GameStatePackVisitor::visitBattleUnitsChanged(BattleUnitsChanged & pack)
 	pack.visitTyped(battleVisitor);
 }
 
+void GameStatePackVisitor::visitBattleFocusChanged(BattleFocusChanged & pack)
+{
+	BattleStatePackVisitor battleVisitor(*gs.getBattle(pack.battleID));
+	battleVisitor.visitBattleFocusChanged(pack);
+}
+
 void GameStatePackVisitor::restorePreBattleState(BattleID battleID)
 {
 	auto battleIter = std::ranges::find_if(gs.currentBattles, [&](const auto & battle)
@@ -1788,4 +1794,9 @@ void BattleStatePackVisitor::visitBattleUnitsChanged(BattleUnitsChanged & pack)
 				break;
 		}
 	}
+}
+
+void BattleStatePackVisitor::visitBattleFocusChanged(BattleFocusChanged & pack)
+{
+	battleState.setFocusPoints(pack.side, pack.points);
 }

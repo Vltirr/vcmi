@@ -50,8 +50,12 @@ public:
 
 	int32_t getCastSpells(BattleSide side) const override;
 	int32_t getEnchanterCounter(BattleSide side) const override;
+	int32_t getFocusPoints(BattleSide side) const override;
+	FocusRules getFocusRules() const override;
+	void setFocusPoints(BattleSide side, int32_t points) override;
 
 	const IBonusBearer * getBonusBearer() const override;
 protected:
 	Subject subject;
+	std::map<BattleSide, int32_t> focusPoints;
 };

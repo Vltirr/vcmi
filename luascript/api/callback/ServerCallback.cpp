@@ -54,6 +54,8 @@ namespace scripting::api
 
 void ServerCallbackProxy::registerMethods(MethodRegistrar & R)
 {
+	R.method<&ServerCallback::changeFocusPoints>("changeFocusPoints", {{"battle", "Battle to modify."}, {"side", "Battle side."}, {"delta", "Signed points."}}, {}, "Changes focus points authoritatively, clamped to capacity.");
+	R.method<&ServerCallback::changeFocusCharges>("changeFocusCharges", {{"battle", "Battle to modify."}, {"side", "Battle side."}, {"delta", "Signed charges."}}, {}, "Changes focus by whole charges, preserving partial progress.");
 	R.function<&ServerCallbackProxy::addUnit>("addUnit",
 		{
 			{"battle", "Battle in which the unit is created."},

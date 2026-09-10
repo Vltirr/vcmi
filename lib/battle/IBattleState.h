@@ -11,6 +11,7 @@
 #pragma once
 #include "CBattleInfoEssentials.h"
 #include "BattleUnitTurnReason.h"
+#include "FocusRules.h"
 
 class ObstacleChanges;
 class UnitChanges;
@@ -64,6 +65,8 @@ public:
 
 	virtual int32_t getCastSpells(BattleSide side) const = 0;
 	virtual int32_t getEnchanterCounter(BattleSide side) const = 0;
+	virtual int32_t getFocusPoints(BattleSide side) const = 0;
+	virtual FocusRules getFocusRules() const = 0;
 
 	virtual ui8 getTacticDist() const = 0;
 	virtual BattleSide getTacticsSide() const = 0;
@@ -81,6 +84,7 @@ public:
 class DLL_LINKAGE IBattleState : public IBattleInfo
 {
 public:
+	virtual void setFocusPoints(BattleSide side, int32_t points) = 0;
 	virtual void nextRound() = 0;
 	virtual void nextTurn(uint32_t unitId, BattleUnitTurnReason reason) = 0;
 

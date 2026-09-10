@@ -16,7 +16,8 @@ set(test_SRCS
  		CVcmiTestConfig.cpp
  		JsonComparer.cpp
 
- 		battle/BattleHexTest.cpp
+	battle/BattleHexTest.cpp
+	battle/FocusRulesTest.cpp
  		battle/CBattleInfoCallbackTest.cpp
  		battle/CHealthTest.cpp
 		battle/CUnitStateTest.cpp
@@ -107,6 +108,7 @@ set(test_SRCS
 		server/battles/CombatEventTriggerTest.cpp
 		server/battles/DamageCalculatorTest.cpp
 		server/battles/DeathStareTest.cpp
+		server/battles/FocusActivationTest.cpp
 		server/battles/DestructionTest.cpp
 		server/battles/EnchantedTest.cpp
 		server/battles/FireShieldTest.cpp

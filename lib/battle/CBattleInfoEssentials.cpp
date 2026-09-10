@@ -21,6 +21,24 @@
 #include "../gameState/InfoAboutArmy.h"
 #include "../mapObjects/CGTownInstance.h"
 
+int32_t IBattleInfoCallback::getFocusPoints(BattleSide side) const
+{
+	return getBattle() ? getBattle()->getFocusPoints(side) : 0;
+}
+
+int32_t IBattleInfoCallback::getFocusCharges(BattleSide side) const
+{
+	return getBattle() ? getBattle()->getFocusRules().charges(getFocusPoints(side)) : 0;
+}
+
+int32_t IBattleInfoCallback::getFocusCapacity() const
+{
+	if(!getBattle())
+		return 0;
+	const auto rules = getBattle()->getFocusRules();
+	return rules.enabled ? rules.maxCharges : 0;
+}
+
 bool CBattleInfoEssentials::duringBattle() const
 {
 	return getBattle() != nullptr;

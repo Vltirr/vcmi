@@ -208,6 +208,39 @@ TEST_F(ScriptSchemaTest, spellEffectNeedsNoDescriptionOrPriority)
 	})"));
 }
 
+class BonusActivationSchemaTest : public ::testing::Test
+{
+protected:
+	static bool isValid(const std::string & text)
+	{
+		JsonNode node(text.data(), text.size(), "BonusActivationSchemaTest");
+		node.setModScope("vcmi-test");
+		return JsonUtils::validate(node, "bonusInstance.json", "BonusActivationSchemaTest");
+	}
+};
+
+TEST_F(BonusActivationSchemaTest, acceptsAnIntegerFocusCost)
+{
+	EXPECT_TRUE(isValid(R"({
+		"type" : "SPELLCASTER",
+		"activation" : {
+			"costs" : { "focus" : 1 },
+			"consumeUses" : false
+		}
+	})"));
+}
+
+TEST_F(BonusActivationSchemaTest, rejectsFractionalFocusCost)
+{
+	EXPECT_FALSE(isValid(R"({
+		"type" : "SPELLCASTER",
+		"activation" : {
+			"costs" : { "focus" : 1.5 },
+			"consumeUses" : false
+		}
+	})"));
+}
+
 TEST(JsonTest, floatsMatchTheNearestDouble)
 {
 	constexpr char text[] = R"({ "a" : 0.7, "b" : 1.75, "c" : -0.15, "d" : 1234.5678, "e" : 1e3 })";

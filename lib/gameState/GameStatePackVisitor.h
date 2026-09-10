@@ -87,6 +87,7 @@ public:
 	void visitBattleSpellCast(BattleSpellCast & pack) override;
 	void visitSetStackEffect(SetStackEffect & pack) override;
 	void visitStacksInjured(StacksInjured & pack) override;
+	void visitBattleFocusChanged(BattleFocusChanged & pack) override;
 	void visitBattleUnitsChanged(BattleUnitsChanged & pack) override;
 	void visitBattleObstaclesChanged(BattleObstaclesChanged & pack) override;
 	void visitBattleStackMoved(BattleStackMoved & pack) override;
@@ -130,6 +131,7 @@ public:
 
 	void visitSetStackEffect(SetStackEffect & pack) override;
 	void visitStacksInjured(StacksInjured & pack) override;
+	void visitBattleFocusChanged(BattleFocusChanged & pack) override;
 	void visitBattleUnitsChanged(BattleUnitsChanged & pack) override;
 	void visitBattleObstaclesChanged(BattleObstaclesChanged & pack) override;
 	void visitCatapultAttack(CatapultAttack & pack) override;

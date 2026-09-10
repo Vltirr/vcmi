@@ -550,6 +550,21 @@
 			"description" : "valueType"
 		},
 		"addInfo" : {}, // validated via allOf
+		"activation" : {
+			"type" : "object",
+			"additionalProperties" : false,
+			"required" : [ "costs", "consumeUses" ],
+			"properties" : {
+				"costs" : {
+					"type" : "object",
+					"additionalProperties" : false,
+					"properties" : {
+						"focus" : { "type" : "integer", "minimum" : 0 }
+					}
+				},
+				"consumeUses" : { "type" : "boolean" }
+			}
+		},
 		"duration" : {
 			"anyOf" : [
 				{

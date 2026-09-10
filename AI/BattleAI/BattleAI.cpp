@@ -22,6 +22,7 @@
 #include "../../lib/mapObjects/CGTownInstance.h"
 #include "../../lib/spells/ISpellMechanics.h"
 #include "../../lib/battle/BattleAction.h"
+#include "../../lib/battle/Activation.h"
 #include "../../lib/battle/BattleStateInfoForRetreat.h"
 #include "../../lib/battle/CObstacleInstance.h"
 #include "../../lib/StartInfo.h"
@@ -199,6 +200,9 @@ void CBattleAI::activeStack(const BattleID & battleID, const CStack * stack )
 
 BattleAction CBattleAI::useCatapult(const BattleID & battleID, const CStack * stack)
 {
+	if(!battle::isActivationAvailable(*cb->getBattle(battleID), stack, EActionType::CATAPULT, SpellID::NONE))
+		return BattleAction::makeDefend(stack);
+
 	BattleAction attack;
 	BattleHex targetHex = BattleHex::INVALID;
 

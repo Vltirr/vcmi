@@ -11,6 +11,8 @@
 #include "BattleActionProcessor.h"
 
 #include "BattleProcessor.h"
+#include "../../lib/battle/Focus.h"
+#include "../../lib/battle/Activation.h"
 
 #include "../CGameHandler.h"
 
@@ -495,15 +497,14 @@ bool BattleActionProcessor::doCatapultAction(const CBattleInfoCallback & battle,
 	if(!catapultAbility || catapultAbility->subtype == BonusSubtypeID())
 	{
 		gameHandler->complain("We do not know how to shoot :P");
+		return false;
 	}
-	else
-	{
-		const CSpell * spell = catapultAbility->subtype.as<SpellID>().toSpell();
-		spells::BattleCast parameters(&battle, stack, spells::Mode::SPELL_LIKE_ATTACK, spell); //We can shot infinitely by catapult
-		auto shotLevel = stack->valOfBonuses(Selector::typeSubtype(BonusType::CATAPULT_EXTRA_SHOTS, catapultAbility->subtype));
-		parameters.setSpellLevel(shotLevel);
-		parameters.cast(gameHandler->spellcastEnvironment(), target);
-	}
+
+	const CSpell * spell = catapultAbility->subtype.as<SpellID>().toSpell();
+	spells::BattleCast parameters(&battle, stack, spells::Mode::SPELL_LIKE_ATTACK, spell); //We can shot infinitely by catapult
+	auto shotLevel = stack->valOfBonuses(Selector::typeSubtype(BonusType::CATAPULT_EXTRA_SHOTS, catapultAbility->subtype));
+	parameters.setSpellLevel(shotLevel);
+	parameters.cast(gameHandler->spellcastEnvironment(), target);
 	return true;
 }
 
@@ -553,7 +554,9 @@ bool BattleActionProcessor::doUnitSpellAction(const CBattleInfoCallback & battle
 	}
 
 	const CSpell * spell = SpellID(spellID).toSpell();
-	spells::BattleCast parameters(&battle, stack, spells::Mode::CREATURE_ACTIVE, spell);
+	const auto source = spellcaster ? spellcaster : randSpellcaster;
+	spells::ActivationCaster caster(stack, !source->activation || source->activation->consumeUses || !battle.getBattle()->getFocusRules().enabled);
+	spells::BattleCast parameters(&battle, &caster, spells::Mode::CREATURE_ACTIVE, spell);
 	int32_t spellLvl = 0;
 	if(spellcaster)
 		vstd::amax(spellLvl, spellcaster->val);
@@ -564,6 +567,45 @@ bool BattleActionProcessor::doUnitSpellAction(const CBattleInfoCallback & battle
 
 	processBattleEventTriggers(battle, CombatEventType::UNIT_SPELLCAST, stack, nullptr);
 	return true;
+}
+
+int32_t BattleActionProcessor::consumeActivation(const CBattleInfoCallback & battle, const CStack * stack, const BattleAction & ba)
+{
+	const auto source = battle::getActivationSource(stack, ba.actionType, ba.spell);
+	if(!source || !source->activation || source->activation->costs.focus == 0)
+		return 0;
+	const auto & rules = battle.getBattle()->getFocusRules();
+	if(!rules.enabled)
+		return 0;
+	if(!canStackAct(battle, stack))
+		return -1;
+	for(const auto & destination : ba.target)
+	{
+		if(destination.unitValue != -1000 && !battle.battleGetUnitByID(destination.unitValue))
+		{
+			gameHandler->complain("Invalid target for activated action.");
+			return -1;
+		}
+	}
+	if(ba.actionType == EActionType::STACK_HEAL && ba.target.empty())
+	{
+		gameHandler->complain("Target required for activated action.");
+		return -1;
+	}
+	if(ba.actionType == EActionType::WALK_AND_CAST && ba.target.size() < 2)
+	{
+		gameHandler->complain("Two destinations required for activated action.");
+		return -1;
+	}
+	const auto side = battle::focusSide(battle, stack);
+	if(battle.getFocusCharges(side) < source->activation->costs.focus)
+	{
+		gameHandler->complain("Not enough focus to activate this action.");
+		return -1;
+	}
+	const auto cost = source->activation->costs.focus;
+	gameHandler->spellcastEnvironment()->changeFocusCharges(battle, side, -cost);
+	return cost;
 }
 
 bool BattleActionProcessor::doHealAction(const CBattleInfoCallback & battle, const BattleAction & ba)
@@ -591,15 +633,14 @@ bool BattleActionProcessor::doHealAction(const CBattleInfoCallback & battle, con
 	if(stack == nullptr || destStack == nullptr || !healerAbility || !healerAbility->subtype.hasValue())
 	{
 		gameHandler->complain("There is either no healer, no destination, or healer cannot heal :P");
+		return false;
 	}
-	else
-	{
-		const CSpell * spell = healerAbility->subtype.as<SpellID>().toSpell();
-		spells::BattleCast parameters(&battle, stack, spells::Mode::SPELL_LIKE_ATTACK, spell); //We can heal infinitely by first aid tent
-		auto dest = battle::Destination(destStack, target.at(0).hexValue);
-		parameters.setSpellLevel(0);
-		parameters.cast(gameHandler->spellcastEnvironment(), {dest});
-	}
+
+	const CSpell * spell = healerAbility->subtype.as<SpellID>().toSpell();
+	spells::BattleCast parameters(&battle, stack, spells::Mode::SPELL_LIKE_ATTACK, spell); //We can heal infinitely by first aid tent
+	auto dest = battle::Destination(destStack, target.at(0).hexValue);
+	parameters.setSpellLevel(0);
+	parameters.cast(gameHandler->spellcastEnvironment(), {dest});
 	return true;
 }
 
@@ -649,7 +690,8 @@ bool BattleActionProcessor::doWalkAndSpellcastAction(const CBattleInfoCallback &
 	}
 
 	const CSpell * spell = spellID.toSpell();
-	spells::BattleCast parameters(&battle, stack, spells::Mode::CREATURE_ACTIVE, spell);
+	spells::ActivationCaster caster(stack, !bonus->activation || bonus->activation->consumeUses || !battle.getBattle()->getFocusRules().enabled);
+	spells::BattleCast parameters(&battle, &caster, spells::Mode::CREATURE_ACTIVE, spell);
 	battle::Target spellTarget;
 	spellTarget.emplace_back(destinationStack);
 	parameters.setSpellLevel(std::max(0, bonus->val));
@@ -736,6 +778,10 @@ bool BattleActionProcessor::makeBattleActionImpl(const CBattleInfoCallback & bat
 	const CStack * stack = battle.battleGetStackByID(ba.stackNumber);
 
 	// for these events client does not expects StartAction/EndAction wrapper
+	const int32_t activationCost = consumeActivation(battle, stack, ba);
+	if(activationCost < 0)
+		return false;
+
 	if (!ba.isBattleEndAction())
 	{
 		StartAction startAction(ba);
@@ -744,6 +790,11 @@ bool BattleActionProcessor::makeBattleActionImpl(const CBattleInfoCallback & bat
 	}
 
 	bool result = dispatchBattleAction(battle, ba);
+	if(!result && activationCost > 0)
+	{
+		const auto side = battle::focusSide(battle, stack);
+		gameHandler->spellcastEnvironment()->changeFocusCharges(battle, side, activationCost);
+	}
 
 	if (!ba.isBattleEndAction())
 	{
@@ -1220,7 +1271,21 @@ void BattleActionProcessor::makeAttack(const CBattleInfoCallback & battle, const
 	for(const AttackedTarget & target : payload.targets)
 		collectEventTriggers(battle, reactions, CombatEventType::AFTER_ATTACKED, target.unit, attacker);
 
+	// Capture control before the hit removes hypnosis from a killed target.
+	const auto focusRules = battle.getBattle()->getFocusRules();
+	BattleSideArray<int32_t> focusGained{};
+	if(focusRules.enabled)
+	{
+		focusGained[battle::focusSide(battle, attacker)] += focusRules.attackerGain(attack.counter, attack.ranged,
+			defender && battle.isLongWeaponAttack(attacker, defender), !bat.bsa.empty());
+		for(const auto & target : payload.targets)
+			focusGained[battle::focusSide(battle, target.unit)] += focusRules.targetGain(true);
+	}
+
 	gameHandler->sendAndApply(bat);
+	for(const auto side : {BattleSide::ATTACKER, BattleSide::DEFENDER})
+		if(focusGained[side])
+			gameHandler->spellcastEnvironment()->changeFocusPoints(battle, side, focusGained[side]);
 
 	{
 		const bool multipleTargets = bat.bsa.size() > 1;

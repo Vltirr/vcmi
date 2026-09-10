@@ -775,6 +775,13 @@ bool JsonUtils::parseBonus(const JsonNode &ability, Bonus *b, const TextIdentifi
 	});
 
 	b->val = static_cast<si32>(ability["val"].Float());
+	if(!ability["activation"].isNull())
+	{
+		Activation activation;
+		activation.costs.focus = static_cast<int32_t>(std::clamp<int64_t>(ability["activation"]["costs"]["focus"].Integer(), 0, std::numeric_limits<int32_t>::max()));
+		activation.consumeUses = ability["activation"]["consumeUses"].Bool();
+		b->activation = activation;
+	}
 
 	value = &ability["valueType"];
 	if (!value->isNull())

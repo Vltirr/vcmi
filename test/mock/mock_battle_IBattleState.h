@@ -31,6 +31,9 @@ public:
 	MOCK_CONST_METHOD1(getSideHero, const CGHeroInstance *(BattleSide));
 	MOCK_CONST_METHOD1(getCastSpells, int32_t(BattleSide));
 	MOCK_CONST_METHOD1(getEnchanterCounter, int32_t(BattleSide));
+	MOCK_CONST_METHOD1(getFocusPoints, int32_t(BattleSide));
+	MOCK_CONST_METHOD0(getFocusRules, FocusRules());
+	MOCK_METHOD2(setFocusPoints, void(BattleSide, int32_t));
 	MOCK_CONST_METHOD0(getTacticDist, ui8());
 	MOCK_CONST_METHOD0(getTacticsSide, BattleSide());
 	MOCK_CONST_METHOD0(getRound, int32_t());

@@ -26,6 +26,7 @@
 #include "../../lib/battle/BattleStateInfoForRetreat.h"
 #include "../../lib/battle/CObstacleInstance.h"
 #include "../../lib/battle/BattleAction.h"
+#include "../../lib/battle/Activation.h"
 #include "../../lib/CRandomGenerator.h"
 #include "../../lib/GameLibrary.h"
 
@@ -152,6 +153,8 @@ std::optional<PossibleSpellcast> BattleEvaluator::findBestCreatureSpell(const CS
 
 	for(const auto spellID : spellsToCast)
 	{
+		if(!battle::isActivationAvailable(*cb->getBattle(battleID), stack, EActionType::MONSTER_SPELL, spellID))
+			continue;
 		const CSpell * spell = spellID.toSpell();
 
 		if(!spell->canBeCast(cb->getBattle(battleID).get(), spells::Mode::CREATURE_ACTIVE, stack))

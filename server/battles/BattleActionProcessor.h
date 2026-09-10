@@ -134,6 +134,8 @@ class BattleActionProcessor : boost::noncopyable
 	bool doCatapultAction(const CBattleInfoCallback & battle, const BattleAction & ba);
 	bool doUnitSpellAction(const CBattleInfoCallback & battle, const BattleAction & ba);
 	bool doHealAction(const CBattleInfoCallback & battle, const BattleAction & ba);
+	/// Returns -1 for a rejected activation, 0 when no focus was charged, or the charged amount.
+	int32_t consumeActivation(const CBattleInfoCallback & battle, const CStack * stack, const BattleAction & ba);
 
 	bool dispatchBattleAction(const CBattleInfoCallback & battle, const BattleAction & ba);
 	bool makeBattleActionImpl(const CBattleInfoCallback & battle, const BattleAction & ba);

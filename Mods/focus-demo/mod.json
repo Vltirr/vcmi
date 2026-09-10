@@ -1,0 +1,14 @@
+{
+	"name": "Focus charges demo",
+	"description": "Optional shared battle focus. Ogre Magi spend one charge to cast their existing Bloodlust.",
+	"version": "1.0.0",
+	"author": "VCMI focus experiment",
+	"modType": "Mechanics",
+	"keepDisabled": true,
+	"settings": {"combat": {"focus": {"enabled": true}}},
+	"creatures": ["config/focusOgreMage.json"],
+	"spanish": {
+		"name": "Demostración de cargas de concentración",
+		"description": "Concentración compartida en batalla. El Ogro Mago gasta una carga para lanzar Sed de Sangre avanzada."
+	}
+}

@@ -551,6 +551,24 @@ protected:
 	void visitTyped(ICPackVisitor & visitor) override;
 };
 
+/// Absolute resource update, safe to apply identically in live games and replays.
+struct DLL_LINKAGE BattleFocusChanged : public CPackForClient
+{
+	BattleID battleID = BattleID::NONE;
+	BattleSide side = BattleSide::NONE;
+	int32_t points = 0;
+
+	template <typename Handler> void serialize(Handler & h)
+	{
+		h & battleID;
+		h & side;
+		h & points;
+	}
+
+protected:
+	void visitTyped(ICPackVisitor & visitor) override;
+};
+
 struct DLL_LINKAGE BattleUpdateGateState : public CPackForClient
 {
 	BattleID battleID = BattleID::NONE;

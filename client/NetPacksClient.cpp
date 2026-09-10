@@ -904,6 +904,11 @@ void ApplyClientNetPackVisitor::visitBattleEnded(BattleEnded & pack)
 	callInterfaceIfPresent(cl, PlayerColor::SPECTATOR, &IGameEventsReceiver::battleEnded);
 }
 
+void ApplyClientNetPackVisitor::visitBattleFocusChanged(BattleFocusChanged & pack)
+{
+	callBattleInterfaceIfPresentForBothSides(cl, pack.battleID, &IBattleEventsReceiver::battleFocusChanged, pack.battleID);
+}
+
 void ApplyClientNetPackVisitor::visitBattleUnitsChanged(BattleUnitsChanged & pack)
 {
 	callBattleInterfaceIfPresentForBothSides(cl, pack.battleID, &IBattleEventsReceiver::battleUnitsChanged, pack.battleID, pack.changedStacks);

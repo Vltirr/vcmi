@@ -511,6 +511,11 @@ void BattleObstaclesChanged::visitTyped(ICPackVisitor & visitor)
 	visitor.visitBattleObstaclesChanged(*this);
 }
 
+void BattleFocusChanged::visitTyped(ICPackVisitor & visitor)
+{
+	visitor.visitBattleFocusChanged(*this);
+}
+
 void BattleSetStackProperty::visitTyped(ICPackVisitor & visitor)
 {
 	visitor.visitBattleSetStackProperty(*this);

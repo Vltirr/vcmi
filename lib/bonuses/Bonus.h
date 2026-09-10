@@ -12,6 +12,7 @@
 #include "BonusEnum.h"
 #include "BonusCustomTypes.h"
 #include "Limiters.h"
+#include "../battle/Activation.h"
 #include "../serializer/Serializeable.h"
 #include "../texts/MetaString.h"
 #include "../filesystem/ResourcePath.h"
@@ -58,6 +59,7 @@ struct DLL_LINKAGE Bonus : public std::enable_shared_from_this<Bonus>, public Se
 	TPropagatorPtr propagator;
 	TUpdaterPtr updater;
 	TUpdaterPtr propagationUpdater;
+	std::optional<Activation> activation;
 
 	ImagePath customIconPath;
 	MetaString description;
@@ -102,6 +104,10 @@ struct DLL_LINKAGE Bonus : public std::enable_shared_from_this<Bonus>, public Se
 		h & updater;
 		h & propagationUpdater;
 		h & targetSourceType;
+		if(h.hasFeature(Handler::Version::BATTLE_FOCUS))
+			h & activation;
+		else
+			activation.reset();
 
 		//old saves stored BATTLE_NO_FLEEING in the slot now used by BATTLE_CAN_FLEE, it blocked retreating unconditionally
 		if(!h.saving && !h.hasFeature(Handler::Version::RETREAT_PERMISSION_BONUSES) && type == BonusType::BATTLE_CAN_FLEE)

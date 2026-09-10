@@ -23,6 +23,8 @@ namespace battle
 }
 
 class IBattleInfoCallback;
+enum class BattleSide : int8_t;
+struct BattleFocusChanged;
 
 struct CPackForClient;
 struct BattleLogMessage;
@@ -46,6 +48,9 @@ public:
 	/// Rolls a chance-based combat ability of the given unit
 	virtual bool rollCombatAbility(const IBattleInfoCallback & battle, const battle::Unit & actor, int percentageChance) = 0;
 
+	void changeFocusPoints(const IBattleInfoCallback & battle, BattleSide side, int32_t delta);
+	void changeFocusCharges(const IBattleInfoCallback & battle, BattleSide side, int32_t delta);
+	virtual void apply(BattleFocusChanged & pack);
 	virtual void apply(CPackForClient & pack) = 0;
 
 	virtual void apply(BattleLogMessage & pack) = 0;

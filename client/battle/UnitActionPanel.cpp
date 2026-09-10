@@ -28,6 +28,7 @@
 #include "../../lib/json/JsonUtils.h"
 #include "../../lib/mapObjects/CGHeroInstance.h"
 #include "../../lib/spells/CSpell.h"
+#include "../../lib/texts/CGeneralTextHandler.h"
 #include "../GameInstance.h"
 
 UnitActionPanel::UnitActionPanel(BattleInterface & owner)
@@ -51,13 +52,38 @@ void UnitActionPanel::restoreAllActions()
 void UnitActionPanel::setActions(int buttonIndex, const std::vector<PossiblePlayerBattleAction> & filteredActions)
 {
 	for (const auto & button : buttons)
-		if (button != buttons.at(buttonIndex))
-			button->setSelectedSilent(false);
+		if (button.widget != buttons.at(buttonIndex).widget)
+			button.widget->setSelectedSilent(false);
 
 	owner.actionsController->setPriorityActions(filteredActions);
 	if (filteredActions.front().spellcast())
 		owner.actionsController->enterCreatureCastingMode();
 	owner.actionsController->setPriorityActions(filteredActions);
+}
+
+bool UnitActionPanel::updateButton(ActionButton & button)
+{
+	const auto focusedAction = std::ranges::find_if(button.actions, [](const auto & action) { return action.focusCost() > 0; });
+	const bool available = std::ranges::any_of(button.actions, [](const auto & action) { return action.focusCost() == 0 || action.isActivationAvailable(); });
+	std::string hoverText = button.baseHoverText;
+	std::string helpText = button.baseHelpText;
+	if(focusedAction != button.actions.end())
+	{
+		hoverText += "\n" + LIBRARY->generaltexth->translate("vcmi.battle.focus.cost") + ": " + std::to_string(focusedAction->focusCost());
+		if(!available)
+		{
+			hoverText += "\n" + LIBRARY->generaltexth->translate("vcmi.battle.focus.insufficient");
+			helpText += "\n" + LIBRARY->generaltexth->translate("vcmi.battle.focus.insufficient");
+		}
+	}
+
+	const bool deselected = !available && button.widget->isSelected();
+	button.widget->setHelp(CButton::tooltip(hoverText, helpText));
+	button.widget->setHoverEnabledWhenBlocked(true);
+	button.widget->block(!available);
+	if(deselected)
+		button.widget->setSelectedSilent(false);
+	return deselected;
 }
 
 void UnitActionPanel::testAndAddAction(const std::vector<PossiblePlayerBattleAction> & allActions, const std::vector<PossiblePlayerBattleAction::Actions> & actionFilter, const ImagePath & iconPath, const std::string & descriptionTextID)
@@ -78,11 +104,12 @@ void UnitActionPanel::testAndAddAction(const std::vector<PossiblePlayerBattleAct
 	MetaString tooltip;
 	tooltip.appendTextID(descriptionTextID);
 
-	auto button = std::make_shared<CToggleButton>(Point(2, 7 + 50 * index), AnimationPath::builtin("battleUnitAction"), CButton::tooltip(tooltip.toString(&GAME->translator())), callback);
+	auto button = std::make_shared<CToggleButton>(Point(2, 7 + 50 * index), AnimationPath::builtin("battleUnitAction"), CButton::tooltip(), callback);
 	button->setOverlay(std::make_shared<CPicture>(iconPath));
 	button->setHighlightedBorderColor(Colors::WHITE);
 	button->setAllowDeselection(true);
-	buttons.push_back(button);
+	buttons.push_back({button, filteredActions, tooltip.toString(&GAME->translator()), ""});
+	updateButton(buttons.back());
 }
 
 void UnitActionPanel::testAndAddSpell(const std::vector<PossiblePlayerBattleAction> & allActions, const SpellID & spellFilter)
@@ -103,14 +130,13 @@ void UnitActionPanel::testAndAddSpell(const std::vector<PossiblePlayerBattleActi
 	tooltip.appendTextID("core.genrltxt.26");
 	tooltip.replaceName(spellFilter);
 
-	std::string hoverText = tooltip.toString(&GAME->translator());
 	std::string description = spellFilter.toSpell()->getDescriptionTranslated(0);
 
-
-	auto button = std::make_shared<CToggleButton>(Point(2, 7 + 50 * index), AnimationPath::builtin("battleUnitAction"), CButton::tooltip(hoverText, description), callback);
+	auto button = std::make_shared<CToggleButton>(Point(2, 7 + 50 * index), AnimationPath::builtin("battleUnitAction"), CButton::tooltip(), callback);
 	button->setOverlay(std::make_shared<CAnimImage>(AnimationPath::builtin("spellint"), spellFilter.getNum() + 1));
 	button->setHighlightedBorderColor(Colors::WHITE);
-	buttons.push_back(button);
+	buttons.push_back({button, filteredActions, tooltip.toString(&GAME->translator()), description});
+	updateButton(buttons.back());
 }
 
 void UnitActionPanel::setPossibleActions(const std::vector<PossiblePlayerBattleAction> & newActions)
@@ -148,6 +174,25 @@ void UnitActionPanel::setPossibleActions(const std::vector<PossiblePlayerBattleA
 	testAndAddAction(newActions, actionsInfo, ImagePath::builtin("battle/actionInfo"), "vcmi.battle.action.info");
 
 	redraw();
+}
+
+void UnitActionPanel::updateActivationAvailability(const std::vector<PossiblePlayerBattleAction> & actions)
+{
+	bool resetSelectedAction = false;
+	for(auto & button : buttons)
+	{
+		for(auto & previousAction : button.actions)
+		{
+			auto updatedAction = std::ranges::find(actions, previousAction);
+			if(updatedAction != actions.end())
+				previousAction = *updatedAction;
+		}
+
+		resetSelectedAction |= updateButton(button);
+	}
+
+	if(resetSelectedAction)
+		owner.actionsController->resetCurrentStackPossibleActions();
 }
 
 void UnitActionPanel::show(Canvas & to)

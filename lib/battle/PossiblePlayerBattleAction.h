@@ -45,6 +45,8 @@ public:
 private:
 	Actions action;
 	SpellID spellToCast;
+	int32_t activationFocusCost = 0;
+	bool activationAvailable = true;
 
 public:
 	bool spellcast() const
@@ -61,6 +63,14 @@ public:
 	SpellID spell() const
 	{
 		return spellToCast;
+	}
+
+	int32_t focusCost() const { return activationFocusCost; }
+	bool isActivationAvailable() const { return activationAvailable; }
+	void setActivationFocusCost(int32_t cost, bool available)
+	{
+		activationFocusCost = cost;
+		activationAvailable = available;
 	}
 
 	PossiblePlayerBattleAction(Actions action, SpellID spellToCast = SpellID::NONE):

@@ -75,6 +75,7 @@ class CButton : public ButtonBase
 	std::string helpBox; //for right-click help
 
 	bool hoverable; //if true, button will be highlighted when hovered (e.g. main menu)
+	bool hoverEnabledWhenBlocked;
 	bool soundDisabled;
 
 protected:
@@ -103,6 +104,7 @@ public:
 	void block(bool on);
 
 	void setHoverable(bool on);
+	void setHoverEnabledWhenBlocked(bool on);
 	void setSoundDisabled(bool on);
 	void setHelp(const std::pair<std::string, std::string> & help);
 

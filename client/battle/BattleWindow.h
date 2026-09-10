@@ -91,6 +91,7 @@ class BattleWindow : public InterfaceObjectConfigurable
 
 	std::shared_ptr<BattleConsole> buildBattleConsole(const JsonNode &) const;
 
+	void showFocus(Canvas & to);
 	bool onlyOnePlayerHuman;
 
 	bool hasSpaceForQuickActions() const;
@@ -154,7 +155,9 @@ public:
 	/// Set possible alternative options to fill unit actions panel
 	void setPossibleActions(const std::vector<PossiblePlayerBattleAction> & allActions);
 
+	/// Refresh activation availability without rebuilding the action panel
+	void updateActivationAvailability(const std::vector<PossiblePlayerBattleAction> & allActions);
+
 	/// ends battle with autocombat
 	void endWithAutocombat();
 };
-

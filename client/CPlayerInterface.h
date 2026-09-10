@@ -187,6 +187,7 @@ protected: // Call-ins from server, should not be called directly, but only via 
 	void battleStacksAttacked(const BattleID & battleID, const std::vector<BattleStackAttacked> & bsa, bool ranged) override;
 	void battleStartBefore(const BattleID & battleID, const CCreatureSet *army1, const CCreatureSet *army2, int3 tile, const CGHeroInstance *hero1, const CGHeroInstance *hero2) override; //called by engine just before battle starts; side=0 - left, side=1 - right
 	void battleStart(const BattleID & battleID, const CCreatureSet *army1, const CCreatureSet *army2, int3 tile, const CGHeroInstance *hero1, const CGHeroInstance *hero2, BattleSide side, bool replayAllowed) override; //called by engine when battle starts; side=0 - left, side=1 - right
+	void battleFocusChanged(const BattleID & battleID) override;
 	void battleUnitsChanged(const BattleID & battleID, const std::vector<UnitChanges> & units) override;
 	void battleObstaclesChanged(const BattleID & battleID, const ObstacleChanges & obstacle) override;
 	void battleCatapultAttacked(const BattleID & battleID, const CatapultAttack & ca) override; //called when catapult makes an attack
