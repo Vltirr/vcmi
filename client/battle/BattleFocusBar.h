@@ -1,0 +1,45 @@
+/*
+ * BattleFocusBar.h, part of VCMI engine
+ *
+ * Authors: listed in file AUTHORS in main folder
+ *
+ * License: GNU General Public License v2.0 or later
+ * Full text of license available in license.txt file, in main folder
+ *
+ */
+#pragma once
+
+#include "../gui/CIntObject.h"
+
+#include "../../lib/battle/BattleSide.h"
+
+class IImage;
+
+/// Renders one side's Focus resource as a layered, non-interactive battle HUD widget.
+class BattleFocusBar : public CIntObject
+{
+	BattleSide side;
+	int32_t currentPoints;
+	int32_t pointsPerCharge;
+	int32_t maxCharges;
+
+	std::shared_ptr<IImage> frame;
+	std::shared_ptr<IImage> progressFill;
+	std::shared_ptr<IImage> separator;
+	std::shared_ptr<IImage> activeCheckpoint;
+	std::shared_ptr<IImage> inactiveCheckpoint;
+	std::shared_ptr<IImage> activeIcon;
+	std::shared_ptr<IImage> inactiveIcon;
+
+	void render(Canvas & to) const;
+
+public:
+	static constexpr int WIDTH = 211;
+	static constexpr int HEIGHT = 30;
+
+	explicit BattleFocusBar(BattleSide side);
+
+	void updateState(bool enabled, int32_t points, int32_t pointsPerCharge, int32_t maxCharges);
+	void show(Canvas & to) override;
+	void showAll(Canvas & to) override;
+};

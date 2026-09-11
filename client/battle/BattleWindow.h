@@ -20,6 +20,7 @@ class CGTownInstance;
 class CButton;
 class BattleInterface;
 class BattleConsole;
+class BattleFocusBar;
 class BattleRenderer;
 class StackQueue;
 class TurnTimerWidget;
@@ -35,6 +36,8 @@ class BattleWindow : public InterfaceObjectConfigurable
 
 	std::shared_ptr<StackQueue> queue;
 	std::shared_ptr<BattleConsole> console;
+	std::shared_ptr<BattleFocusBar> attackerFocusBar;
+	std::shared_ptr<BattleFocusBar> defenderFocusBar;
 	std::shared_ptr<HeroInfoBasicPanel> attackerHeroWindow;
 	std::shared_ptr<HeroInfoBasicPanel> defenderHeroWindow;
 	std::shared_ptr<StackInfoBasicPanel> attackerStackWindow;
@@ -76,6 +79,8 @@ class BattleWindow : public InterfaceObjectConfigurable
 	/// flip battle queue visibility to opposite
 	void toggleQueueVisibility();
 	void createQueue();
+	void createFocusBars();
+	void setPositionFocusBars();
 
 	/// flip a boolean battle display setting (hex grid / mouse shadow / movement shadow)
 	void toggleBattleSetting(const std::string & name);
@@ -91,7 +96,6 @@ class BattleWindow : public InterfaceObjectConfigurable
 
 	std::shared_ptr<BattleConsole> buildBattleConsole(const JsonNode &) const;
 
-	void showFocus(Canvas & to);
 	bool onlyOnePlayerHuman;
 
 	bool hasSpaceForQuickActions() const;
@@ -124,6 +128,9 @@ public:
 
 	/// Refresh queue after turn order changes
 	void updateQueue();
+
+	/// Refresh both Focus widgets after the shared battle resource changes
+	void updateFocusBars();
 
 	// Set positions for hero & stack info window
 	void setPositionInfoWindow();

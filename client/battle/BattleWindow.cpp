@@ -13,6 +13,7 @@
 #include "BattleActionsController.h"
 #include "BattleConsole.h"
 #include "BattleFieldController.h"
+#include "BattleFocusBar.h"
 #include "BattleInterface.h"
 #include "BattleStacksController.h"
 #include "HeroInfoWindow.h"
@@ -128,6 +129,7 @@ BattleWindow::BattleWindow(BattleInterface & Owner)
 	owner.fieldController->createHeroes();
 
 	createQueue();
+	createFocusBars();
 	createQuickSpellWindow();
 	createStickyHeroInfoWindows();
 	createTimerInfoWindows();
@@ -166,6 +168,45 @@ void BattleWindow::createQueue()
 
 	if (!showQueue)
 		queue->disable();
+}
+
+void BattleWindow::createFocusBars()
+{
+	OBJECT_CONSTRUCTION;
+
+	attackerFocusBar = std::make_shared<BattleFocusBar>(BattleSide::ATTACKER);
+	defenderFocusBar = std::make_shared<BattleFocusBar>(BattleSide::DEFENDER);
+	updateFocusBars();
+	setPositionFocusBars();
+}
+
+void BattleWindow::setPositionFocusBars()
+{
+	if(!attackerFocusBar || !defenderFocusBar)
+		return;
+
+	constexpr int horizontalMargin = 12;
+	constexpr int queueOverlap = 9;
+	int focusY = pos.y;
+
+	if(queue && !queue->isDisabled() && (!queue->embedded || queue->pos.y >= pos.y))
+		focusY = queue->pos.bottom() - queueOverlap;
+
+	attackerFocusBar->moveTo(Point(pos.x + horizontalMargin, focusY));
+	defenderFocusBar->moveTo(Point(pos.x + pos.w - horizontalMargin - BattleFocusBar::WIDTH, focusY));
+}
+
+void BattleWindow::updateFocusBars()
+{
+	if(!attackerFocusBar || !defenderFocusBar)
+		return;
+
+	const auto battle = owner.getBattle();
+	const auto rules = battle->getBattle()->getFocusRules();
+	attackerFocusBar->updateState(rules.enabled, battle->getFocusPoints(BattleSide::ATTACKER),
+		rules.pointsPerCharge, rules.maxCharges);
+	defenderFocusBar->updateState(rules.enabled, battle->getFocusPoints(BattleSide::DEFENDER),
+		rules.pointsPerCharge, rules.maxCharges);
 }
 
 void BattleWindow::createStickyHeroInfoWindows()
@@ -356,6 +397,7 @@ void BattleWindow::hideQueue()
 		pos.h -= queue->pos.h;
 	}
 	pos = center();
+	setPositionFocusBars();
 	setPositionInfoWindow();
 	ENGINE->windows().totalRedraw();
 }
@@ -370,6 +412,7 @@ void BattleWindow::showQueue()
 
 	createQueue();
 	updateQueue();
+	setPositionFocusBars();
 	setPositionInfoWindow();
 	ENGINE->windows().totalRedraw();
 }
@@ -972,37 +1015,14 @@ void BattleWindow::showAll(Canvas & to)
 	if(owner.curInt->cb->getMapHeader()->battleOnly)
 		to.fillTexture(ENGINE->renderHandler().loadImage(ImagePath::builtin("DiBoxBck"), EImageBlitMode::OPAQUE));
 	CIntObject::showAll(to);
-	showFocus(to);
 
 	if (ENGINE->screenDimensions().x != 800 || ENGINE->screenDimensions().y !=600)
 		to.drawBorder(Rect(pos.x-1, pos.y - (queue && queue->embedded ? 1 : 0), pos.w+2, pos.h+1 + (queue && queue->embedded ? 1 : 0)), Colors::BRIGHT_YELLOW);
 }
 
-void BattleWindow::showFocus(Canvas & to)
-{
-	const auto battle = owner.getBattle();
-	const int capacity = battle->getFocusCapacity();
-	if(!capacity)
-		return;
-	const auto rules = battle->getBattle()->getFocusRules();
-	for(const auto side : {BattleSide::ATTACKER, BattleSide::DEFENDER})
-	{
-		const int x = pos.x + (side == BattleSide::ATTACKER ? 10 : 605);
-		const int y = pos.y + 100;
-		std::string text = LIBRARY->generaltexth->translate("vcmi.battle.focus.title") + ": "
-			+ std::to_string(battle->getFocusCharges(side)) + "/" + std::to_string(capacity);
-		text += " (" + std::to_string(battle->getFocusPoints(side) % rules.pointsPerCharge)
-			+ "/" + std::to_string(rules.pointsPerCharge) + ")";
-		to.drawColor(Rect(x, y, 185, 24), Colors::BLACK);
-		to.drawBorder(Rect(x, y, 185, 24), Colors::BRIGHT_YELLOW);
-		to.drawText(Point(x + 92, y + 12), FONT_SMALL, Colors::BRIGHT_YELLOW, ETextAlignment::CENTER, text);
-	}
-}
-
 void BattleWindow::show(Canvas & to)
 {
 	CIntObject::show(to);
-	showFocus(to);
 	GAME->interface()->cingconsole->show(to);
 }
 
@@ -1023,6 +1043,7 @@ void BattleWindow::onScreenResize()
 		hideStickyHeroWindows();
 		showStickyHeroWindows();
 	}
+	setPositionFocusBars();
 }
 
 void BattleWindow::close()

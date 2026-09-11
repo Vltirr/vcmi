@@ -701,6 +701,7 @@ void CPlayerInterface::battleFocusChanged(const BattleID & battleID)
 {
 	EVENT_HANDLER_CALLED_BY_CLIENT;
 	BATTLE_EVENT_POSSIBLE_RETURN;
+	battleInt->windowObject->updateFocusBars();
 	battleInt->actionsController->updateActivationAvailability();
 }
 
