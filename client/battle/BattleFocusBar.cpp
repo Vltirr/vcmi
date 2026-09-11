@@ -21,8 +21,7 @@ namespace
 constexpr int FRAME_Y = 7;
 constexpr int TRACK_X = 5;
 constexpr int TRACK_Y = 11;
-constexpr int TRACK_WIDTH = 201;
-constexpr int STANDARD_TRACK_WIDTH = 188;
+constexpr int TRACK_WIDTH = 188;
 constexpr int TRACK_HEIGHT = 8;
 constexpr int SEPARATOR_Y = 10;
 constexpr int SEPARATOR_WIDTH = 2;
@@ -30,7 +29,7 @@ constexpr int CHECKPOINT_SIZE = 18;
 constexpr int ICON_SIZE = 28;
 constexpr int MAX_VISIBLE_CHECKPOINTS = 3;
 constexpr int MIN_SEGMENT_WIDTH = 3;
-constexpr int STANDARD_WIDGET_WIDTH = TRACK_X * 2 + STANDARD_TRACK_WIDTH;
+constexpr int STANDARD_WIDGET_WIDTH = TRACK_X * 2 + TRACK_WIDTH;
 
 std::shared_ptr<IImage> loadFocusImage(const std::string & name)
 {
@@ -69,32 +68,33 @@ void BattleFocusBar::updateState(bool enabled, int32_t points, int32_t newPoints
 void BattleFocusBar::render(Canvas & to) const
 {
 	const int64_t capacity = static_cast<int64_t>(pointsPerCharge) * maxCharges;
-	const int fillWidth = currentPoints == capacity
-		? TRACK_WIDTH
-		: static_cast<int>((static_cast<int64_t>(currentPoints) * STANDARD_TRACK_WIDTH + capacity / 2) / capacity);
+	const int fillWidth = static_cast<int>(
+		(static_cast<int64_t>(currentPoints) * TRACK_WIDTH + capacity / 2) / capacity);
 	const Point widgetPosition = pos.topLeft();
+	const int frameX = side == BattleSide::ATTACKER ? 0 : WIDTH - STANDARD_WIDGET_WIDTH;
+	const int trackX = frameX + TRACK_X;
 
-	to.draw(frame, widgetPosition + Point(0, FRAME_Y));
+	to.draw(frame, widgetPosition + Point(frameX, FRAME_Y));
 
 	if(fillWidth > 0)
 	{
 		if(side == BattleSide::ATTACKER)
 		{
-			to.draw(progressFill, widgetPosition + Point(TRACK_X, TRACK_Y), Rect(0, 0, fillWidth, TRACK_HEIGHT));
+			to.draw(progressFill, widgetPosition + Point(trackX, TRACK_Y), Rect(0, 0, fillWidth, TRACK_HEIGHT));
 		}
 		else
 		{
 			const int sourceX = TRACK_WIDTH - fillWidth;
-			const int destinationX = TRACK_X + sourceX;
+			const int destinationX = trackX + sourceX;
 			to.draw(progressFill, widgetPosition + Point(destinationX, TRACK_Y),
 				Rect(sourceX, 0, fillWidth, TRACK_HEIGHT));
 		}
 	}
 
-	const int segmentCount = std::min<int64_t>(capacity, STANDARD_TRACK_WIDTH / MIN_SEGMENT_WIDTH);
+	const int segmentCount = std::min<int64_t>(capacity, TRACK_WIDTH / MIN_SEGMENT_WIDTH);
 	for(int segment = 1; segment < segmentCount; ++segment)
 	{
-		const int progressOffset = (segment * STANDARD_TRACK_WIDTH + segmentCount / 2) / segmentCount;
+		const int progressOffset = (segment * TRACK_WIDTH + segmentCount / 2) / segmentCount;
 		const int attackerCenter = TRACK_X + progressOffset;
 		const int separatorCenter = side == BattleSide::ATTACKER ? attackerCenter : WIDTH - attackerCenter;
 		to.draw(separator, widgetPosition + Point(separatorCenter - SEPARATOR_WIDTH / 2, SEPARATOR_Y));
@@ -105,10 +105,8 @@ void BattleFocusBar::render(Canvas & to) const
 	{
 		const int representedCharge = (checkpoint * maxCharges + visibleCheckpoints - 1) / visibleCheckpoints;
 		const int64_t threshold = static_cast<int64_t>(representedCharge) * pointsPerCharge;
-		const int progressOffset = static_cast<int>((threshold * STANDARD_TRACK_WIDTH + capacity / 2) / capacity);
-		const int attackerCenter = threshold == capacity
-			? WIDTH - CHECKPOINT_SIZE / 2
-			: TRACK_X + progressOffset;
+		const int progressOffset = static_cast<int>((threshold * TRACK_WIDTH + capacity / 2) / capacity);
+		const int attackerCenter = TRACK_X + progressOffset;
 		const int checkpointCenter = side == BattleSide::ATTACKER ? attackerCenter : WIDTH - attackerCenter;
 		const auto & checkpointImage = currentPoints >= threshold ? activeCheckpoint : inactiveCheckpoint;
 		to.draw(checkpointImage, widgetPosition + Point(checkpointCenter - CHECKPOINT_SIZE / 2,
