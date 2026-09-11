@@ -52,10 +52,16 @@ public:
 	int32_t getEnchanterCounter(BattleSide side) const override;
 	int32_t getFocusPoints(BattleSide side) const override;
 	FocusRules getFocusRules() const override;
+	int32_t getActivationUsage(BattleSide side, const std::string & key, EActivationLimitPeriod period) const override;
 	void setFocusPoints(BattleSide side, int32_t points) override;
+	void setActivationUsage(BattleSide side, const std::string & key, EActivationLimitPeriod period, int32_t uses) override;
 
 	const IBonusBearer * getBonusBearer() const override;
 protected:
+	void resetActivationUsageRound();
+
 	Subject subject;
 	std::map<BattleSide, int32_t> focusPoints;
+	std::map<std::tuple<BattleSide, std::string, EActivationLimitPeriod>, int32_t> activationUsage;
+	bool activationUsageRoundReset = false;
 };

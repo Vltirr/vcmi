@@ -60,6 +60,10 @@ class BattleFlowProcessor : boost::noncopyable
 public:
 	explicit BattleFlowProcessor(BattleProcessor * owner, CGameHandler * newGameHandler);
 
+	/// Executes the existing effects behind deliberate bonus-backed actions.
+	bool activateManaDrain(const CBattleInfoCallback & battle, const CStack * stack, const std::string & ability = {});
+	bool activateEnchanter(const CBattleInfoCallback & battle, const CStack * stack, const std::string & ability = {});
+
 	void onBattleStarted(const CBattleInfoCallback & battle);
 	void onTacticsEnded(const CBattleInfoCallback & battle);
 	void onActionMade(const CBattleInfoCallback & battle, const BattleAction & ba);

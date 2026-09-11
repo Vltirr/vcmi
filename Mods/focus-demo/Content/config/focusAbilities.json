@@ -1,0 +1,621 @@
+{
+	"core:archangel": {
+		"abilities": {
+			"resurrects": {
+				"activation": {
+					"costs": {
+						"focus": 3
+					},
+					"consumeUses": false,
+					"limits": [
+						{
+							"key": "focus-demo:archangelResurrection",
+							"scope": "side",
+							"period": "battle",
+							"max": 1
+						}
+					]
+				}
+			}
+		}
+	},
+	"core:masterGenie": {
+		"abilities": {
+			"randomSpellcaster": {
+				"actionReturnsControl": true,
+				"activation": {
+					"costs": {
+						"focus": 1
+					},
+					"consumeUses": false
+				}
+			}
+		}
+	},
+	"core:pitLord": {
+		"abilities": {
+			"resurrects": {
+				"activation": {
+					"costs": {
+						"focus": 2
+					},
+					"consumeUses": false
+				}
+			}
+		}
+	},
+	"core:ogreMage": {
+		"abilities": {
+			"castsBloodlust": {
+				"actionReturnsControl": true,
+				"activation": {
+					"costs": {
+						"focus": 1
+					},
+					"consumeUses": false
+				}
+			}
+		}
+	},
+	"core:cyclop": {
+		"abilities": {
+			"canShootWalls": {
+				"actionReturnsControl": true,
+				"activation": {
+					"costs": {
+						"focus": 1
+					},
+					"consumeUses": false
+				}
+			}
+		}
+	},
+	"core:cyclopKing": {
+		"abilities": {
+			"canShootWalls": {
+				"actionReturnsControl": true,
+				"activation": {
+					"costs": {
+						"focus": 1
+					},
+					"consumeUses": false
+				}
+			}
+		}
+	},
+	"core:stormElemental": {
+		"abilities": {
+			"spellcaster": {
+				"actionReturnsControl": true,
+				"activation": {
+					"costs": {
+						"focus": 1
+					},
+					"consumeUses": false
+				}
+			}
+		}
+	},
+	"core:iceElemental": {
+		"abilities": {
+			"spellcaster": {
+				"actionReturnsControl": true,
+				"activation": {
+					"costs": {
+						"focus": 1
+					},
+					"consumeUses": false
+				}
+			}
+		}
+	},
+	"core:energyElemental": {
+		"abilities": {
+			"spellcaster": {
+				"actionReturnsControl": true,
+				"activation": {
+					"costs": {
+						"focus": 1
+					},
+					"consumeUses": false
+				}
+			}
+		}
+	},
+	"core:magmaElemental": {
+		"abilities": {
+			"spellcaster": {
+				"actionReturnsControl": true,
+				"activation": {
+					"costs": {
+						"focus": 1
+					},
+					"consumeUses": false
+				}
+			}
+		}
+	},
+	"core:fairieDragon": {
+		"abilities": {
+			"castsMagicArrow": {
+				"actionReturnsControl": true,
+				"activation": {
+					"costs": {
+						"focus": 1
+					},
+					"consumeUses": false
+				}
+			},
+			"castsIceBolt": {
+				"actionReturnsControl": true,
+				"activation": {
+					"costs": {
+						"focus": 1
+					},
+					"consumeUses": false
+				}
+			},
+			"castsLightningBolt": {
+				"actionReturnsControl": true,
+				"activation": {
+					"costs": {
+						"focus": 1
+					},
+					"consumeUses": false
+				}
+			},
+			"castsChainLightning": {
+				"activation": {
+					"costs": {
+						"focus": 3
+					},
+					"consumeUses": false
+				}
+			},
+			"castsFrostRing": {
+				"activation": {
+					"costs": {
+						"focus": 2
+					},
+					"consumeUses": false
+				}
+			},
+			"castsFireball": {
+				"activation": {
+					"costs": {
+						"focus": 2
+					},
+					"consumeUses": false
+				}
+			},
+			"castsInferno": {
+				"activation": {
+					"costs": {
+						"focus": 2
+					},
+					"consumeUses": false
+				}
+			},
+			"castsMeteorShower": {
+				"activation": {
+					"costs": {
+						"focus": 2
+					},
+					"consumeUses": false
+				}
+			}
+		}
+	},
+	"core:fireDragonFly": {
+		"abilities": {
+			"castWeakness": {
+				"val": 100,
+				"activation": {
+					"id": "focus-demo:dragonFlyWeakness",
+					"costs": {
+						"focus": 1
+					},
+					"consumeUses": false
+				}
+			}
+		}
+	},
+	"core:basilisk": {
+		"abilities": {
+			"petrify": {
+				"val": 100,
+				"activation": {
+					"id": "focus-demo:basiliskPetrification",
+					"costs": {
+						"focus": 2
+					},
+					"consumeUses": false,
+					"limits": [
+						{
+							"key": "focus-demo:basiliskPetrification",
+							"scope": "side",
+							"period": "battle",
+							"max": 1
+						}
+					]
+				}
+			}
+		}
+	},
+	"core:greaterBasilisk": {
+		"abilities": {
+			"petrify": {
+				"val": 100,
+				"activation": {
+					"id": "focus-demo:basiliskPetrification",
+					"costs": {
+						"focus": 2
+					},
+					"consumeUses": false,
+					"limits": [
+						{
+							"key": "focus-demo:basiliskPetrification",
+							"scope": "side",
+							"period": "battle",
+							"max": 1
+						}
+					]
+				}
+			}
+		}
+	},
+	"core:medusa": {
+		"abilities": {
+			"petrification": {
+				"val": 100,
+				"activation": {
+					"id": "focus-demo:medusaPetrification",
+					"costs": {
+						"focus": 2
+					},
+					"consumeUses": false,
+					"limits": [
+						{
+							"key": "focus-demo:medusaPetrification",
+							"scope": "side",
+							"period": "battle",
+							"max": 1
+						}
+					]
+				}
+			}
+		}
+	},
+	"core:medusaQueen": {
+		"abilities": {
+			"petrification": {
+				"val": 100,
+				"activation": {
+					"id": "focus-demo:medusaPetrification",
+					"costs": {
+						"focus": 2
+					},
+					"consumeUses": false,
+					"limits": [
+						{
+							"key": "focus-demo:medusaPetrification",
+							"scope": "side",
+							"period": "battle",
+							"max": 1
+						}
+					]
+				}
+			}
+		}
+	},
+	"core:scorpicore": {
+		"abilities": {
+			"paralize": {
+				"val": 100,
+				"activation": {
+					"id": "focus-demo:scorpicoreParalysis",
+					"costs": {
+						"focus": 3
+					},
+					"consumeUses": false,
+					"limits": [
+						{
+							"key": "focus-demo:scorpicoreParalysis",
+							"scope": "side",
+							"period": "round",
+							"max": 1
+						}
+					]
+				}
+			}
+		}
+	},
+	"core:unicorn": {
+		"abilities": {
+			"blinds": {
+				"val": 100,
+				"activation": {
+					"id": "focus-demo:unicornBlind",
+					"costs": {
+						"focus": 3
+					},
+					"consumeUses": false,
+					"limits": [
+						{
+							"key": "focus-demo:unicornBlind",
+							"scope": "side",
+							"period": "round",
+							"max": 1
+						}
+					]
+				}
+			}
+		}
+	},
+	"core:warUnicorn": {
+		"abilities": {
+			"blinds": {
+				"val": 100,
+				"activation": {
+					"id": "focus-demo:unicornBlind",
+					"costs": {
+						"focus": 3
+					},
+					"consumeUses": false,
+					"limits": [
+						{
+							"key": "focus-demo:unicornBlind",
+							"scope": "side",
+							"period": "round",
+							"max": 1
+						}
+					]
+				}
+			}
+		}
+	},
+	"core:zombieLord": {
+		"abilities": {
+			"castDisease": {
+				"val": 100,
+				"activation": {
+					"id": "focus-demo:zombieLordDisease",
+					"costs": {
+						"focus": 1
+					},
+					"consumeUses": false
+				}
+			}
+		}
+	},
+	"core:mummy": {
+		"abilities": {
+			"castCurse": {
+				"val": 100,
+				"activation": {
+					"id": "focus-demo:mummyCurse",
+					"costs": {
+						"focus": 1
+					},
+					"consumeUses": false
+				}
+			}
+		}
+	},
+	"core:blackKnight": {
+		"abilities": {
+			"curses": {
+				"val": 100,
+				"activation": {
+					"id": "focus-demo:blackKnightCurse",
+					"costs": {
+						"focus": 1
+					},
+					"consumeUses": false
+				}
+			}
+		}
+	},
+	"core:dreadKnight": {
+		"abilities": {
+			"curses": {
+				"val": 100,
+				"activation": {
+					"id": "focus-demo:blackKnightCurse",
+					"costs": {
+						"focus": 1
+					},
+					"consumeUses": false
+				}
+			}
+		}
+	},
+	"core:ghostDragon": {
+		"abilities": {
+			"age": {
+				"val": 100,
+				"activation": {
+					"id": "focus-demo:ghostDragonAging",
+					"costs": {
+						"focus": 3
+					},
+					"consumeUses": false,
+					"limits": [
+						{
+							"key": "focus-demo:ghostDragonAging",
+							"scope": "side",
+							"period": "battle",
+							"max": 1
+						}
+					]
+				}
+			}
+		}
+	},
+	"core:wyvernMonarch": {
+		"abilities": {
+			"poison": {
+				"val": 100,
+				"activation": {
+					"id": "focus-demo:wyvernPoison",
+					"costs": {
+						"focus": 2
+					},
+					"consumeUses": false
+				}
+			}
+		}
+	},
+	"core:thunderbird": {
+		"abilities": {
+			"thunderOnAttack": {
+				"val": 100,
+				"activation": {
+					"id": "focus-demo:thunderbirdLightning",
+					"costs": {
+						"focus": 2
+					},
+					"consumeUses": false,
+					"limits": [
+						{
+							"key": "focus-demo:thunderbirdLightning",
+							"scope": "side",
+							"period": "round",
+							"max": 1
+						}
+					]
+				}
+			}
+		}
+	},
+	"core:rustDragon": {
+		"abilities": {
+			"acidBreath": {
+				"val": 100,
+				"activation": {
+					"id": "focus-demo:rustDragonAcidBreath",
+					"costs": {
+						"focus": 2
+					},
+					"consumeUses": false
+				}
+			},
+			"reduceDefence": {
+				"val": 100,
+				"activation": {
+					"id": "focus-demo:rustDragonAcidBreath",
+					"costs": {
+						"focus": 2
+					},
+					"consumeUses": false
+				}
+			}
+		}
+	},
+	"core:vampireLord": {
+		"abilities": {
+			"drainsLife": {
+				"activation": {
+					"id": "focus-demo:vampireLifeDrain",
+					"costs": {
+						"focus": 2
+					},
+					"consumeUses": false
+				}
+			}
+		}
+	},
+	"core:enchanter": {
+		"abilities": {
+			"castsHaste": {
+				"activation": {
+					"id": "focus-demo:enchanterSpell",
+					"costs": {
+						"focus": 2
+					},
+					"consumeUses": false
+				},
+				"actionReturnsControl": true
+			},
+			"castsSlow": {
+				"activation": {
+					"id": "focus-demo:enchanterSpell",
+					"costs": {
+						"focus": 2
+					},
+					"consumeUses": false
+				},
+				"actionReturnsControl": true
+			},
+			"castsStoneSkin": {
+				"activation": {
+					"id": "focus-demo:enchanterSpell",
+					"costs": {
+						"focus": 2
+					},
+					"consumeUses": false
+				},
+				"actionReturnsControl": true
+			},
+			"castsBless": {
+				"activation": {
+					"id": "focus-demo:enchanterSpell",
+					"costs": {
+						"focus": 2
+					},
+					"consumeUses": false
+				},
+				"actionReturnsControl": true
+			},
+			"castsWeakness": {
+				"activation": {
+					"id": "focus-demo:enchanterSpell",
+					"costs": {
+						"focus": 2
+					},
+					"consumeUses": false
+				},
+				"actionReturnsControl": true
+			},
+			"castsAirShield": {
+				"activation": {
+					"id": "focus-demo:enchanterSpell",
+					"costs": {
+						"focus": 2
+					},
+					"consumeUses": false
+				},
+				"actionReturnsControl": true
+			}
+		}
+	},
+	"core:wraith": {
+		"abilities": {
+			"drainsMana": {
+				"val": 5,
+				"activation": {
+					"id": "focus-demo:wraithManaDrain",
+					"costs": {
+						"focus": 1
+					},
+					"consumeUses": false,
+					"limits": [
+						{
+							"key": "focus-demo:wraithManaDrain",
+							"scope": "side",
+							"period": "battle",
+							"max": 3
+						},
+						{
+							"key": "focus-demo:wraithManaDrain",
+							"scope": "side",
+							"period": "round",
+							"max": 1
+						}
+					]
+				},
+				"actionReturnsControl": true
+			}
+		}
+	}
+}

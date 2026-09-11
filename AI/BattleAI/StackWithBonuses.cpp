@@ -12,6 +12,7 @@
 
 #include <vcmi/events/EventBus.h>
 
+#include "../../lib/battle/Activation.h"
 #include "../../lib/battle/BattleLayout.h"
 #include "../../lib/CStack.h"
 #include "../../lib/gameState/GameStatePackVisitor.h"
@@ -321,6 +322,7 @@ int32_t HypotheticBattle::getActiveStackID() const
 
 void HypotheticBattle::nextRound()
 {
+	resetActivationUsageRound();
 	//TODO:HypotheticBattle::nextRound
 	for(auto unit : battleAliveUnits())
 	{

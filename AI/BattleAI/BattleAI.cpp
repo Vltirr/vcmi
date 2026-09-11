@@ -20,6 +20,8 @@
 #include "../../lib/callback/CBattleCallback.h"
 #include "../../lib/callback/IGameInfoCallback.h"
 #include "../../lib/mapObjects/CGTownInstance.h"
+#include "../../lib/mapObjects/CGHeroInstance.h"
+#include "../../lib/bonuses/Bonus.h"
 #include "../../lib/spells/ISpellMechanics.h"
 #include "../../lib/battle/BattleAction.h"
 #include "../../lib/battle/Activation.h"
@@ -94,6 +96,25 @@ BattleAction CBattleAI::useHealingTent(const BattleID & battleID, const CStack *
 		return BattleAction::makeHeal(stack, woundHpToStack.rbegin()->second); //last element of the woundHpToStack is the most wounded stack
 }
 
+std::optional<BattleAction> CBattleAI::useReturningCreatureAbility(const BattleID & battleID, const CStack * stack) const
+{
+	const auto battle = cb->getBattle(battleID);
+	for(const auto & bonus : battle::getDeliberateActivationSources(stack, EActionType::CREATURE_ABILITY))
+	{
+		if(!bonus->actionReturnsControl)
+			continue;
+		if(!battle::isActivationAvailable(*battle, stack, EActionType::CREATURE_ABILITY, SpellID::NONE, bonus->activation->id))
+			continue;
+		if(bonus->type == BonusType::ENCHANTER && battle->battleGetEnchanterCounter(stack->unitSide()) != 0)
+			continue;
+		const auto * opponentHero = battle->battleGetFightingHero(battle->otherSide(stack->unitSide()));
+		if(bonus->type == BonusType::MANA_DRAIN && (!opponentHero || opponentHero->mana == 0))
+			continue;
+		return BattleAction::makeCreatureAbility(stack, bonus->activation->id);
+	}
+	return std::nullopt;
+}
+
 void CBattleAI::yourTacticPhase(const BattleID & battleID, int distance)
 {
 	tacticsHandler->onTacticsStarted();
@@ -154,6 +175,11 @@ void CBattleAI::activeStack(const BattleID & battleID, const CStack * stack )
 	if(stack->hasBonusOfType(BonusType::SIEGE_WEAPON) && stack->hasBonusOfType(BonusType::HEALER))
 	{
 		cb->battleMakeUnitAction(battleID, useHealingTent(battleID, stack));
+		return;
+	}
+	if(auto ability = useReturningCreatureAbility(battleID, stack))
+	{
+		cb->battleMakeUnitAction(battleID, *ability);
 		return;
 	}
 

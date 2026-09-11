@@ -309,4 +309,5 @@ void registerTypes(Serializer &s)
 	s.template registerType<SetQuestHint>(268);
 	s.template registerType<BattleAnimationPlayed>(269);
 	s.template registerType<BattleFocusChanged>(270);
+	s.template registerType<BattleActivationUsageChanged>(271);
 }

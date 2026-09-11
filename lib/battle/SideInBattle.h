@@ -30,6 +30,8 @@ struct DLL_LINKAGE SideInBattle : public GameCallbackHolder
 	int32_t initialMana = 0;
 	int32_t additionalMana = 0;
 	int32_t focusPoints = 0;
+	std::map<std::string, int32_t> activationUsageBattle;
+	std::map<std::string, int32_t> activationUsageRound;
 
 	void init(const CGHeroInstance * Hero, const CArmedInstance * Army, const CGTownInstance * town);
 	const CArmedInstance * getArmy() const;
@@ -49,5 +51,15 @@ struct DLL_LINKAGE SideInBattle : public GameCallbackHolder
 			h & focusPoints;
 		else
 			focusPoints = 0;
+		if(h.hasFeature(Handler::Version::ACTIVATION_LIMITS))
+		{
+			h & activationUsageBattle;
+			h & activationUsageRound;
+		}
+		else if(!h.saving)
+		{
+			activationUsageBattle.clear();
+			activationUsageRound.clear();
+		}
 	}
 };

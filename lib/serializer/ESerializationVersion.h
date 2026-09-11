@@ -59,12 +59,15 @@ enum class ESerializationVersion : int32_t
 	RECORD_TEXTS_METASTRING, // highscore scenario name and statistics map name are stored unresolved, to be rendered by the reader
 
 	BATTLE_FOCUS, // shared focus state and activation descriptors
+	ACTIVATION_LIMITS, // shared per-side battle and round usage counters
+	ABILITY_RETURNS_CONTROL, // per-bonus creature action turn behavior
+	ACTIVATED_CREATURE_ABILITIES, // selected bonus identity in activation policies and battle actions
 
 	RELEASE_170 = HOTA_MAP_STACK_COUNT,
 	RELEASE_174 = CUSTOM_GARRISON_TITLE,
 
 	MINIMAL = RELEASE_170,
-	CURRENT = BATTLE_FOCUS,
+	CURRENT = ACTIVATED_CREATURE_ABILITIES,
 };
 
 static_assert(ESerializationVersion::MINIMAL <= ESerializationVersion::CURRENT, "Invalid serialization version definition!");

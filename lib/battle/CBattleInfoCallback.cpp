@@ -31,6 +31,7 @@
 #include "../spells/Problem.h"
 #include "../spells/CSpell.h"
 #include "../mapObjects/CGTownInstance.h"
+#include "../mapObjects/CGHeroInstance.h"
 #include "../networkPacks/PacksForClientBattle.h"
 #include "../BattleFieldHandler.h"
 #include "../Rect.h"
@@ -313,11 +314,12 @@ std::vector<PossiblePlayerBattleAction> CBattleInfoCallback::getClientActionsFor
 	{
 		auto configureActivation = [&](PossiblePlayerBattleAction & action, EActionType type)
 		{
-			const int32_t cost = battle::getActivationFocusCost(stack, type, action.spell());
-			const auto rules = getBattle()->getFocusRules();
-			if(cost == 0 || !rules.enabled)
+			const int32_t cost = battle::getActivationFocusCost(stack, type, action.spell(), action.ability());
+			const auto source = battle::getActivationSource(stack, type, action.spell(), action.ability());
+			if(!source || !source->activation)
 				return;
-			action.setActivationFocusCost(cost, rules.enabled && getFocusCharges(battle::focusSide(*this, stack)) >= cost);
+			const bool limitsAvailable = battle::areActivationLimitsAvailable(*this, stack, type, action.spell(), action.ability());
+			action.setActivation(cost, battle::isActivationAvailable(*this, stack, type, action.spell(), action.ability()), !limitsAvailable);
 		};
 		if(stack->canCast()) //TODO: check for battlefield effects that prevent casting?
 		{
@@ -354,8 +356,31 @@ std::vector<PossiblePlayerBattleAction> CBattleInfoCallback::getClientActionsFor
 		if(stack->canMove() && stack->getMovementRange(0)) //probably no reason to try move war machines or bound stacks
 			allowedActionList.push_back(PossiblePlayerBattleAction::MOVE_STACK);
 
+		if(stack->isMeleeAttacker())
+		{
+			for(const auto & bonus : battle::getDeliberateActivationSources(stack, EActionType::WALK_AND_ATTACK))
+			{
+				PossiblePlayerBattleAction action(PossiblePlayerBattleAction::ATTACK_ABILITY, bonus->activation->id, bonus);
+				configureActivation(action, EActionType::WALK_AND_ATTACK);
+				allowedActionList.push_back(action);
+			}
+		}
+
+		for(const auto & bonus : battle::getDeliberateActivationSources(stack, EActionType::CREATURE_ABILITY))
+		{
+			if(bonus->type == BonusType::ENCHANTER && battleGetEnchanterCounter(stack->unitSide()) != 0)
+				continue;
+			const auto * opponentHero = battleGetFightingHero(otherSide(stack->unitSide()));
+			if(bonus->type == BonusType::MANA_DRAIN && (!opponentHero || opponentHero->mana == 0))
+				continue;
+			PossiblePlayerBattleAction action(PossiblePlayerBattleAction::CREATURE_ABILITY, bonus->activation->id, bonus);
+			configureActivation(action, EActionType::CREATURE_ABILITY);
+			allowedActionList.push_back(action);
+		}
+
 		const auto * siegedTown = battleGetDefendedTown();
-		if(siegedTown && siegedTown->fortificationsLevel().wallsHealth > 0 && stack->hasBonusOfType(BonusType::CATAPULT)) //TODO: check shots
+		if(siegedTown && siegedTown->fortificationsLevel().wallsHealth > 0 && stack->hasBonusOfType(BonusType::CATAPULT) &&
+			!(stack->castSpellThisTurn && battle::actionReturnsControl(stack, EActionType::CATAPULT, SpellID::NONE))) //TODO: check shots
 		{
 			PossiblePlayerBattleAction action = PossiblePlayerBattleAction::CATAPULT;
 			configureActivation(action, EActionType::CATAPULT);

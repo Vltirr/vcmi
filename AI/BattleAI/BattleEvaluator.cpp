@@ -131,6 +131,25 @@ bool BattleEvaluator::hasWorkingTowers() const
 	return keepIntact || upperIntact || bottomIntact;
 }
 
+std::string BattleEvaluator::findAttackAbility(const CStack * stack) const
+{
+	const auto battle = cb->getBattle(battleID);
+	std::string selected;
+	int32_t selectedCost = -1;
+	for(const auto & bonus : battle::getDeliberateActivationSources(stack, EActionType::WALK_AND_ATTACK))
+	{
+		if(!battle::isActivationAvailable(*battle, stack, EActionType::WALK_AND_ATTACK, SpellID::NONE, bonus->activation->id))
+			continue;
+		const int32_t cost = battle::getActivationFocusCost(stack, EActionType::WALK_AND_ATTACK, SpellID::NONE, bonus->activation->id);
+		if(cost > selectedCost)
+		{
+			selected = bonus->activation->id;
+			selectedCost = cost;
+		}
+	}
+	return selected;
+}
+
 std::optional<PossibleSpellcast> BattleEvaluator::findBestCreatureSpell(const CStack * stack)
 {
 	if(!stack->canCast())
@@ -292,7 +311,9 @@ BattleAction BattleEvaluator::selectStackAction(const CStack * stack)
 					}
 					
 					activeActionMade = true;
-					return BattleAction::makeMeleeAttack(stack, bestAttack.attack.defenderPos, bestAttack.from);
+					auto action = BattleAction::makeMeleeAttack(stack, bestAttack.attack.defenderPos, bestAttack.from);
+					action.activatedAbility = findAttackAbility(stack);
+					return action;
 				}
 			}
 		}
@@ -371,7 +392,9 @@ BattleAction BattleEvaluator::moveOrAttack(const CStack * stack, const BattleHex
 	if(attackOnTheWay)
 	{
 		activeActionMade = true;
-		return BattleAction::makeMeleeAttack(stack, attackOnTheWay->attack.defender->getPosition(), attackOnTheWay->from);
+		auto action = BattleAction::makeMeleeAttack(stack, attackOnTheWay->attack.defender->getPosition(), attackOnTheWay->from);
+		action.activatedAbility = findAttackAbility(stack);
+		return action;
 	}
 	else
 	{

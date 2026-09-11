@@ -10,6 +10,7 @@
 #include "StdInc.h"
 #include "BattleActionProcessor.h"
 
+#include "BattleFlowProcessor.h"
 #include "BattleProcessor.h"
 #include "../../lib/battle/Focus.h"
 #include "../../lib/battle/Activation.h"
@@ -29,6 +30,7 @@
 #include "../../lib/callback/IGameInfoCallback.h"
 #include "../../lib/callback/GameRandomizer.h"
 #include "../../lib/entities/building/TownFortifications.h"
+#include "../../lib/mapObjects/CGHeroInstance.h"
 #include "../../lib/networkPacks/PacksForClientBattle.h"
 #include "../../lib/networkPacks/SetStackEffect.h"
 #include "../../lib/spells/AbilityCaster.h"
@@ -322,7 +324,7 @@ bool BattleActionProcessor::doAttackAction(const CBattleInfoCallback & battle, c
 		if(stack->alive() && !stack->hasBonusOfType(BonusType::NOT_ACTIVE) && destinationStack->alive())
 		{
 			//no distance travelled on second attack
-			makeAttack(battle, stack, destinationStack, {.targetHex = destinationTile, .distance = (i ? 0 : movementResult.distance), .attackIndex = i, .first = i == 0});
+			makeAttack(battle, stack, destinationStack, {.targetHex = destinationTile, .distance = (i ? 0 : movementResult.distance), .attackIndex = i, .first = i == 0, .activatedAbility = ba.activatedAbility});
 
 			if(!ferocityApplied && stack->hasBonusOfType(BonusType::FEROCITY))
 			{
@@ -569,43 +571,109 @@ bool BattleActionProcessor::doUnitSpellAction(const CBattleInfoCallback & battle
 	return true;
 }
 
-int32_t BattleActionProcessor::consumeActivation(const CBattleInfoCallback & battle, const CStack * stack, const BattleAction & ba)
+BattleActionProcessor::ActivationConsumption BattleActionProcessor::consumeActivation(const CBattleInfoCallback & battle, const CStack * stack, const BattleAction & ba)
 {
-	const auto source = battle::getActivationSource(stack, ba.actionType, ba.spell);
-	if(!source || !source->activation || source->activation->costs.focus == 0)
-		return 0;
-	const auto & rules = battle.getBattle()->getFocusRules();
-	if(!rules.enabled)
-		return 0;
+	ActivationConsumption result;
+	const auto source = battle::getActivationSource(stack, ba.actionType, ba.spell, ba.activatedAbility);
+	if(!source || !source->activation)
+	{
+		if(!ba.activatedAbility.empty() || ba.actionType == EActionType::CREATURE_ABILITY)
+		{
+			gameHandler->complain("Unknown activated creature ability.");
+			result.valid = false;
+		}
+		return result;
+	}
 	if(!canStackAct(battle, stack))
-		return -1;
+	{
+		result.valid = false;
+		return result;
+	}
 	for(const auto & destination : ba.target)
 	{
 		if(destination.unitValue != -1000 && !battle.battleGetUnitByID(destination.unitValue))
 		{
 			gameHandler->complain("Invalid target for activated action.");
-			return -1;
+			result.valid = false;
+			return result;
 		}
 	}
 	if(ba.actionType == EActionType::STACK_HEAL && ba.target.empty())
 	{
 		gameHandler->complain("Target required for activated action.");
-		return -1;
+		result.valid = false;
+		return result;
 	}
 	if(ba.actionType == EActionType::WALK_AND_CAST && ba.target.size() < 2)
 	{
 		gameHandler->complain("Two destinations required for activated action.");
-		return -1;
+		result.valid = false;
+		return result;
 	}
-	const auto side = battle::focusSide(battle, stack);
-	if(battle.getFocusCharges(side) < source->activation->costs.focus)
+
+	if(stack->castSpellThisTurn && battle::actionReturnsControl(stack, ba.actionType, ba.spell, ba.activatedAbility))
+	{
+		gameHandler->complain("This stack already used its returning action this turn.");
+		result.valid = false;
+		return result;
+	}
+	if(source->type == BonusType::ENCHANTER && battle.battleGetEnchanterCounter(stack->unitSide()) != 0)
+	{
+		gameHandler->complain("Enchanter ability is still on cooldown.");
+		result.valid = false;
+		return result;
+	}
+	if(source->type == BonusType::MANA_DRAIN)
+	{
+		const auto * opponentHero = battle.battleGetFightingHero(battle.otherSide(stack->unitSide()));
+		if(!opponentHero || opponentHero->mana == 0)
+		{
+			gameHandler->complain("There is no enemy mana to drain.");
+			result.valid = false;
+			return result;
+		}
+	}
+
+	result.side = battle::focusSide(battle, stack);
+	const auto & rules = battle.getBattle()->getFocusRules();
+	if(rules.enabled && battle.getFocusCharges(result.side) < source->activation->costs.focus)
 	{
 		gameHandler->complain("Not enough focus to activate this action.");
-		return -1;
+		result.valid = false;
+		return result;
 	}
-	const auto cost = source->activation->costs.focus;
-	gameHandler->spellcastEnvironment()->changeFocusCharges(battle, side, -cost);
-	return cost;
+	if(!battle::areActivationLimitsAvailable(battle, stack, ba.actionType, ba.spell, ba.activatedAbility))
+	{
+		gameHandler->complain("Activation limit reached for this action.");
+		result.valid = false;
+		return result;
+	}
+
+	result.focusCost = rules.enabled ? source->activation->costs.focus : 0;
+	result.limits = source->activation->limits;
+	if(result.focusCost > 0)
+		gameHandler->spellcastEnvironment()->changeFocusCharges(battle, result.side, -result.focusCost);
+	for(const auto & limit : result.limits)
+		gameHandler->spellcastEnvironment()->changeActivationUsage(battle, result.side, limit.key, limit.period, 1);
+	return result;
+}
+bool BattleActionProcessor::doCreatureAbilityAction(const CBattleInfoCallback & battle, const BattleAction & ba)
+{
+	const CStack * stack = battle.battleGetStackByID(ba.stackNumber);
+	const auto source = battle::getActivationSource(stack, ba.actionType, ba.spell, ba.activatedAbility);
+	if(!source)
+		return false;
+
+	switch(source->type)
+	{
+		case BonusType::MANA_DRAIN:
+			return owner->flowProcessor->activateManaDrain(battle, stack, ba.activatedAbility);
+		case BonusType::ENCHANTER:
+			return owner->flowProcessor->activateEnchanter(battle, stack, ba.activatedAbility);
+		default:
+			gameHandler->complain("Unsupported activated creature ability.");
+			return false;
+	}
 }
 
 bool BattleActionProcessor::doHealAction(const CBattleInfoCallback & battle, const BattleAction & ba)
@@ -767,6 +835,8 @@ bool BattleActionProcessor::dispatchBattleAction(const CBattleInfoCallback & bat
 			return doUnitSpellAction(battle, ba);
 		case EActionType::STACK_HEAL:
 			return doHealAction(battle, ba);
+		case EActionType::CREATURE_ABILITY:
+			return doCreatureAbilityAction(battle, ba);
 	}
 	gameHandler->complain("Unrecognized action type received!!");
 	return false;
@@ -778,8 +848,8 @@ bool BattleActionProcessor::makeBattleActionImpl(const CBattleInfoCallback & bat
 	const CStack * stack = battle.battleGetStackByID(ba.stackNumber);
 
 	// for these events client does not expects StartAction/EndAction wrapper
-	const int32_t activationCost = consumeActivation(battle, stack, ba);
-	if(activationCost < 0)
+	const auto activation = consumeActivation(battle, stack, ba);
+	if(!activation.valid)
 		return false;
 
 	if (!ba.isBattleEndAction())
@@ -790,10 +860,12 @@ bool BattleActionProcessor::makeBattleActionImpl(const CBattleInfoCallback & bat
 	}
 
 	bool result = dispatchBattleAction(battle, ba);
-	if(!result && activationCost > 0)
+	if(!result)
 	{
-		const auto side = battle::focusSide(battle, stack);
-		gameHandler->spellcastEnvironment()->changeFocusCharges(battle, side, activationCost);
+		if(activation.focusCost > 0)
+			gameHandler->spellcastEnvironment()->changeFocusCharges(battle, activation.side, activation.focusCost);
+		for(const auto & limit : activation.limits)
+			gameHandler->spellcastEnvironment()->changeActivationUsage(battle, activation.side, limit.key, limit.period, -1);
 	}
 
 	if (!ba.isBattleEndAction())
@@ -1198,7 +1270,7 @@ void BattleActionProcessor::makeAttack(const CBattleInfoCallback & battle, const
 	// spell-casting abilities keep their own rule - once per attack action and never on a counter.
 	// Combat event reactions are notified before every attack instead, further below
 	if(defender && attack.first && !attack.counter)
-		attackCasting(battle, attack.ranged, BonusType::SPELL_BEFORE_ATTACK, attacker, defender);
+		attackCasting(battle, attack.ranged, BonusType::SPELL_BEFORE_ATTACK, attacker, defender, attack.activatedAbility);
 
 	// If the attacker or defender is not alive before the attack action, the action should be skipped.
 	if((!attacker->alive()) || (defender && !defender->alive()))
@@ -1224,6 +1296,8 @@ void BattleActionProcessor::makeAttack(const CBattleInfoCallback & battle, const
 	payload.ranged = attack.ranged;
 	payload.isCounter = attack.counter;
 	payload.attackIndex = attack.attackIndex;
+	if(attack.first && !attack.counter)
+		payload.activatedAbility = attack.activatedAbility;
 
 	CombatEventPayload upcoming = payload;
 	describeUpcomingAttack(upcoming, defender, secondaryTargets);
@@ -1266,7 +1340,7 @@ void BattleActionProcessor::makeAttack(const CBattleInfoCallback & battle, const
 	// collected before the blow lands: a stack that dies to it loses its spell effects, and a shield
 	// that was up when the stack was struck answers the strike that killed it
 	std::vector<PendingTrigger> reactions;
-	collectEventTriggers(battle, reactions, CombatEventType::AFTER_ATTACK, attacker, defender);
+	collectEventTriggers(battle, reactions, CombatEventType::AFTER_ATTACK, attacker, defender, payload.activatedAbility);
 
 	for(const AttackedTarget & target : payload.targets)
 		collectEventTriggers(battle, reactions, CombatEventType::AFTER_ATTACKED, target.unit, attacker);
@@ -1317,13 +1391,17 @@ void BattleActionProcessor::makeAttack(const CBattleInfoCallback & battle, const
 	runEventTriggers(battle, reactions, payload);
 }
 
-void BattleActionProcessor::attackCasting(const CBattleInfoCallback & battle, bool ranged, BonusType attackMode, const battle::Unit * attacker, const CStack * defender)
+void BattleActionProcessor::attackCasting(const CBattleInfoCallback & battle, bool ranged, BonusType attackMode, const battle::Unit * attacker, const CStack * defender, const std::string & activatedAbility)
 {
 	ObjectInstanceID ownerArmy = battle.getBattle()->getSideArmy(attacker->unitSide())->id;
 
 	if(attacker->hasBonusOfType(attackMode))
 	{
-		TConstBonusListPtr spells = attacker->getBonuses(Selector::type()(attackMode));
+		auto spells = std::make_shared<BonusList>(*attacker->getBonuses(Selector::type()(attackMode)));
+		spells->remove_if([&activatedAbility](const Bonus * bonus)
+		{
+			return bonus->activation && bonus->activation->id != activatedAbility;
+		});
 		std::set<SpellID> spellsToCast = getSpellsForAttackCasting(spells, defender);
 
 		for(SpellID spellID : spellsToCast)
@@ -1335,7 +1413,11 @@ void BattleActionProcessor::attackCasting(const CBattleInfoCallback & battle, bo
 				return;
 			}
 			int32_t spellLevel = 0;
-			TConstBonusListPtr spellsByType = attacker->getBonuses(Selector::typeSubtype(attackMode, BonusSubtypeID(spellID)));
+			auto spellsByType = std::make_shared<BonusList>(*attacker->getBonuses(Selector::typeSubtype(attackMode, BonusSubtypeID(spellID))));
+			spellsByType->remove_if([&activatedAbility](const Bonus * bonus)
+			{
+				return bonus->activation && bonus->activation->id != activatedAbility;
+			});
 			for(const auto & sf : *spellsByType)
 			{
 				int meleeRanged = -1;
@@ -1348,7 +1430,7 @@ void BattleActionProcessor::attackCasting(const CBattleInfoCallback & battle, bo
 				if (meleeRanged == -1 || meleeRanged == 0 || (meleeRanged == 1 && ranged) || (meleeRanged == 2 && !ranged))
 					castMe = true;
 			}
-			int chance = attacker->valOfBonuses(Selector::typeSubtype(attackMode, BonusSubtypeID(spellID)));
+			int chance = spellsByType->totalValue();
 			vstd::amin(chance, 100);
 
 			const CSpell * spell = SpellID(spellID).toSpell();
@@ -1438,7 +1520,7 @@ void BattleActionProcessor::handleAfterAttackCasting(const CBattleInfoCallback &
 		return;
 
 	if(defender->alive())
-		attackCasting(battle, payload.ranged, BonusType::SPELL_AFTER_ATTACK, attacker, defender);
+		attackCasting(battle, payload.ranged, BonusType::SPELL_AFTER_ATTACK, attacker, defender, payload.activatedAbility);
 }
 
 void BattleActionProcessor::applyBattleEffects(const CBattleInfoCallback & battle, BattleAttack & bat, std::shared_ptr<battle::CUnitState> attackerState, CombatEventPayload & payload, const battle::Unit * def, int distance, bool secondary) const
@@ -1606,7 +1688,7 @@ void BattleActionProcessor::runPredefinedReaction(const CBattleInfoCallback & ba
 	}
 }
 
-void BattleActionProcessor::collectEventTriggers(const CBattleInfoCallback & battle, std::vector<PendingTrigger> & pending, CombatEventType event, const battle::Unit * self, const battle::Unit * other) const
+void BattleActionProcessor::collectEventTriggers(const CBattleInfoCallback & battle, std::vector<PendingTrigger> & pending, CombatEventType event, const battle::Unit * self, const battle::Unit * other, const std::string & activatedAbility) const
 {
 	auto add = [&pending, event, self, other](const std::shared_ptr<const Bonus> & bonus, int priority, const ICombatEventScript * script)
 	{
@@ -1623,6 +1705,8 @@ void BattleActionProcessor::collectEventTriggers(const CBattleInfoCallback & bat
 	// predefined reactions name the event they react to in their subtype, and declare no priority
 	for (const auto & bonus : *self->getBonusesOfType(BonusType::ON_COMBAT_EVENT, BonusCustomSubtype(static_cast<int>(event))))
 	{
+		if(bonus->activation && bonus->activation->id != activatedAbility)
+			continue;
 		// what to do is the entire content of such a bonus, and the schema requires it, so one
 		// without it is content that already failed validation and reacts to nothing
 		if (bonus->parameters)
@@ -1633,6 +1717,8 @@ void BattleActionProcessor::collectEventTriggers(const CBattleInfoCallback & bat
 	// is not part of the selector here
 	for (const auto & bonus : *self->getBonusesOfType(BonusType::COMBAT_EVENT_TRIGGER))
 	{
+		if(bonus->activation && bonus->activation->id != activatedAbility)
+			continue;
 		ScriptID scriptID = bonus->subtype.as<ScriptID>();
 
 		// content declaring a script that does not exist, or one of another kind - reported on load,
@@ -1703,7 +1789,7 @@ void BattleActionProcessor::processBattleEventTriggers(const CBattleInfoCallback
 void BattleActionProcessor::processAttackTriggers(const CBattleInfoCallback & battle, CombatEventType attackerEvent, CombatEventType targetEvent, const CStack * attacker, const CStack * defender, const CombatEventPayload & payload)
 {
 	std::vector<PendingTrigger> pending;
-	collectEventTriggers(battle, pending, attackerEvent, attacker, defender);
+	collectEventTriggers(battle, pending, attackerEvent, attacker, defender, payload.activatedAbility);
 
 	for(const AttackedTarget & target : payload.targets)
 		collectEventTriggers(battle, pending, targetEvent, target.unit, attacker);

@@ -550,11 +550,16 @@
 			"description" : "valueType"
 		},
 		"addInfo" : {}, // validated via allOf
+		"actionReturnsControl" : {
+			"type" : "boolean",
+			"description" : "Whether this concrete creature action returns control to the acting stack"
+		},
 		"activation" : {
 			"type" : "object",
 			"additionalProperties" : false,
 			"required" : [ "costs", "consumeUses" ],
 			"properties" : {
+				"id" : { "type" : "string", "minLength" : 1 },
 				"costs" : {
 					"type" : "object",
 					"additionalProperties" : false,
@@ -562,7 +567,21 @@
 						"focus" : { "type" : "integer", "minimum" : 0 }
 					}
 				},
-				"consumeUses" : { "type" : "boolean" }
+				"consumeUses" : { "type" : "boolean" },
+				"limits" : {
+					"type" : "array",
+					"items" : {
+						"type" : "object",
+						"additionalProperties" : false,
+						"required" : [ "key", "scope", "period", "max" ],
+						"properties" : {
+							"key" : { "type" : "string", "minLength" : 1 },
+							"scope" : { "type" : "string", "enum" : [ "side" ] },
+							"period" : { "type" : "string", "enum" : [ "battle", "round" ] },
+							"max" : { "type" : "integer", "minimum" : 1 }
+						}
+					}
+				}
 			}
 		},
 		"duration" : {

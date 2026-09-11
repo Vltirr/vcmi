@@ -9,6 +9,7 @@
  */
 #include "StdInc.h"
 #include "BattleProxy.h"
+#include "Activation.h"
 #include "Unit.h"
 
 ///BattleProxy
@@ -28,6 +29,31 @@ void BattleProxy::setFocusPoints(BattleSide side, int32_t points)
 {
 	if(side == BattleSide::ATTACKER || side == BattleSide::DEFENDER)
 		focusPoints[side] = getFocusRules().clamp(points);
+}
+
+int32_t BattleProxy::getActivationUsage(BattleSide side, const std::string & key, EActivationLimitPeriod period) const
+{
+	const auto index = std::make_tuple(side, key, period);
+	const auto it = activationUsage.find(index);
+	if(it != activationUsage.end())
+		return it->second;
+	if(period == EActivationLimitPeriod::ROUND && activationUsageRoundReset)
+		return 0;
+	return subject->getBattle()->getActivationUsage(side, key, period);
+}
+
+void BattleProxy::setActivationUsage(BattleSide side, const std::string & key, EActivationLimitPeriod period, int32_t uses)
+{
+	activationUsage[std::make_tuple(side, key, period)] = std::max(0, uses);
+}
+
+void BattleProxy::resetActivationUsageRound()
+{
+	std::erase_if(activationUsage, [](const auto & entry)
+	{
+		return std::get<2>(entry.first) == EActivationLimitPeriod::ROUND;
+	});
+	activationUsageRoundReset = true;
 }
 
 BattleProxy::BattleProxy(Subject subject_): 

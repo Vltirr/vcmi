@@ -636,6 +636,22 @@ int32_t BattleInfo::getEnchanterCounter(BattleSide side) const
 	return getSide(side).enchanterCounter;
 }
 
+int32_t BattleInfo::getActivationUsage(BattleSide side, const std::string & key, EActivationLimitPeriod period) const
+{
+	const auto & usage = period == EActivationLimitPeriod::ROUND ? getSide(side).activationUsageRound : getSide(side).activationUsageBattle;
+	const auto it = usage.find(key);
+	return it == usage.end() ? 0 : it->second;
+}
+
+void BattleInfo::setActivationUsage(BattleSide side, const std::string & key, EActivationLimitPeriod period, int32_t uses)
+{
+	auto & usage = period == EActivationLimitPeriod::ROUND ? getSide(side).activationUsageRound : getSide(side).activationUsageBattle;
+	if(uses > 0)
+		usage[key] = uses;
+	else
+		usage.erase(key);
+}
+
 const IBonusBearer * BattleInfo::getBonusBearer() const
 {
 	return this;
@@ -676,6 +692,7 @@ void BattleInfo::nextRound()
 	{
 		sides.at(i).castSpellsCount = 0;
 		vstd::amax(--sides.at(i).enchanterCounter, 0);
+		sides.at(i).activationUsageRound.clear();
 	}
 	// first round starts right after pre-battle effects (built-in enchants, OPENING_BATTLE_SPELL)
 	// are applied, so skip the decrement here to grant them their full configured duration

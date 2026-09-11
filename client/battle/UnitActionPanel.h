@@ -38,6 +38,7 @@ private:
 
 	void testAndAddAction(const std::vector<PossiblePlayerBattleAction> & allActions, const std::vector<PossiblePlayerBattleAction::Actions> & actionFilter, const ImagePath & iconPath, const std::string & descriptionTextID );
 	void testAndAddSpell(const std::vector<PossiblePlayerBattleAction> & allActions, const SpellID & spellFilter );
+	void testAndAddAbility(const PossiblePlayerBattleAction & action);
 	bool updateButton(ActionButton & button);
 
 	void restoreAllActions();

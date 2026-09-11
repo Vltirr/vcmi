@@ -365,6 +365,7 @@
 	"vcmi.battle.focus.title": "Focus",
 	"vcmi.battle.focus.cost": "Focus cost",
 	"vcmi.battle.focus.insufficient": "Not enough focus",
+	"vcmi.battle.activation.limitReached": "This ability has reached its activation limit",
 	"vcmi.battleOptions.animationsSpeed1.help": "Set animation speed to very slow.",
 	"vcmi.battleOptions.animationsSpeed1.hover": "Set animation speed to very slow.",
 	"vcmi.battleOptions.animationsSpeed5.help": "Set animation speed to very fast.",

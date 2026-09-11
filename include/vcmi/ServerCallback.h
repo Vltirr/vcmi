@@ -24,7 +24,9 @@ namespace battle
 
 class IBattleInfoCallback;
 enum class BattleSide : int8_t;
+enum class EActivationLimitPeriod : int8_t;
 struct BattleFocusChanged;
+struct BattleActivationUsageChanged;
 
 struct CPackForClient;
 struct BattleLogMessage;
@@ -50,7 +52,9 @@ public:
 
 	void changeFocusPoints(const IBattleInfoCallback & battle, BattleSide side, int32_t delta);
 	void changeFocusCharges(const IBattleInfoCallback & battle, BattleSide side, int32_t delta);
+	void changeActivationUsage(const IBattleInfoCallback & battle, BattleSide side, const std::string & key, EActivationLimitPeriod period, int32_t delta);
 	virtual void apply(BattleFocusChanged & pack);
+	virtual void apply(BattleActivationUsageChanged & pack);
 	virtual void apply(CPackForClient & pack) = 0;
 
 	virtual void apply(BattleLogMessage & pack) = 0;

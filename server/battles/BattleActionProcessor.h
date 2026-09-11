@@ -34,6 +34,14 @@ class ICombatEventScript;
 /// Processes incoming battle action queries and applies requested action(s)
 class BattleActionProcessor : boost::noncopyable
 {
+	struct ActivationConsumption
+	{
+		bool valid = true;
+		BattleSide side = BattleSide::NONE;
+		int32_t focusCost = 0;
+		std::vector<ActivationLimit> limits;
+	};
+
 	struct MovementResult
 	{
 		/// number of tiles unit moved through, unset for flying units
@@ -65,7 +73,7 @@ class BattleActionProcessor : boost::noncopyable
 
 	/// Gathers everything one unit reacts to one event with, without running any of it yet, so that
 	/// several units reacting to the same attack can be ordered against each other.
-	void collectEventTriggers(const CBattleInfoCallback & battle, std::vector<PendingTrigger> & pending, CombatEventType event, const battle::Unit * self, const battle::Unit * other) const;
+	void collectEventTriggers(const CBattleInfoCallback & battle, std::vector<PendingTrigger> & pending, CombatEventType event, const battle::Unit * self, const battle::Unit * other, const std::string & activatedAbility = {}) const;
 	void runEventTriggers(const CBattleInfoCallback & battle, std::vector<PendingTrigger> & pending, const CombatEventPayload & payload);
 	/// Predefined reaction of the ON_COMBAT_EVENT bonus - grant a bonus, or cast a spell
 	void runPredefinedReaction(const CBattleInfoCallback & battle, const Bonus & bonus, const battle::Unit * self, const battle::Unit * other);
@@ -90,6 +98,7 @@ class BattleActionProcessor : boost::noncopyable
 		bool first = false;
 		bool ranged = false;
 		bool counter = false;
+		std::string activatedAbility;
 	};
 
 	MovementResult moveStack(const CBattleInfoCallback & battle, int stack, BattleHex dest); //returned value - travelled distance
@@ -108,7 +117,7 @@ class BattleActionProcessor : boost::noncopyable
 	void markSpellLikeAttack(const CStack * attacker, BattleAttack & bat) const;
 
 	void handleAfterAttackCasting(const CBattleInfoCallback & battle, const CStack * attacker, const CStack * defender, const CombatEventPayload & payload);
-	void attackCasting(const CBattleInfoCallback & battle, bool ranged, BonusType attackMode, const battle::Unit * attacker, const CStack * defender);
+	void attackCasting(const CBattleInfoCallback & battle, bool ranged, BonusType attackMode, const battle::Unit * attacker, const CStack * defender, const std::string & activatedAbility);
 
 	std::set<SpellID> getSpellsForAttackCasting(const TConstBonusListPtr & spells, const CStack *defender);
 
@@ -134,8 +143,9 @@ class BattleActionProcessor : boost::noncopyable
 	bool doCatapultAction(const CBattleInfoCallback & battle, const BattleAction & ba);
 	bool doUnitSpellAction(const CBattleInfoCallback & battle, const BattleAction & ba);
 	bool doHealAction(const CBattleInfoCallback & battle, const BattleAction & ba);
-	/// Returns -1 for a rejected activation, 0 when no focus was charged, or the charged amount.
-	int32_t consumeActivation(const CBattleInfoCallback & battle, const CStack * stack, const BattleAction & ba);
+	bool doCreatureAbilityAction(const CBattleInfoCallback & battle, const BattleAction & ba);
+	/// Validates and records an action's generic activation policy before its effect is dispatched.
+	ActivationConsumption consumeActivation(const CBattleInfoCallback & battle, const CStack * stack, const BattleAction & ba);
 
 	bool dispatchBattleAction(const CBattleInfoCallback & battle, const BattleAction & ba);
 	bool makeBattleActionImpl(const CBattleInfoCallback & battle, const BattleAction & ba);

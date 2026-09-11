@@ -12,6 +12,7 @@
 #include "NetPacksBase.h"
 #include "BattleChanges.h"
 #include "PacksForClient.h"
+#include "../battle/Activation.h"
 #include "../battle/BattleAction.h"
 #include "../battle/BattleInfo.h"
 #include "../battle/BattleHexArray.h"
@@ -563,6 +564,28 @@ struct DLL_LINKAGE BattleFocusChanged : public CPackForClient
 		h & battleID;
 		h & side;
 		h & points;
+	}
+
+protected:
+	void visitTyped(ICPackVisitor & visitor) override;
+};
+
+/// Absolute activation usage update, safe to apply identically in live games and replays.
+struct DLL_LINKAGE BattleActivationUsageChanged : public CPackForClient
+{
+	BattleID battleID = BattleID::NONE;
+	BattleSide side = BattleSide::NONE;
+	std::string key;
+	EActivationLimitPeriod period = EActivationLimitPeriod::BATTLE;
+	int32_t uses = 0;
+
+	template <typename Handler> void serialize(Handler & h)
+	{
+		h & battleID;
+		h & side;
+		h & key;
+		h & period;
+		h & uses;
 	}
 
 protected:

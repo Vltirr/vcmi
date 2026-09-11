@@ -778,8 +778,18 @@ bool JsonUtils::parseBonus(const JsonNode &ability, Bonus *b, const TextIdentifi
 	if(!ability["activation"].isNull())
 	{
 		Activation activation;
+		activation.id = ability["activation"]["id"].String();
 		activation.costs.focus = static_cast<int32_t>(std::clamp<int64_t>(ability["activation"]["costs"]["focus"].Integer(), 0, std::numeric_limits<int32_t>::max()));
 		activation.consumeUses = ability["activation"]["consumeUses"].Bool();
+		for(const auto & limitNode : ability["activation"]["limits"].Vector())
+		{
+			ActivationLimit limit;
+			limit.key = limitNode["key"].String();
+			limit.scope = EActivationLimitScope::SIDE;
+			limit.period = limitNode["period"].String() == "round" ? EActivationLimitPeriod::ROUND : EActivationLimitPeriod::BATTLE;
+			limit.max = static_cast<int32_t>(std::clamp<int64_t>(limitNode["max"].Integer(), 1, std::numeric_limits<int32_t>::max()));
+			activation.limits.push_back(std::move(limit));
+		}
 		b->activation = activation;
 	}
 
@@ -810,6 +820,7 @@ bool JsonUtils::parseBonus(const JsonNode &ability, Bonus *b, const TextIdentifi
 		b->customIconPath = ImagePath::fromJson(ability["icon"]);
 
 	b->hidden = !ability["hidden"].isNull() && ability["hidden"].Bool();
+	b->actionReturnsControl = ability["actionReturnsControl"].Bool();
 
 	value = &ability["effectRange"];
 	if (!value->isNull())

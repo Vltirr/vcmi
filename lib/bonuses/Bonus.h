@@ -66,6 +66,7 @@ struct DLL_LINKAGE Bonus : public std::enable_shared_from_this<Bonus>, public Se
 	PlayerColor bonusOwner = PlayerColor::CANNOT_DETERMINE;
 
 	bool hidden = false;
+	bool actionReturnsControl = false;
 
 	Bonus(BonusDuration::Type Duration, BonusType Type, BonusSource Src, si32 Val, BonusSourceID sourceID);
 	Bonus(BonusDuration::Type Duration, BonusType Type, BonusSource Src, si32 Val, BonusSourceID sourceID, BonusSubtypeID subtype);
@@ -108,6 +109,10 @@ struct DLL_LINKAGE Bonus : public std::enable_shared_from_this<Bonus>, public Se
 			h & activation;
 		else
 			activation.reset();
+		if(h.hasFeature(Handler::Version::ABILITY_RETURNS_CONTROL))
+			h & actionReturnsControl;
+		else
+			actionReturnsControl = false;
 
 		//old saves stored BATTLE_NO_FLEEING in the slot now used by BATTLE_CAN_FLEE, it blocked retreating unconditionally
 		if(!h.saving && !h.hasFeature(Handler::Version::RETREAT_PERMISSION_BONUSES) && type == BonusType::BATTLE_CAN_FLEE)

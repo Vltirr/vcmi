@@ -16,6 +16,7 @@
 #include "../CPlayerState.h"
 #include "../CStack.h"
 #include "../IGameSettings.h"
+#include "../battle/Activation.h"
 
 #include "../campaign/CampaignState.h"
 #include "../entities/artifact/ArtifactUtils.h"
@@ -1438,13 +1439,10 @@ void GameStatePackVisitor::visitStartAction(StartAction & pack)
 				st->waitedThisTurn = true;
 				break;
 			case EActionType::MONSTER_SPELL:
+			case EActionType::CATAPULT:
+			case EActionType::CREATURE_ABILITY:
 			{
-				SpellID spellID = pack.ba.spell;
-				if (spellID.hasValue() && spellID.toSpell()->canCastWithoutSkip())
-				{
-					//state does not change
-				}
-				else
+				if(!battle::actionReturnsControl(st, pack.ba.actionType, pack.ba.spell, pack.ba.activatedAbility))
 				{
 					st->waiting = false;
 					st->movedThisRound = true;
@@ -1500,6 +1498,12 @@ void GameStatePackVisitor::visitBattleFocusChanged(BattleFocusChanged & pack)
 {
 	BattleStatePackVisitor battleVisitor(*gs.getBattle(pack.battleID));
 	battleVisitor.visitBattleFocusChanged(pack);
+}
+
+void GameStatePackVisitor::visitBattleActivationUsageChanged(BattleActivationUsageChanged & pack)
+{
+	BattleStatePackVisitor battleVisitor(*gs.getBattle(pack.battleID));
+	battleVisitor.visitBattleActivationUsageChanged(pack);
 }
 
 void GameStatePackVisitor::restorePreBattleState(BattleID battleID)
@@ -1799,4 +1803,9 @@ void BattleStatePackVisitor::visitBattleUnitsChanged(BattleUnitsChanged & pack)
 void BattleStatePackVisitor::visitBattleFocusChanged(BattleFocusChanged & pack)
 {
 	battleState.setFocusPoints(pack.side, pack.points);
+}
+
+void BattleStatePackVisitor::visitBattleActivationUsageChanged(BattleActivationUsageChanged & pack)
+{
+	battleState.setActivationUsage(pack.side, pack.key, pack.period, pack.uses);
 }

@@ -110,6 +110,16 @@ BattleAction BattleAction::makeWalkAndCast(const battle::Unit * stack, const Bat
 	return ba;
 }
 
+BattleAction BattleAction::makeCreatureAbility(const battle::Unit * stack, const std::string & ability)
+{
+	BattleAction ba;
+	ba.side = stack->unitSide();
+	ba.actionType = EActionType::CREATURE_ABILITY;
+	ba.stackNumber = stack->unitId();
+	ba.activatedAbility = ability;
+	return ba;
+}
+
 BattleAction BattleAction::makeMove(const battle::Unit * stack, const BattleHex & dest)
 {
 	BattleAction ba;
@@ -163,8 +173,8 @@ std::string BattleAction::toString() const
 		targetStream << ",";
 	}
 
-	boost::format fmt("{BattleAction: side '%d', stackNumber '%d', actionType '%s', actionSubtype '%d', target {%s}}");
-	fmt % static_cast<int>(side) % stackNumber % static_cast<int>(actionType) % spell.getNum() % targetStream.str();
+	boost::format fmt("{BattleAction: side '%d', stackNumber '%d', actionType '%s', actionSubtype '%d', activatedAbility '%s', target {%s}}");
+	fmt % static_cast<int>(side) % stackNumber % static_cast<int>(actionType) % spell.getNum() % activatedAbility % targetStream.str();
 	return fmt.str();
 }
 
@@ -226,7 +236,8 @@ bool BattleAction::isUnitAction() const
 		EActionType::MONSTER_SPELL,
 		EActionType::BAD_MORALE,
 		EActionType::STACK_HEAL,
-		EActionType::WALK_AND_CAST
+		EActionType::WALK_AND_CAST,
+		EActionType::CREATURE_ABILITY
 	};
 	return vstd::contains(actions, actionType);
 }

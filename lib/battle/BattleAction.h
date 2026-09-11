@@ -27,6 +27,8 @@ public:
 	EActionType actionType; //use ActionType enum for values
 
 	SpellID spell;
+	/// Deliberately selected bonus-backed ability. Empty for ordinary actions.
+	std::string activatedAbility;
 
 	BattleAction();
 
@@ -38,6 +40,7 @@ public:
 	static BattleAction makeShotAttack(const battle::Unit * shooter, const battle::Unit * target);
 	static BattleAction makeWalkAndCast(const battle::Unit * stack, const BattleHex & castFrom, const battle::Unit * target, const SpellID & spellID);
 	static BattleAction makeCreatureSpellcast(const battle::Unit * stack, const battle::Target & target, const SpellID & spellID);
+	static BattleAction makeCreatureAbility(const battle::Unit * stack, const std::string & ability);
 	static BattleAction makeMove(const battle::Unit * stack, const BattleHex & dest);
 	static BattleAction makeEndOFTacticPhase(BattleSide side);
 	static BattleAction makeRetreat(BattleSide side);
@@ -61,6 +64,10 @@ public:
 		h & stackNumber;
 		h & actionType;
 		h & spell;
+		if(h.hasFeature(Handler::Version::ACTIVATED_CREATURE_ABILITIES))
+			h & activatedAbility;
+		else if(!h.saving)
+			activatedAbility.clear();
 		h & target;
 	}
 

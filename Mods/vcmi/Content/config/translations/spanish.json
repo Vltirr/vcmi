@@ -307,6 +307,7 @@
 	"vcmi.battle.focus.title": "Concentración",
 	"vcmi.battle.focus.cost": "Coste de concentración",
 	"vcmi.battle.focus.insufficient": "No hay concentración suficiente",
+	"vcmi.battle.activation.limitReached": "Esta habilidad ha alcanzado su límite de activaciones",
 	"vcmi.battleOptions.animationsSpeed1.help": "Establece la velocidad de animación como muy lenta.",
 	"vcmi.battleOptions.animationsSpeed1.hover": "Establezca la velocidad de animación a muy lento.",
 	"vcmi.battleOptions.animationsSpeed5.help": "Establece la velocidad de animación como muy rápida.",

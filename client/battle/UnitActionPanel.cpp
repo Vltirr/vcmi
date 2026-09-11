@@ -13,6 +13,7 @@
 #include "BattleInterface.h"
 #include "BattleActionsController.h"
 
+#include "../CPlayerInterface.h"
 #include "../GameEngine.h"
 #include "../eventsSDL/InputHandler.h"
 #include "../gui/WindowHandler.h"
@@ -25,6 +26,8 @@
 #include "../../lib/CConfigHandler.h"
 #include "../../lib/GameLibrary.h"
 #include "../../lib/battle/CPlayerBattleCallback.h"
+#include "../../lib/bonuses/Bonus.h"
+#include "../../lib/callback/CCallback.h"
 #include "../../lib/json/JsonUtils.h"
 #include "../../lib/mapObjects/CGHeroInstance.h"
 #include "../../lib/spells/CSpell.h"
@@ -64,17 +67,23 @@ void UnitActionPanel::setActions(int buttonIndex, const std::vector<PossiblePlay
 bool UnitActionPanel::updateButton(ActionButton & button)
 {
 	const auto focusedAction = std::ranges::find_if(button.actions, [](const auto & action) { return action.focusCost() > 0; });
-	const bool available = std::ranges::any_of(button.actions, [](const auto & action) { return action.focusCost() == 0 || action.isActivationAvailable(); });
+	const bool available = std::ranges::any_of(button.actions, [](const auto & action) { return action.isActivationAvailable(); });
+	const bool limitReached = std::ranges::any_of(button.actions, [](const auto & action) { return action.hasReachedActivationLimit(); });
 	std::string hoverText = button.baseHoverText;
 	std::string helpText = button.baseHelpText;
 	if(focusedAction != button.actions.end())
 	{
 		hoverText += "\n" + LIBRARY->generaltexth->translate("vcmi.battle.focus.cost") + ": " + std::to_string(focusedAction->focusCost());
-		if(!available)
+		if(!available && !limitReached)
 		{
 			hoverText += "\n" + LIBRARY->generaltexth->translate("vcmi.battle.focus.insufficient");
 			helpText += "\n" + LIBRARY->generaltexth->translate("vcmi.battle.focus.insufficient");
 		}
+	}
+	if(limitReached)
+	{
+		hoverText += "\n" + LIBRARY->generaltexth->translate("vcmi.battle.activation.limitReached");
+		helpText += "\n" + LIBRARY->generaltexth->translate("vcmi.battle.activation.limitReached");
 	}
 
 	const bool deselected = !available && button.widget->isSelected();
@@ -139,6 +148,33 @@ void UnitActionPanel::testAndAddSpell(const std::vector<PossiblePlayerBattleActi
 	updateButton(buttons.back());
 }
 
+void UnitActionPanel::testAndAddAbility(const PossiblePlayerBattleAction & action)
+{
+	const int index = buttons.size();
+	const std::vector<PossiblePlayerBattleAction> filteredActions{action};
+	const auto callback = [this, filteredActions, index](bool isSelected)
+	{
+		if(isSelected)
+			setActions(index, filteredActions);
+		else
+			restoreAllActions();
+	};
+
+	const auto & source = action.source();
+	const std::string description = source ? source->Description(GAME->interface()->cb.get()) : action.ability();
+	auto button = std::make_shared<CToggleButton>(Point(2, 7 + 50 * index), AnimationPath::builtin("battleUnitAction"), CButton::tooltip(), callback);
+	if(source && !source->customIconPath.empty())
+		button->setOverlay(std::make_shared<CPicture>(source->customIconPath));
+	else if(source && (source->type == BonusType::SPELL_AFTER_ATTACK || source->type == BonusType::ENCHANTER))
+		button->setOverlay(std::make_shared<CAnimImage>(AnimationPath::builtin("spellint"), source->subtype.as<SpellID>().getNum() + 1));
+	else
+		button->setOverlay(std::make_shared<CPicture>(ImagePath::builtin("battle/actionAttack")));
+	button->setHighlightedBorderColor(Colors::WHITE);
+	button->setAllowDeselection(true);
+	buttons.push_back({button, filteredActions, description, description});
+	updateButton(buttons.back());
+}
+
 void UnitActionPanel::setPossibleActions(const std::vector<PossiblePlayerBattleAction> & newActions)
 {
 	OBJECT_CONSTRUCTION;
@@ -169,6 +205,10 @@ void UnitActionPanel::setPossibleActions(const std::vector<PossiblePlayerBattleA
 
 	for (const auto & spell : spells)
 		testAndAddSpell(newActions, spell);
+
+	for(const auto & action : newActions)
+		if(action.isAbility())
+			testAndAddAbility(action);
 
 	// Not really a unit action, so place it at the end
 	testAndAddAction(newActions, actionsInfo, ImagePath::builtin("battle/actionInfo"), "vcmi.battle.action.info");

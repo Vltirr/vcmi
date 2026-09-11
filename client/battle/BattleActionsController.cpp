@@ -33,6 +33,7 @@
 #include "../../lib/GameLibrary.h"
 #include "../../lib/battle/BattleAction.h"
 #include "../../lib/battle/CPlayerBattleCallback.h"
+#include "../../lib/bonuses/Bonus.h"
 #include "../../lib/callback/CCallback.h"
 #include "../../lib/spells/ISpellMechanics.h"
 #include "../../lib/spells/effects/Effect.h"
@@ -364,6 +365,10 @@ void BattleActionsController::reorderPossibleActionsPriority(const CStack * stac
 			case PossiblePlayerBattleAction::RANDOM_GENIE_SPELL:
 				return 2;
 				break;
+			case PossiblePlayerBattleAction::ATTACK_ABILITY:
+			case PossiblePlayerBattleAction::CREATURE_ABILITY:
+				// Deliberate abilities only gain priority after their action-panel button is selected.
+				return 100;
 			case PossiblePlayerBattleAction::SHOOT:
 				if(targetStack == nullptr || targetStack->unitSide() == stack->unitSide() || !targetStack->alive())
 					return 100; //bottom priority
@@ -519,6 +524,7 @@ void BattleActionsController::actionSetCursor(PossiblePlayerBattleAction action,
 		case PossiblePlayerBattleAction::ATTACK:
 		case PossiblePlayerBattleAction::LONG_WEAPON_ATTACK:
 		case PossiblePlayerBattleAction::WALK_AND_ATTACK:
+		case PossiblePlayerBattleAction::ATTACK_ABILITY:
 		case PossiblePlayerBattleAction::ATTACK_AND_RETURN:
 		{
 			static const std::map<BattleHex::EDir, Cursor::Combat> sectorCursor = {
@@ -549,6 +555,7 @@ void BattleActionsController::actionSetCursor(PossiblePlayerBattleAction action,
 			return;
 
 		case PossiblePlayerBattleAction::AIMED_SPELL_CREATURE:
+		case PossiblePlayerBattleAction::CREATURE_ABILITY:
 		case PossiblePlayerBattleAction::ANY_LOCATION:
 		case PossiblePlayerBattleAction::WALK_AND_SPELLCAST:
 		case PossiblePlayerBattleAction::RANDOM_GENIE_SPELL:
@@ -632,6 +639,7 @@ std::string BattleActionsController::actionGetStatusMessage(PossiblePlayerBattle
 		case PossiblePlayerBattleAction::ATTACK:
 		case PossiblePlayerBattleAction::LONG_WEAPON_ATTACK:
 		case PossiblePlayerBattleAction::WALK_AND_ATTACK:
+		case PossiblePlayerBattleAction::ATTACK_ABILITY:
 		case PossiblePlayerBattleAction::ATTACK_AND_RETURN: //TODO: allow to disable return
 			{
 				const auto * attacker = owner.stacksController->getActiveStack();
@@ -722,6 +730,9 @@ std::string BattleActionsController::actionGetStatusMessage(PossiblePlayerBattle
 			// "Cast %s on %s" plus dmg and kills info
 			return prepareSpellEffectText(27, *spellEffectValue, spell->getNameTranslated(), targetStack->getName());
 		}
+
+		case PossiblePlayerBattleAction::CREATURE_ABILITY:
+			return action.source() ? action.source()->Description(GAME->interface()->cb.get()) : action.ability();
 
 		case PossiblePlayerBattleAction::RANDOM_GENIE_SPELL: //we assume that teleport / sacrifice will never be available as random spell
 			return formatWithStackName("core.genrltxt.301", targetStack); //Cast a spell on %s
@@ -852,6 +863,7 @@ bool BattleActionsController::actionIsLegal(PossiblePlayerBattleAction action, c
 		case PossiblePlayerBattleAction::ATTACK:
 		case PossiblePlayerBattleAction::LONG_WEAPON_ATTACK:
 		case PossiblePlayerBattleAction::WALK_AND_ATTACK:
+		case PossiblePlayerBattleAction::ATTACK_ABILITY:
 		case PossiblePlayerBattleAction::ATTACK_AND_RETURN:
 			{
 				const CStack * currentStack = owner.stacksController->getActiveStack();
@@ -890,6 +902,9 @@ bool BattleActionsController::actionIsLegal(PossiblePlayerBattleAction action, c
 
 		case PossiblePlayerBattleAction::NO_LOCATION:
 			return false;
+
+		case PossiblePlayerBattleAction::CREATURE_ABILITY:
+			return true;
 
 		case PossiblePlayerBattleAction::ANY_LOCATION:
 			return isCastingPossibleHere(action.spell().toSpell(), nullptr, targetHex);
@@ -963,6 +978,7 @@ void BattleActionsController::actionRealize(PossiblePlayerBattleAction action, c
 		case PossiblePlayerBattleAction::ATTACK:
 		case PossiblePlayerBattleAction::LONG_WEAPON_ATTACK:
 		case PossiblePlayerBattleAction::WALK_AND_ATTACK:
+		case PossiblePlayerBattleAction::ATTACK_ABILITY:
 		case PossiblePlayerBattleAction::ATTACK_AND_RETURN: //TODO: allow to disable return
 		{
 			bool returnAfterAttack = action.get() == PossiblePlayerBattleAction::ATTACK_AND_RETURN;
@@ -973,7 +989,15 @@ void BattleActionsController::actionRealize(PossiblePlayerBattleAction action, c
 			if(!attackFromHex.isValid())
 				return;
 			BattleAction command = BattleAction::makeMeleeAttack(attacker, targetHex, attackFromHex, returnAfterAttack);
+			command.activatedAbility = action.ability();
 			owner.sendCommand(command, attacker);
+			return;
+		}
+
+		case PossiblePlayerBattleAction::CREATURE_ABILITY:
+		{
+			auto stack = owner.stacksController->getActiveStack();
+			owner.sendCommand(BattleAction::makeCreatureAbility(stack, action.ability()), stack);
 			return;
 		}
 
