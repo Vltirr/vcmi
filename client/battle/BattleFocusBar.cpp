@@ -24,7 +24,7 @@ constexpr int TRACK_Y = 11;
 constexpr int TRACK_WIDTH = 188;
 constexpr int TRACK_HEIGHT = 8;
 constexpr int SEPARATOR_Y = 10;
-constexpr int SEPARATOR_WIDTH = 2;
+constexpr int ACTIVE_SEPARATOR_WIDTH = 2;
 constexpr int CHECKPOINT_SIZE = 18;
 constexpr int ICON_SIZE = 28;
 constexpr int MAX_VISIBLE_CHECKPOINTS = 3;
@@ -97,7 +97,12 @@ void BattleFocusBar::render(Canvas & to) const
 		const int progressOffset = (segment * TRACK_WIDTH + segmentCount / 2) / segmentCount;
 		const int attackerCenter = TRACK_X + progressOffset;
 		const int separatorCenter = side == BattleSide::ATTACKER ? attackerCenter : WIDTH - attackerCenter;
-		to.draw(separator, widgetPosition + Point(separatorCenter - SEPARATOR_WIDTH / 2, SEPARATOR_Y));
+		const int separatorWidth = progressOffset <= fillWidth
+			? std::min(ACTIVE_SEPARATOR_WIDTH, separator->width())
+			: separator->width();
+		const int separatorSourceX = (separator->width() - separatorWidth) / 2;
+		to.draw(separator, widgetPosition + Point(separatorCenter - separatorWidth / 2, SEPARATOR_Y),
+			Rect(separatorSourceX, 0, separatorWidth, separator->height()));
 	}
 
 	const int visibleCheckpoints = std::min(maxCharges, MAX_VISIBLE_CHECKPOINTS);
