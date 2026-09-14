@@ -176,6 +176,8 @@ void BattleWindow::createFocusBars()
 
 	attackerFocusBar = std::make_shared<BattleFocusBar>(BattleSide::ATTACKER);
 	defenderFocusBar = std::make_shared<BattleFocusBar>(BattleSide::DEFENDER);
+	removeChild(attackerFocusBar.get());
+	removeChild(defenderFocusBar.get());
 	updateFocusBars();
 	setPositionFocusBars();
 }
@@ -185,8 +187,8 @@ void BattleWindow::setPositionFocusBars()
 	if(!attackerFocusBar || !defenderFocusBar)
 		return;
 
-	constexpr int horizontalMargin = 12;
-	constexpr int queueOverlap = 9;
+	constexpr int horizontalMargin = 64;
+	constexpr int queueOverlap = 7;
 	int focusY = pos.y;
 
 	if(queue && !queue->isDisabled() && (!queue->embedded || queue->pos.y >= pos.y))
@@ -207,6 +209,14 @@ void BattleWindow::updateFocusBars()
 		rules.pointsPerCharge, rules.maxCharges);
 	defenderFocusBar->updateState(rules.enabled, battle->getFocusPoints(BattleSide::DEFENDER),
 		rules.pointsPerCharge, rules.maxCharges);
+}
+
+void BattleWindow::renderFocusBars(Canvas & to)
+{
+	if(attackerFocusBar && !attackerFocusBar->isDisabled())
+		attackerFocusBar->showAll(to);
+	if(defenderFocusBar && !defenderFocusBar->isDisabled())
+		defenderFocusBar->showAll(to);
 }
 
 void BattleWindow::createStickyHeroInfoWindows()

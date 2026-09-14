@@ -34,8 +34,8 @@ class BattleFocusBar : public CIntObject
 	void render(Canvas & to) const;
 
 public:
-	static constexpr int WIDTH = 202;
-	static constexpr int HEIGHT = 30;
+	static constexpr int WIDTH = 222;
+	static constexpr int HEIGHT = 53;
 
 	explicit BattleFocusBar(BattleSide side);
 

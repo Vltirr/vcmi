@@ -19,17 +19,25 @@
 namespace
 {
 constexpr int FRAME_Y = 7;
-constexpr int TRACK_X = 5;
-constexpr int TRACK_Y = 11;
-constexpr int TRACK_WIDTH = 188;
-constexpr int TRACK_HEIGHT = 8;
-constexpr int SEPARATOR_Y = 10;
+constexpr int FRAME_WIDTH = 218;
+constexpr int FRAME_HEIGHT = 18;
+constexpr int TRACK_X = 6;
+constexpr int TRACK_Y = 12;
+constexpr int TRACK_WIDTH = 206;
+constexpr int TRACK_HEIGHT = 9;
+constexpr int SEPARATOR_WIDTH = 3;
+constexpr int SEPARATOR_HEIGHT = TRACK_HEIGHT;
+constexpr int INACTIVE_SEPARATOR_HEIGHT = 7;
 constexpr int ACTIVE_SEPARATOR_WIDTH = 2;
-constexpr int CHECKPOINT_SIZE = 18;
-constexpr int ICON_SIZE = 28;
+constexpr int CHECKPOINT_SIZE = 20;
+constexpr int CHECKPOINT_Y = FRAME_Y + (FRAME_HEIGHT - CHECKPOINT_SIZE) / 2;
+constexpr int ICON_SIZE = 34;
+constexpr int ICON_VISIBLE_TOP_PADDING = 4;
+constexpr int ICON_TRACK_OVERLAP = 4;
+constexpr int ICON_Y = TRACK_Y + TRACK_HEIGHT - ICON_VISIBLE_TOP_PADDING - ICON_TRACK_OVERLAP;
 constexpr int MAX_VISIBLE_CHECKPOINTS = 3;
 constexpr int MIN_SEGMENT_WIDTH = 3;
-constexpr int STANDARD_WIDGET_WIDTH = TRACK_X * 2 + TRACK_WIDTH;
+constexpr int STANDARD_WIDGET_WIDTH = FRAME_WIDTH;
 
 std::shared_ptr<IImage> loadFocusImage(const std::string & name)
 {
@@ -53,6 +61,13 @@ BattleFocusBar::BattleFocusBar(BattleSide battleSide)
 {
 	pos.w = WIDTH;
 	pos.h = HEIGHT;
+	frame->scaleTo(Point(FRAME_WIDTH, FRAME_HEIGHT), EScalingAlgorithm::BILINEAR);
+	progressFill->scaleTo(Point(TRACK_WIDTH, TRACK_HEIGHT), EScalingAlgorithm::BILINEAR);
+	separator->scaleTo(Point(SEPARATOR_WIDTH, SEPARATOR_HEIGHT), EScalingAlgorithm::BILINEAR);
+	activeCheckpoint->scaleTo(Point(CHECKPOINT_SIZE, CHECKPOINT_SIZE), EScalingAlgorithm::BILINEAR);
+	inactiveCheckpoint->scaleTo(Point(CHECKPOINT_SIZE, CHECKPOINT_SIZE), EScalingAlgorithm::BILINEAR);
+	activeIcon->scaleTo(Point(ICON_SIZE, ICON_SIZE), EScalingAlgorithm::BILINEAR);
+	inactiveIcon->scaleTo(Point(ICON_SIZE, ICON_SIZE), EScalingAlgorithm::BILINEAR);
 	setInputEnabled(false);
 }
 
@@ -97,12 +112,18 @@ void BattleFocusBar::render(Canvas & to) const
 		const int progressOffset = (segment * TRACK_WIDTH + segmentCount / 2) / segmentCount;
 		const int attackerCenter = TRACK_X + progressOffset;
 		const int separatorCenter = side == BattleSide::ATTACKER ? attackerCenter : WIDTH - attackerCenter;
-		const int separatorWidth = progressOffset <= fillWidth
+		const bool isActive = progressOffset <= fillWidth;
+		const int separatorWidth = isActive
 			? std::min(ACTIVE_SEPARATOR_WIDTH, separator->width())
 			: separator->width();
+		const int separatorHeight = isActive
+			? separator->height()
+			: std::min(INACTIVE_SEPARATOR_HEIGHT, separator->height());
 		const int separatorSourceX = (separator->width() - separatorWidth) / 2;
-		to.draw(separator, widgetPosition + Point(separatorCenter - separatorWidth / 2, SEPARATOR_Y),
-			Rect(separatorSourceX, 0, separatorWidth, separator->height()));
+		const int separatorSourceY = (separator->height() - separatorHeight) / 2;
+		const int separatorY = TRACK_Y + (TRACK_HEIGHT - separatorHeight) / 2;
+		to.draw(separator, widgetPosition + Point(separatorCenter - separatorWidth / 2, separatorY),
+			Rect(separatorSourceX, separatorSourceY, separatorWidth, separatorHeight));
 	}
 
 	const int visibleCheckpoints = std::min(maxCharges, MAX_VISIBLE_CHECKPOINTS);
@@ -115,13 +136,13 @@ void BattleFocusBar::render(Canvas & to) const
 		const int checkpointCenter = side == BattleSide::ATTACKER ? attackerCenter : WIDTH - attackerCenter;
 		const auto & checkpointImage = currentPoints >= threshold ? activeCheckpoint : inactiveCheckpoint;
 		to.draw(checkpointImage, widgetPosition + Point(checkpointCenter - CHECKPOINT_SIZE / 2,
-			(HEIGHT - CHECKPOINT_SIZE) / 2));
+			CHECKPOINT_Y));
 	}
 
 	const auto & icon = currentPoints > 0 ? activeIcon : inactiveIcon;
 	const int attackerIconX = (STANDARD_WIDGET_WIDTH - ICON_SIZE) / 2;
 	const int iconX = side == BattleSide::ATTACKER ? attackerIconX : WIDTH - attackerIconX - ICON_SIZE;
-	to.draw(icon, widgetPosition + Point(iconX, (HEIGHT - ICON_SIZE) / 2));
+	to.draw(icon, widgetPosition + Point(iconX, ICON_Y));
 }
 
 void BattleFocusBar::show(Canvas & to)

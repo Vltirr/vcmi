@@ -131,6 +131,8 @@ public:
 
 	/// Refresh both Focus widgets after the shared battle resource changes
 	void updateFocusBars();
+	/// Draw Focus after the battlefield background and before its creatures and effects
+	void renderFocusBars(Canvas & to);
 
 	// Set positions for hero & stack info window
 	void setPositionInfoWindow();
