@@ -19,7 +19,9 @@
 namespace
 {
 constexpr int FRAME_Y = 7;
-constexpr int FRAME_WIDTH = 218;
+constexpr int ORIGINAL_FRAME_WIDTH = 218;
+constexpr int FRAME_EXTENSION = 5;
+constexpr int FRAME_WIDTH = ORIGINAL_FRAME_WIDTH + FRAME_EXTENSION;
 constexpr int FRAME_HEIGHT = 18;
 constexpr int TRACK_X = 6;
 constexpr int TRACK_Y = 12;
@@ -40,7 +42,7 @@ constexpr int ORNAMENT_HEIGHT = 25;
 constexpr int ORNAMENT_Y = 20;
 constexpr int MAX_VISIBLE_CHECKPOINTS = 3;
 constexpr int MIN_SEGMENT_WIDTH = 3;
-constexpr int STANDARD_WIDGET_WIDTH = FRAME_WIDTH;
+constexpr int STANDARD_WIDGET_WIDTH = ORIGINAL_FRAME_WIDTH;
 
 std::shared_ptr<IImage> loadFocusImage(const std::string & name)
 {
@@ -91,8 +93,8 @@ void BattleFocusBar::render(Canvas & to) const
 	const int fillWidth = static_cast<int>(
 		(static_cast<int64_t>(currentPoints) * TRACK_WIDTH + capacity / 2) / capacity);
 	const Point widgetPosition = pos.topLeft();
-	const int frameX = side == BattleSide::ATTACKER ? 0 : WIDTH - STANDARD_WIDGET_WIDTH;
-	const int trackX = frameX + TRACK_X;
+	const int frameX = side == BattleSide::ATTACKER ? 0 : WIDTH - FRAME_WIDTH;
+	const int trackX = frameX + TRACK_X + (side == BattleSide::DEFENDER ? FRAME_EXTENSION : 0);
 	const int attackerOrnamentX = (STANDARD_WIDGET_WIDTH - ORNAMENT_WIDTH) / 2;
 	const int ornamentX = side == BattleSide::ATTACKER ? attackerOrnamentX : WIDTH - attackerOrnamentX - ORNAMENT_WIDTH;
 
