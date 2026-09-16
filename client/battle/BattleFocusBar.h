@@ -28,6 +28,7 @@ class BattleFocusBar : public CIntObject
 	std::shared_ptr<IImage> separator;
 	std::shared_ptr<IImage> activeCheckpoint;
 	std::shared_ptr<IImage> inactiveCheckpoint;
+	std::shared_ptr<IImage> ornament;
 	std::shared_ptr<IImage> activeIcon;
 	std::shared_ptr<IImage> inactiveIcon;
 

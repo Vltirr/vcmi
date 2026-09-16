@@ -35,6 +35,9 @@ constexpr int ICON_SIZE = 34;
 constexpr int ICON_VISIBLE_TOP_PADDING = 4;
 constexpr int ICON_TRACK_OVERLAP = 4;
 constexpr int ICON_Y = TRACK_Y + TRACK_HEIGHT - ICON_VISIBLE_TOP_PADDING - ICON_TRACK_OVERLAP;
+constexpr int ORNAMENT_WIDTH = 104;
+constexpr int ORNAMENT_HEIGHT = 23;
+constexpr int ORNAMENT_Y = 20;
 constexpr int MAX_VISIBLE_CHECKPOINTS = 3;
 constexpr int MIN_SEGMENT_WIDTH = 3;
 constexpr int STANDARD_WIDGET_WIDTH = FRAME_WIDTH;
@@ -56,6 +59,7 @@ BattleFocusBar::BattleFocusBar(BattleSide battleSide)
 	, separator(loadFocusImage("Separator_ProgressBar_Energy.png"))
 	, activeCheckpoint(loadFocusImage("EnegyPoint_ProgressBar_Activ.png"))
 	, inactiveCheckpoint(loadFocusImage("EnegyPoint_ProgressBar_NotActiv.png"))
+	, ornament(loadFocusImage("FocusBarOrnament.png"))
 	, activeIcon(loadFocusImage("Icon_Energy_AddSection.png"))
 	, inactiveIcon(loadFocusImage("Icon_Energy.png"))
 {
@@ -66,6 +70,7 @@ BattleFocusBar::BattleFocusBar(BattleSide battleSide)
 	separator->scaleTo(Point(SEPARATOR_WIDTH, SEPARATOR_HEIGHT), EScalingAlgorithm::BILINEAR);
 	activeCheckpoint->scaleTo(Point(CHECKPOINT_SIZE, CHECKPOINT_SIZE), EScalingAlgorithm::BILINEAR);
 	inactiveCheckpoint->scaleTo(Point(CHECKPOINT_SIZE, CHECKPOINT_SIZE), EScalingAlgorithm::BILINEAR);
+	ornament->scaleTo(Point(ORNAMENT_WIDTH, ORNAMENT_HEIGHT), EScalingAlgorithm::BILINEAR);
 	activeIcon->scaleTo(Point(ICON_SIZE, ICON_SIZE), EScalingAlgorithm::BILINEAR);
 	inactiveIcon->scaleTo(Point(ICON_SIZE, ICON_SIZE), EScalingAlgorithm::BILINEAR);
 	setInputEnabled(false);
@@ -88,7 +93,10 @@ void BattleFocusBar::render(Canvas & to) const
 	const Point widgetPosition = pos.topLeft();
 	const int frameX = side == BattleSide::ATTACKER ? 0 : WIDTH - STANDARD_WIDGET_WIDTH;
 	const int trackX = frameX + TRACK_X;
+	const int attackerOrnamentX = (STANDARD_WIDGET_WIDTH - ORNAMENT_WIDTH) / 2;
+	const int ornamentX = side == BattleSide::ATTACKER ? attackerOrnamentX : WIDTH - attackerOrnamentX - ORNAMENT_WIDTH;
 
+	to.draw(ornament, widgetPosition + Point(ornamentX, ORNAMENT_Y));
 	to.draw(frame, widgetPosition + Point(frameX, FRAME_Y));
 
 	if(fillWidth > 0)
