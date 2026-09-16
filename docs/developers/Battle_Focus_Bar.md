@@ -1,4 +1,4 @@
-# Hand-off: barra de Focus de batalla
+# Barra de Focus de batalla
 
 ## Finalidad
 
