@@ -36,7 +36,7 @@ constexpr int ICON_VISIBLE_TOP_PADDING = 4;
 constexpr int ICON_TRACK_OVERLAP = 4;
 constexpr int ICON_Y = TRACK_Y + TRACK_HEIGHT - ICON_VISIBLE_TOP_PADDING - ICON_TRACK_OVERLAP;
 constexpr int ORNAMENT_WIDTH = 104;
-constexpr int ORNAMENT_HEIGHT = 23;
+constexpr int ORNAMENT_HEIGHT = 25;
 constexpr int ORNAMENT_Y = 20;
 constexpr int MAX_VISIBLE_CHECKPOINTS = 3;
 constexpr int MIN_SEGMENT_WIDTH = 3;
@@ -54,7 +54,7 @@ BattleFocusBar::BattleFocusBar(BattleSide battleSide)
 	, currentPoints(0)
 	, pointsPerCharge(1)
 	, maxCharges(1)
-	, frame(loadFocusImage("FocusBarFrame.png"))
+	, frame(loadFocusImage("FocusBarFrameDarkGold.png"))
 	, progressFill(loadFocusImage("ProgressBar_Energy.png"))
 	, separator(loadFocusImage("Separator_ProgressBar_Energy.png"))
 	, activeCheckpoint(loadFocusImage("EnegyPoint_ProgressBar_Activ.png"))
@@ -96,7 +96,6 @@ void BattleFocusBar::render(Canvas & to) const
 	const int attackerOrnamentX = (STANDARD_WIDGET_WIDTH - ORNAMENT_WIDTH) / 2;
 	const int ornamentX = side == BattleSide::ATTACKER ? attackerOrnamentX : WIDTH - attackerOrnamentX - ORNAMENT_WIDTH;
 
-	to.draw(ornament, widgetPosition + Point(ornamentX, ORNAMENT_Y));
 	to.draw(frame, widgetPosition + Point(frameX, FRAME_Y));
 
 	if(fillWidth > 0)
@@ -133,6 +132,8 @@ void BattleFocusBar::render(Canvas & to) const
 		to.draw(separator, widgetPosition + Point(separatorCenter - separatorWidth / 2, separatorY),
 			Rect(separatorSourceX, separatorSourceY, separatorWidth, separatorHeight));
 	}
+
+	to.draw(ornament, widgetPosition + Point(ornamentX, ORNAMENT_Y));
 
 	const int visibleCheckpoints = std::min(maxCharges, MAX_VISIBLE_CHECKPOINTS);
 	for(int checkpoint = 1; checkpoint <= visibleCheckpoints; ++checkpoint)
