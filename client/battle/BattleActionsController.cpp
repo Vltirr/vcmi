@@ -31,6 +31,7 @@
 #include "../../lib/CStack.h"
 #include "../../lib/battle/CUnitState.h"
 #include "../../lib/GameLibrary.h"
+#include "../../lib/battle/Activation.h"
 #include "../../lib/battle/BattleAction.h"
 #include "../../lib/battle/CPlayerBattleCallback.h"
 #include "../../lib/bonuses/Bonus.h"
@@ -801,6 +802,15 @@ std::string BattleActionsController::actionGetStatusMessageBlocked(PossiblePlaye
 {
 	switch (action.get())
 	{
+		case PossiblePlayerBattleAction::ATTACK_ABILITY:
+		{
+			const CStack * currentStack = owner.stacksController->getActiveStack();
+			const CStack * targetStack = getStackForHex(targetHex);
+			if(currentStack && targetStack &&
+				!battle::isActivationTargetAvailable(*owner.getBattle(), currentStack, EActionType::WALK_AND_ATTACK, action.spell(), action.ability(), targetStack))
+				return LIBRARY->generaltexth->translate("vcmi.battle.activation.invalidTarget");
+			return "";
+		}
 		case PossiblePlayerBattleAction::AIMED_SPELL_CREATURE:
 		case PossiblePlayerBattleAction::RANDOM_GENIE_SPELL:
 			return LIBRARY->generaltexth->allTexts[23];
@@ -868,7 +878,9 @@ bool BattleActionsController::actionIsLegal(PossiblePlayerBattleAction action, c
 			{
 				const CStack * currentStack = owner.stacksController->getActiveStack();
 				bool allowLongWeapon = action.get() == PossiblePlayerBattleAction::LONG_WEAPON_ATTACK;
-				return currentStack &&
+				const bool effectApplicable = action.get() != PossiblePlayerBattleAction::ATTACK_ABILITY ||
+					battle::isActivationTargetAvailable(*owner.getBattle(), currentStack, EActionType::WALK_AND_ATTACK, action.spell(), action.ability(), targetStack);
+				return currentStack && effectApplicable &&
 					owner.getBattle()->battleCanAttackUnit(currentStack, targetStack) &&
 					owner.getBattle()->battleCanAttackHex(currentStack, targetHex) &&
 					findAttackFromHex(owner, currentStack, targetHex, allowLongWeapon).isValid();
@@ -1336,6 +1348,9 @@ void BattleActionsController::onHexRightClicked(const BattleHex & clickedHex)
 		CRClickPopup::createAndPush(LIBRARY->generaltexth->translate("core.genrltxt.731")); // spell cancelled
 		return;
 	}
+
+	if(owner.windowObject->cancelSelectedUnitAction())
+		return;
 
 	auto selectedStack = owner.getBattle()->battleGetStackByPos(clickedHex, true);
 

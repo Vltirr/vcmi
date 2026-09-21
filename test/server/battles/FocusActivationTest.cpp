@@ -12,6 +12,9 @@
 #include "../../../lib/battle/Activation.h"
 #include "../../../lib/battle/BattleAction.h"
 #include "../../../lib/bonuses/Bonus.h"
+#include "../../../lib/GameLibrary.h"
+
+#include <vcmi/CreatureService.h>
 #include "../../../lib/mapping/CMap.h"
 #include "../../../lib/mapObjects/CGHeroInstance.h"
 #include "../../../server/CGameHandler.h"
@@ -47,6 +50,35 @@ protected:
 		auto * attacker = addStack(BattleSide::ATTACKER, CreatureID(0), BattleHex(leftHex), 1);
 		auto ability = std::make_shared<Bonus>(BonusDuration::PERMANENT, BonusType::SPELL_AFTER_ATTACK, BonusSource::CREATURE_ABILITY, 100, BonusSourceID(), BonusSubtypeID(SpellID(SpellID::SLOW)));
 		ability->activation = Activation{.id = id, .costs = {.focus = 1}, .consumeUses = false};
+		attacker->addNewBonus(ability);
+		return attacker;
+	}
+
+	CStack * addFocusDeathStareAttacker()
+	{
+		auto * attacker = addStack(BattleSide::ATTACKER, CreatureID(0), BattleHex(leftHex), 100);
+		const auto * mightyGorgon = LIBRARY->creatures()->getByName("core:mightyGorgon");
+		EXPECT_NE(mightyGorgon, nullptr);
+		if(!mightyGorgon)
+			return attacker;
+
+		const auto sources = mightyGorgon->getBonusBearer()->getAllBonuses(Selector::type()(BonusType::COMBAT_EVENT_TRIGGER));
+		EXPECT_EQ(sources->size(), 1);
+		if(sources->empty())
+			return attacker;
+
+		auto ability = std::make_shared<Bonus>(*sources->front());
+		ability->activation = Activation{
+			.id = "focus-demo:mightyGorgonDeathStare",
+			.costs = {.focus = 2},
+			.consumeUses = false,
+			.limits = {{
+				.key = "focus-demo:mightyGorgonDeathStare",
+				.scope = EActivationLimitScope::SIDE,
+				.period = EActivationLimitPeriod::ROUND,
+				.max = 1
+			}}
+		};
 		attacker->addNewBonus(ability);
 		return attacker;
 	}
@@ -202,6 +234,11 @@ TEST_F(FocusActivationTest, deliberateAttackAbilityConsumesFocusAndAppliesItsExi
 	EXPECT_TRUE(gameHandler->battles->makePlayerBattleAction(BattleID(0), PlayerColor(0), action));
 	EXPECT_EQ(battle()->getFocusPoints(BattleSide::ATTACKER), 0);
 	EXPECT_TRUE(vstd::contains(defender->activeSpells(), SpellID(SpellID::SLOW)));
+
+	const auto casts = server.castsOf(SpellID(SpellID::SLOW));
+	ASSERT_EQ(casts.size(), 1);
+	EXPECT_TRUE(std::ranges::any_of(casts.front().logLines,
+		[](const std::string & line) { return line.find("consumes 1 Focus") != std::string::npos; }));
 }
 
 TEST_F(FocusActivationTest, ordinaryAttackDoesNotConsumeOrApplyDeliberateAbility)
@@ -221,6 +258,80 @@ TEST_F(FocusActivationTest, ordinaryAttackDoesNotConsumeOrApplyDeliberateAbility
 	EXPECT_TRUE(gameHandler->battles->makePlayerBattleAction(BattleID(0), PlayerColor(0), action));
 	EXPECT_EQ(battle()->getFocusPoints(BattleSide::ATTACKER), 1);
 	EXPECT_FALSE(vstd::contains(defender->activeSpells(), SpellID(SpellID::SLOW)));
+}
+
+TEST_F(FocusActivationTest, deliberateDeathStareConsumesTwoChargesAndItsSharedRoundUse)
+{
+	startGame();
+	enableFocus();
+	startBattle();
+	auto * attacker = addFocusDeathStareAttacker();
+	auto * defender = addStack(BattleSide::DEFENDER, CreatureID(1), BattleHex(rightHex), 100);
+	blockRetaliation(attacker);
+	beginCombat();
+	battle()->activeStack = attacker->unitId();
+	battle()->setFocusPoints(BattleSide::ATTACKER, 2);
+
+	auto action = BattleAction::makeMeleeAttack(attacker, defender->getPosition(), attacker->getPosition());
+	action.activatedAbility = "focus-demo:mightyGorgonDeathStare";
+	const auto source = battle::getActivationSource(attacker, action.actionType, action.spell, action.activatedAbility);
+	ASSERT_NE(source, nullptr);
+	ASSERT_TRUE(source->activation.has_value());
+	ASSERT_TRUE(battle::isActivationAvailable(*battle(), attacker, action.actionType, action.spell, action.activatedAbility));
+
+	ASSERT_TRUE(gameHandler->battles->makePlayerBattleAction(BattleID(0), PlayerColor(0), action));
+	EXPECT_EQ(battle()->getFocusPoints(BattleSide::ATTACKER), 0);
+	EXPECT_EQ(battle()->getActivationUsage(BattleSide::ATTACKER, action.activatedAbility, EActivationLimitPeriod::ROUND), 1);
+
+	const auto casts = server.castsOf(SpellID(SpellID::DEATH_STARE));
+	ASSERT_EQ(casts.size(), 1);
+	EXPECT_GT(casts.front().killed, 0);
+	EXPECT_LE(casts.front().killed, 10);
+	EXPECT_TRUE(std::ranges::any_of(casts.front().logLines,
+		[](const std::string & line) { return line.find("consumes 2 Focus Charges") != std::string::npos; }));
+}
+
+TEST_F(FocusActivationTest, rejectsDeathStareAgainstNonLivingTargetBeforeChargingFocus)
+{
+	startGame();
+	enableFocus();
+	startBattle();
+	auto * attacker = addFocusDeathStareAttacker();
+	const auto * skeleton = LIBRARY->creatures()->getByName("core:skeleton");
+	ASSERT_NE(skeleton, nullptr);
+	auto * defender = addStack(BattleSide::DEFENDER, skeleton, BattleHex(rightHex), 100);
+	blockRetaliation(attacker);
+	beginCombat();
+	battle()->activeStack = attacker->unitId();
+	battle()->setFocusPoints(BattleSide::ATTACKER, 2);
+
+	auto action = BattleAction::makeMeleeAttack(attacker, defender->getPosition(), attacker->getPosition());
+	action.activatedAbility = "focus-demo:mightyGorgonDeathStare";
+
+	EXPECT_FALSE(battle::isActivationTargetAvailable(*battle(), attacker, action.actionType, action.spell, action.activatedAbility, defender));
+	EXPECT_FALSE(gameHandler->battles->makePlayerBattleAction(BattleID(0), PlayerColor(0), action));
+	EXPECT_EQ(battle()->getFocusPoints(BattleSide::ATTACKER), 2);
+	EXPECT_EQ(battle()->getActivationUsage(BattleSide::ATTACKER, action.activatedAbility, EActivationLimitPeriod::ROUND), 0);
+	EXPECT_TRUE(server.castsOf(SpellID(SpellID::DEATH_STARE)).empty());
+}
+
+TEST_F(FocusActivationTest, ordinaryAttackDoesNotTriggerConfiguredDeathStare)
+{
+	startGame();
+	enableFocus();
+	startBattle();
+	auto * attacker = addFocusDeathStareAttacker();
+	auto * defender = addStack(BattleSide::DEFENDER, CreatureID(1), BattleHex(rightHex), 100);
+	blockRetaliation(attacker);
+	beginCombat();
+	battle()->activeStack = attacker->unitId();
+	battle()->setFocusPoints(BattleSide::ATTACKER, 2);
+
+	const auto action = BattleAction::makeMeleeAttack(attacker, defender->getPosition(), attacker->getPosition());
+	ASSERT_TRUE(gameHandler->battles->makePlayerBattleAction(BattleID(0), PlayerColor(0), action));
+	EXPECT_EQ(battle()->getFocusPoints(BattleSide::ATTACKER), 2);
+	EXPECT_EQ(battle()->getActivationUsage(BattleSide::ATTACKER, "focus-demo:mightyGorgonDeathStare", EActivationLimitPeriod::ROUND), 0);
+	EXPECT_TRUE(server.castsOf(SpellID(SpellID::DEATH_STARE)).empty());
 }
 
 TEST_F(FocusActivationTest, rejectsUnknownDeliberateAbilityWithoutChargingFocus)

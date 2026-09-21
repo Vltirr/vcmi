@@ -17,6 +17,8 @@
 #include "../GameEngine.h"
 #include "../eventsSDL/InputHandler.h"
 #include "../gui/WindowHandler.h"
+#include "../render/CAnimation.h"
+#include "../render/IRenderHandler.h"
 #include "../widgets/Buttons.h"
 #include "../widgets/GraphicalPrimitiveCanvas.h"
 #include "../widgets/Images.h"
@@ -24,6 +26,7 @@
 #include "../windows/CSpellWindow.h"
 
 #include "../../lib/CConfigHandler.h"
+#include "../../lib/CBonusTypeHandler.h"
 #include "../../lib/GameLibrary.h"
 #include "../../lib/battle/CPlayerBattleCallback.h"
 #include "../../lib/bonuses/Bonus.h"
@@ -33,6 +36,101 @@
 #include "../../lib/spells/CSpell.h"
 #include "../../lib/texts/CGeneralTextHandler.h"
 #include "../GameInstance.h"
+
+namespace
+{
+
+std::string focusCostText(int32_t focusCost)
+{
+	MetaString text;
+	text.appendTextID(focusCost == 1 ? "vcmi.battle.focus.cost.one" : "vcmi.battle.focus.cost.many");
+	text.replaceNumber(focusCost);
+	return text.toString(&GAME->translator());
+}
+
+std::string activationName(const PossiblePlayerBattleAction & action, const std::shared_ptr<const Bonus> & source)
+{
+	if(source && source->type == BonusType::SPELL_AFTER_ATTACK)
+	{
+		const SpellID spell = source->subtype.as<SpellID>();
+		if(spell.hasValue())
+			return spell.toSpell()->getNameTranslated();
+	}
+
+	if(source && source->activation && !source->activation->id.empty())
+	{
+		std::string textID = source->activation->id;
+		std::ranges::replace(textID, ':', '.');
+		return LIBRARY->generaltexth->translate(textID + ".name");
+	}
+
+	return action.ability();
+}
+
+std::string withActivationHeading(const std::string & name, const std::string & description)
+{
+	if(description.empty())
+		return name;
+
+	std::string body = description;
+	if(description.front() == '{')
+	{
+		const auto endOfHeading = description.find("}\n");
+		if(endOfHeading != std::string::npos)
+			body = description.substr(endOfHeading + 2);
+	}
+
+	return body.empty() ? name : name + " - " + body;
+}
+
+std::shared_ptr<CIntObject> spellIcon(const CSpell * spell)
+{
+	if(!spell)
+		return nullptr;
+
+	const size_t frame = spell->getId().getNum() + 1;
+	const AnimationPath spellIcons = AnimationPath::builtin("spellint");
+	const auto animation = ENGINE->renderHandler().loadAnimation(spellIcons, EImageBlitMode::COLORKEY);
+	if(animation->size() <= frame || !animation->getImage(frame, 0, false))
+		return nullptr;
+
+	return std::make_shared<CAnimImage>(spellIcons, frame);
+}
+
+std::shared_ptr<CIntObject> actionIcon(const PossiblePlayerBattleAction & action)
+{
+	const auto & source = action.source();
+	if(source)
+	{
+		const ImagePath bonusIcon = LIBRARY->bth->bonusToGraphics(std::const_pointer_cast<Bonus>(source));
+		if(!bonusIcon.empty())
+			return std::make_shared<CPicture>(bonusIcon);
+
+		return std::make_shared<CPicture>(ImagePath::builtin("battle/actionAttack"));
+	}
+
+	if(action.spellcast())
+		if(auto icon = spellIcon(action.spell().toSpell()))
+			return icon;
+
+	return std::make_shared<CPicture>(ImagePath::builtin("battle/actionAttack"));
+}
+
+std::shared_ptr<TransparentFilledRectangle> disabledActionOverlay(
+	const std::shared_ptr<CToggleButton> & button,
+	const std::shared_ptr<CIntObject> & icon)
+{
+	const Rect bounds = button->pos.include(icon->pos);
+	auto result = std::make_shared<TransparentFilledRectangle>(Rect(Point(), bounds.dimensions()), ColorRGBA(0, 0, 0, 144));
+	// Keep the shade as a panel child created after the button. Pictures and animation images draw
+	// only themselves, so an overlay parented to the icon would never be rendered. Construction
+	// captures widgets using parent-relative coordinates; restore the final absolute position here.
+	result->moveTo(bounds.topLeft());
+	result->setRedrawParent(true);
+	return result;
+}
+
+}
 
 UnitActionPanel::UnitActionPanel(BattleInterface & owner)
 	: CIntObject(0)
@@ -50,6 +148,27 @@ UnitActionPanel::UnitActionPanel(BattleInterface & owner)
 void UnitActionPanel::restoreAllActions()
 {
 	owner.actionsController->resetCurrentStackPossibleActions();
+}
+
+bool UnitActionPanel::cancelSelectedAction()
+{
+	bool actionWasSelected = false;
+	for(auto & button : buttons)
+	{
+		if(button.widget->isSelected())
+		{
+			button.widget->setSelectedSilent(false);
+			actionWasSelected = true;
+		}
+	}
+
+	if(!actionWasSelected)
+		return false;
+
+	restoreAllActions();
+	redraw();
+	ENGINE->fakeMouseMove();
+	return true;
 }
 
 void UnitActionPanel::setActions(int buttonIndex, const std::vector<PossiblePlayerBattleAction> & filteredActions)
@@ -73,7 +192,9 @@ bool UnitActionPanel::updateButton(ActionButton & button)
 	std::string helpText = button.baseHelpText;
 	if(focusedAction != button.actions.end())
 	{
-		hoverText += "\n" + LIBRARY->generaltexth->translate("vcmi.battle.focus.cost") + ": " + std::to_string(focusedAction->focusCost());
+		const std::string costText = focusCostText(focusedAction->focusCost());
+		hoverText += "\n" + costText;
+		helpText += "\n" + costText;
 		if(!available && !limitReached)
 		{
 			hoverText += "\n" + LIBRARY->generaltexth->translate("vcmi.battle.focus.insufficient");
@@ -90,6 +211,7 @@ bool UnitActionPanel::updateButton(ActionButton & button)
 	button.widget->setHelp(CButton::tooltip(hoverText, helpText));
 	button.widget->setHoverEnabledWhenBlocked(true);
 	button.widget->block(!available);
+	button.disabledOverlay->setEnabled(!available);
 	if(deselected)
 		button.widget->setSelectedSilent(false);
 	return deselected;
@@ -114,10 +236,12 @@ void UnitActionPanel::testAndAddAction(const std::vector<PossiblePlayerBattleAct
 	tooltip.appendTextID(descriptionTextID);
 
 	auto button = std::make_shared<CToggleButton>(Point(2, 7 + 50 * index), AnimationPath::builtin("battleUnitAction"), CButton::tooltip(), callback);
-	button->setOverlay(std::make_shared<CPicture>(iconPath));
+	auto icon = std::make_shared<CPicture>(iconPath);
+	button->setOverlay(icon);
 	button->setHighlightedBorderColor(Colors::WHITE);
 	button->setAllowDeselection(true);
-	buttons.push_back({button, filteredActions, tooltip.toString(&GAME->translator()), ""});
+	auto disabledOverlay = disabledActionOverlay(button, icon);
+	buttons.push_back({button, filteredActions, tooltip.toString(&GAME->translator()), "", disabledOverlay});
 	updateButton(buttons.back());
 }
 
@@ -142,9 +266,11 @@ void UnitActionPanel::testAndAddSpell(const std::vector<PossiblePlayerBattleActi
 	std::string description = spellFilter.toSpell()->getDescriptionTranslated(0);
 
 	auto button = std::make_shared<CToggleButton>(Point(2, 7 + 50 * index), AnimationPath::builtin("battleUnitAction"), CButton::tooltip(), callback);
-	button->setOverlay(std::make_shared<CAnimImage>(AnimationPath::builtin("spellint"), spellFilter.getNum() + 1));
+	auto icon = actionIcon(filteredActions.front());
+	button->setOverlay(icon);
 	button->setHighlightedBorderColor(Colors::WHITE);
-	buttons.push_back({button, filteredActions, tooltip.toString(&GAME->translator()), description});
+	auto disabledOverlay = disabledActionOverlay(button, icon);
+	buttons.push_back({button, filteredActions, tooltip.toString(&GAME->translator()), description, disabledOverlay});
 	updateButton(buttons.back());
 }
 
@@ -161,17 +287,18 @@ void UnitActionPanel::testAndAddAbility(const PossiblePlayerBattleAction & actio
 	};
 
 	const auto & source = action.source();
-	const std::string description = source ? source->Description(GAME->interface()->cb.get()) : action.ability();
+	std::string description = source ? LIBRARY->bth->bonusToString(std::const_pointer_cast<Bonus>(source)) : action.ability();
+	if(description.empty() && source)
+		description = source->Description(GAME->interface()->cb.get());
+	if(description.empty())
+		description = action.ability();
+	description = withActivationHeading(activationName(action, source), description);
 	auto button = std::make_shared<CToggleButton>(Point(2, 7 + 50 * index), AnimationPath::builtin("battleUnitAction"), CButton::tooltip(), callback);
-	if(source && !source->customIconPath.empty())
-		button->setOverlay(std::make_shared<CPicture>(source->customIconPath));
-	else if(source && (source->type == BonusType::SPELL_AFTER_ATTACK || source->type == BonusType::ENCHANTER))
-		button->setOverlay(std::make_shared<CAnimImage>(AnimationPath::builtin("spellint"), source->subtype.as<SpellID>().getNum() + 1));
-	else
-		button->setOverlay(std::make_shared<CPicture>(ImagePath::builtin("battle/actionAttack")));
-	button->setHighlightedBorderColor(Colors::WHITE);
+	auto icon = actionIcon(action);
+	button->setOverlay(icon);
 	button->setAllowDeselection(true);
-	buttons.push_back({button, filteredActions, description, description});
+	auto disabledOverlay = disabledActionOverlay(button, icon);
+	buttons.push_back({button, filteredActions, description, description, disabledOverlay});
 	updateButton(buttons.back());
 }
 
@@ -233,6 +360,8 @@ void UnitActionPanel::updateActivationAvailability(const std::vector<PossiblePla
 
 	if(resetSelectedAction)
 		owner.actionsController->resetCurrentStackPossibleActions();
+
+	redraw();
 }
 
 void UnitActionPanel::show(Canvas & to)

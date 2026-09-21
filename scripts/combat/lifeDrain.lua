@@ -13,6 +13,12 @@ local ANIMATION = "SP06_"
 local SOUND = "DRAINLIF"
 local TRANSPARENCY = 0.5
 
+function Script:isApplicable(battle, unit, other)
+	return unit:isAlive()
+		and unit:getTotalHealth() > unit:getAvailableHealth()
+		and other ~= nil and other:isAlive() and other:isLiving()
+end
+
 --- Damage dealt to targets that life can actually be drained from.
 local function drainableDamage(payload)
 	local total = 0

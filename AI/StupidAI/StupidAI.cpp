@@ -139,13 +139,15 @@ static std::optional<BattleAction> findReturningCreatureAbility(const std::share
 	return std::nullopt;
 }
 
-static std::string findAttackAbility(const std::shared_ptr<CBattleInfoCallback> & battle, const CStack * stack)
+static std::string findAttackAbility(const std::shared_ptr<CBattleInfoCallback> & battle, const CStack * stack, const battle::Unit * target)
 {
 	std::string selected;
 	int32_t selectedCost = -1;
 	for(const auto & bonus : battle::getDeliberateActivationSources(stack, EActionType::WALK_AND_ATTACK))
 	{
 		if(!battle::isActivationAvailable(*battle, stack, EActionType::WALK_AND_ATTACK, SpellID::NONE, bonus->activation->id))
+			continue;
+		if(!battle::isActivationTargetAvailable(*battle, stack, EActionType::WALK_AND_ATTACK, SpellID::NONE, bonus->activation->id, target))
 			continue;
 		const int32_t cost = battle::getActivationFocusCost(stack, EActionType::WALK_AND_ATTACK, SpellID::NONE, bonus->activation->id);
 		if(cost > selectedCost)
@@ -249,7 +251,7 @@ void CStupidAI::activeStack(const BattleID & battleID, const CStack * stack)
 		BattleHex targetHex = *std::max_element(ei.attackFrom.begin(), ei.attackFrom.end(), [&](auto a, auto b) { return willSecondHexBlockMoreEnemyShooters(cb, battleID, a, b);});
 
 		auto action = BattleAction::makeMeleeAttack(stack, ei.s->getPosition(), targetHex);
-		action.activatedAbility = findAttackAbility(cb->getBattle(battleID), stack);
+		action.activatedAbility = findAttackAbility(cb->getBattle(battleID), stack, ei.s);
 		cb->battleMakeUnitAction(battleID, action);
 		return;
 	}

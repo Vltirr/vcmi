@@ -12,6 +12,11 @@ class CStack;
 class SpellID;
 class CBattleInfoCallback;
 
+namespace battle
+{
+class Unit;
+}
+
 enum class EActivationLimitScope : int8_t
 {
 	SIDE
@@ -85,6 +90,9 @@ DLL_LINKAGE std::shared_ptr<const Bonus> getActivationSource(const CStack * stac
 DLL_LINKAGE int32_t getActivationFocusCost(const CStack * stack, EActionType action, const SpellID & spell, const std::string & ability = {});
 DLL_LINKAGE bool areActivationLimitsAvailable(const CBattleInfoCallback & battle, const CStack * stack, EActionType action, const SpellID & spell, const std::string & ability = {});
 DLL_LINKAGE bool actionReturnsControl(const CStack * stack, EActionType action, const SpellID & spell, const std::string & ability = {});
+/// Whether the configured activated effect can affect the selected target. This is independent
+/// from whether the underlying attack can reach the target.
+DLL_LINKAGE bool isActivationTargetAvailable(const CBattleInfoCallback & battle, const CStack * stack, EActionType action, const SpellID & spell, const std::string & ability, const Unit * target);
 /// Whether the configured activation costs and limits currently allow the action.
 DLL_LINKAGE bool isActivationAvailable(const CBattleInfoCallback & battle, const CStack * stack, EActionType action, const SpellID & spell, const std::string & ability = {});
 }

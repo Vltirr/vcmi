@@ -7,8 +7,10 @@
 	"keepDisabled": true,
 	"settings": {"combat": {"focus": {"enabled": true}}},
 	"creatures": ["config/focusAbilities.json"],
+	"translations": ["config/translations/english.json"],
 	"spanish": {
 		"name": "Demostración de cargas de concentración",
-		"description": "Costes de concentración compartida para habilidades activas oficiales seleccionadas."
+		"description": "Costes de concentración compartida para habilidades activas oficiales seleccionadas.",
+		"translations": ["config/translations/spanish.json"]
 	}
 }

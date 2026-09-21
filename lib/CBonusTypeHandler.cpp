@@ -130,6 +130,20 @@ std::string CBonusTypeHandler::bonusToString(const std::shared_ptr<Bonus> & bonu
 	if(bonus->type == BonusType::COMBAT_EVENT_TRIGGER)
 		return combatScriptToString(bonus, bonusValue);
 
+	if(bonus->type == BonusType::ENCHANTER && bonus->activation)
+		return LIBRARY->generaltexth->translate("vcmi.bonus.ENCHANTER.activatedDescription");
+
+	if(bonus->type == BonusType::SPELL_AFTER_ATTACK && bonus->activation && bonusValue >= 100)
+	{
+		const SpellID spell = bonus->subtype.as<SpellID>();
+		if(spell.hasValue())
+		{
+			std::string text = LIBRARY->generaltexth->translate("vcmi.bonus.SPELL_AFTER_ATTACK.activatedDescription");
+			boost::algorithm::replace_all(text, "${subtype.spell}", spell.toSpell()->getNameTranslated());
+			return text;
+		}
+	}
+
 	const CBonusType & bt = *bonusTypes.at(vstd::to_underlying(bonus->type));
 	if(bt.hidden)
 		return "";
@@ -163,6 +177,9 @@ std::string CBonusTypeHandler::bonusToString(const std::shared_ptr<Bonus> & bonu
 
 ImagePath CBonusTypeHandler::bonusToGraphics(const std::shared_ptr<Bonus> & bonus) const
 {
+	if(!bonus->customIconPath.empty())
+		return bonus->customIconPath;
+
 	const CBonusType & bt = *bonusTypes.at(vstd::to_underlying(bonus->type));
 
 	if (bonus->type == BonusType::SPELL_IMMUNITY && bonus->subtype.as<SpellID>().hasValue())

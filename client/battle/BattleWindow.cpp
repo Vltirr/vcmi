@@ -810,6 +810,11 @@ void BattleWindow::updateActivationAvailability(const std::vector<PossiblePlayer
 	unitActionWindow->updateActivationAvailability(actions);
 }
 
+bool BattleWindow::cancelSelectedUnitAction()
+{
+	return unitActionWindow->cancelSelectedAction();
+}
+
 void BattleWindow::bAutofightf()
 {
 	if (owner.actionsController->heroSpellcastingModeActive())

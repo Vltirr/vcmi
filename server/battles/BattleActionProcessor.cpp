@@ -623,6 +623,23 @@ BattleActionProcessor::ActivationConsumption BattleActionProcessor::consumeActiv
 		result.valid = false;
 		return result;
 	}
+	if(ba.actionType == EActionType::WALK_AND_ATTACK)
+	{
+		const battle::Unit * target = nullptr;
+		if(ba.target.size() >= 2)
+		{
+			const auto & destination = ba.target[1];
+			target = destination.unitValue != -1000
+				? battle.battleGetUnitByID(destination.unitValue)
+				: battle.battleGetUnitByPos(destination.hexValue);
+		}
+		if(!battle::isActivationTargetAvailable(battle, stack, ba.actionType, ba.spell, ba.activatedAbility, target))
+		{
+			gameHandler->complain("Activated ability cannot affect this target.");
+			result.valid = false;
+			return result;
+		}
+	}
 	if(source->type == BonusType::MANA_DRAIN)
 	{
 		const auto * opponentHero = battle.battleGetFightingHero(battle.otherSide(stack->unitSide()));
@@ -860,6 +877,39 @@ bool BattleActionProcessor::makeBattleActionImpl(const CBattleInfoCallback & bat
 	}
 
 	bool result = dispatchBattleAction(battle, ba);
+	if(result && activation.focusCost > 0)
+	{
+		const auto source = battle::getActivationSource(stack, ba.actionType, ba.spell, ba.activatedAbility);
+		MetaString text;
+		text.appendTextID(activation.focusCost == 1 ? "vcmi.battle.focus.spent.one" : "vcmi.battle.focus.spent.many");
+		stack->addNameReplacement(text);
+
+		SpellID abilitySpell = ba.spell;
+		if(!abilitySpell.hasValue() && source && source->type == BonusType::SPELL_AFTER_ATTACK)
+			abilitySpell = source->subtype.as<SpellID>();
+
+		if(abilitySpell.hasValue())
+			text.replaceName(abilitySpell);
+		else if(source && source->activation && !source->activation->id.empty())
+		{
+			std::string abilityName = source->activation->id;
+			std::ranges::replace(abilityName, ':', '.');
+			text.replaceTextID(abilityName + ".name");
+		}
+		else if(source && source->type == BonusType::RANDOM_SPELLCASTER)
+			text.replaceTextID("vcmi.battle.action.genie");
+		else if(ba.actionType == EActionType::CATAPULT)
+			text.replaceTextID("vcmi.battle.activation.wallShot.name");
+		else
+			text.replaceTextID("vcmi.battle.activation.generic.name");
+
+		text.replaceNumber(activation.focusCost);
+
+		BattleLogMessage message;
+		message.battleID = battle.getBattle()->getBattleID();
+		message.lines.push_back(std::move(text));
+		gameHandler->sendAndApply(message);
+	}
 	if(!result)
 	{
 		if(activation.focusCost > 0)

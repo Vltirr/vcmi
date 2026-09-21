@@ -131,7 +131,7 @@ bool BattleEvaluator::hasWorkingTowers() const
 	return keepIntact || upperIntact || bottomIntact;
 }
 
-std::string BattleEvaluator::findAttackAbility(const CStack * stack) const
+std::string BattleEvaluator::findAttackAbility(const CStack * stack, const battle::Unit * target) const
 {
 	const auto battle = cb->getBattle(battleID);
 	std::string selected;
@@ -139,6 +139,8 @@ std::string BattleEvaluator::findAttackAbility(const CStack * stack) const
 	for(const auto & bonus : battle::getDeliberateActivationSources(stack, EActionType::WALK_AND_ATTACK))
 	{
 		if(!battle::isActivationAvailable(*battle, stack, EActionType::WALK_AND_ATTACK, SpellID::NONE, bonus->activation->id))
+			continue;
+		if(!battle::isActivationTargetAvailable(*battle, stack, EActionType::WALK_AND_ATTACK, SpellID::NONE, bonus->activation->id, target))
 			continue;
 		const int32_t cost = battle::getActivationFocusCost(stack, EActionType::WALK_AND_ATTACK, SpellID::NONE, bonus->activation->id);
 		if(cost > selectedCost)
@@ -312,7 +314,7 @@ BattleAction BattleEvaluator::selectStackAction(const CStack * stack)
 					
 					activeActionMade = true;
 					auto action = BattleAction::makeMeleeAttack(stack, bestAttack.attack.defenderPos, bestAttack.from);
-					action.activatedAbility = findAttackAbility(stack);
+					action.activatedAbility = findAttackAbility(stack, bestAttack.attack.defender);
 					return action;
 				}
 			}
@@ -393,7 +395,7 @@ BattleAction BattleEvaluator::moveOrAttack(const CStack * stack, const BattleHex
 	{
 		activeActionMade = true;
 		auto action = BattleAction::makeMeleeAttack(stack, attackOnTheWay->attack.defender->getPosition(), attackOnTheWay->from);
-		action.activatedAbility = findAttackAbility(stack);
+		action.activatedAbility = findAttackAbility(stack, attackOnTheWay->attack.defender);
 		return action;
 	}
 	else

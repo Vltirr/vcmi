@@ -21,5 +21,9 @@ Script.type = "combatScript"
 --- multiple attack, and even when the bearer died while the attack was resolving. Whether that is
 --- a reason to do nothing is the script's own call - a reflecting ability answers a lethal blow
 --- while dying, while an ability that strikes back must first check `unit:isAlive()`.
+---
+--- A script used as a deliberate activated attack may optionally define
+--- `isApplicable(battle, unit, other)`. Returning false prevents selecting that target and is
+--- checked again by the server before any activation cost is consumed.
 
 return Script

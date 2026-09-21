@@ -166,6 +166,8 @@ public:
 
 	/// Refresh activation availability without rebuilding the action panel
 	void updateActivationAvailability(const std::vector<PossiblePlayerBattleAction> & allActions);
+	/// Cancels the action selected in the unit action panel, if any.
+	bool cancelSelectedUnitAction();
 
 	/// ends battle with autocombat
 	void endWithAutocombat();

@@ -6,13 +6,21 @@
 
 #include "../CStack.h"
 #include "../bonuses/Bonus.h"
+#include "../bonuses/BonusParameters.h"
 #include "../bonuses/BonusSelector.h"
+#include "../combatScripts/ICombatEventScript.h"
+#include "../GameLibrary.h"
+#include "../scripting/ScriptService.h"
 #include "CBattleInfoCallback.h"
 #include "Focus.h"
 #include "IBattleState.h"
+#include "Unit.h"
 #include "../networkPacks/PacksForClientBattle.h"
+#include "../spells/AbilityCaster.h"
 #include "../spells/CSpell.h"
+#include "../spells/ISpellMechanics.h"
 #include <vcmi/ServerCallback.h>
+#include <vcmi/spells/Service.h>
 
 static bool isDeliberateAbilitySource(EActionType action, BonusType type)
 {
@@ -102,6 +110,62 @@ bool battle::actionReturnsControl(const CStack * stack, EActionType action, cons
 	if(source && source->actionReturnsControl)
 		return true;
 	return action == EActionType::MONSTER_SPELL && spell.hasValue() && spell.toSpell()->canCastWithoutSkip();
+}
+
+bool battle::isActivationTargetAvailable(const CBattleInfoCallback & battle, const CStack * stack, EActionType action, const SpellID & spell, const std::string & ability, const Unit * target)
+{
+	const auto source = getActivationSource(stack, action, spell, ability);
+	if(!source || !source->activation || action != EActionType::WALK_AND_ATTACK)
+		return true;
+	if(!target || !target->isValidTarget())
+		return false;
+
+	if(source->type == BonusType::SPELL_AFTER_ATTACK)
+	{
+		const SpellID effectSpell = source->subtype.as<SpellID>();
+		if(!effectSpell.hasValue())
+			return false;
+		int32_t spellLevel = 0;
+		if(source->parameters)
+		{
+			const auto values = source->parameters->toVector();
+			if(!values.empty())
+				spellLevel = values[0];
+		}
+		spells::AbilityCaster caster(stack, spellLevel);
+		spells::Target spellTarget;
+		spellTarget.emplace_back(target);
+		spells::BattleCast cast(&battle, &caster, spells::Mode::PASSIVE, effectSpell.toSpell());
+		return effectSpell.toSpell()->battleMechanics(&cast)->canBeCastAt(spellTarget);
+	}
+
+	if(source->type == BonusType::COMBAT_EVENT_TRIGGER)
+	{
+		const ScriptID scriptID = source->subtype.as<ScriptID>();
+		if(!scriptID.hasValue())
+			return false;
+		const auto & script = LIBRARY->scriptTypes()->getById(scriptID);
+		if(!script.combatEventScript)
+			return false;
+
+		// A combat script with a spell of the same identity uses that spell's target condition.
+		// This covers immunities declared in data without duplicating them in the script.
+		if(const CSpell * effectSpell = dynamic_cast<const CSpell *>(LIBRARY->spells()->getByName(script.scriptId)))
+		{
+			spells::AbilityCaster caster(stack, 0);
+			spells::Target spellTarget;
+			spellTarget.emplace_back(target);
+			spells::BattleCast cast(&battle, &caster, spells::Mode::PASSIVE, effectSpell);
+			if(!effectSpell->battleMechanics(&cast)->canBeCastAt(spellTarget))
+				return false;
+		}
+
+		static const JsonNode emptyParameters;
+		const JsonNode & parameters = source->parameters ? source->parameters->toCustom<JsonNode>() : emptyParameters;
+		return script.combatEventScript->isApplicable(battle, stack, target, parameters);
+	}
+
+	return true;
 }
 
 bool battle::isActivationAvailable(const CBattleInfoCallback & battle, const CStack * stack, EActionType action, const SpellID & spell, const std::string & ability)

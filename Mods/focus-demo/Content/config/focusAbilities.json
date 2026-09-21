@@ -452,6 +452,27 @@
 			}
 		}
 	},
+	"core:mightyGorgon": {
+		"abilities": {
+			"deathStare": {
+				"activation": {
+					"id": "focus-demo:mightyGorgonDeathStare",
+					"costs": {
+						"focus": 2
+					},
+					"consumeUses": false,
+					"limits": [
+						{
+							"key": "focus-demo:mightyGorgonDeathStare",
+							"scope": "side",
+							"period": "round",
+							"max": 1
+						}
+					]
+				}
+			}
+		}
+	},
 	"core:wyvernMonarch": {
 		"abilities": {
 			"poison": {

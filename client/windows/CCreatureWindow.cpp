@@ -998,10 +998,20 @@ void CStackWindow::initBonusesList()
 
 	auto bonusToString = [bonusSource](const std::shared_ptr<Bonus> & bonus) -> std::string
 	{
+		std::string description;
 		if(!bonus->description.empty())
-			return bonus->description.toString(&GAME->translator());
+			description = bonus->description.toString(&GAME->translator());
 		else
-			return LIBRARY->getBth()->bonusToString(bonus, bonusSource);
+			description = LIBRARY->getBth()->bonusToString(bonus, bonusSource);
+
+		if(bonus->activation && bonus->activation->costs.focus > 0)
+		{
+			MetaString cost;
+			cost.appendTextID(bonus->activation->costs.focus == 1 ? "vcmi.battle.focus.cost.one" : "vcmi.battle.focus.cost.many");
+			cost.replaceNumber(bonus->activation->costs.focus);
+			description += "\n" + cost.toString(&GAME->translator());
+		}
+		return description;
 	};
 
 	BonusList receivedBonuses = *bonusSource->getBonuses(Selector::all);

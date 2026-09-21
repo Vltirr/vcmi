@@ -67,6 +67,14 @@ bool LuaCombatEventScript::handlesEvent(const CBattleInfoCallback & battle, Comb
 	return contextOf(battle)->hasFunction(methodName(event));
 }
 
+bool LuaCombatEventScript::isApplicable(const CBattleInfoCallback & battle, const battle::Unit * self, const battle::Unit * other, const JsonNode & parameters) const
+{
+	auto context = contextOf(battle);
+	if(!context->hasFunction("isApplicable"))
+		return true;
+	return context->callMethod<bool>("isApplicable", parameters, &battle, self, other);
+}
+
 void LuaCombatEventScript::run(ServerCallback * server, const CBattleInfoCallback & battle, CombatEventType event, const battle::Unit * self, const battle::Unit * other, const JsonNode & parameters, const CombatEventPayload & payload) const
 {
 	contextOf(battle)->callMethod<void>(methodName(event), parameters, server, &battle, self, other, payload);
