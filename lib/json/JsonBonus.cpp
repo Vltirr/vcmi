@@ -15,6 +15,7 @@
 
 #include "../texts/CGeneralTextHandler.h"
 #include "../GameLibrary.h"
+#include "../IGameSettings.h"
 #include "../bonuses/Limiters.h"
 #include "../bonuses/Propagators.h"
 #include "../bonuses/Updaters.h"
@@ -779,16 +780,75 @@ bool JsonUtils::parseBonus(const JsonNode &ability, Bonus *b, const TextIdentifi
 	{
 		Activation activation;
 		activation.id = ability["activation"]["id"].String();
+		const auto bonusType = ability["type"].String();
+		const bool hasNativeActivationIdentity = bonusType == "SPELLCASTER" ||
+			bonusType == "RANDOM_SPELLCASTER" || bonusType == "HEALER" ||
+			bonusType == "CATAPULT" || bonusType == "ADJACENT_SPELLCASTER";
+		if(activation.id.empty() && !hasNativeActivationIdentity)
+		{
+			logMod->error("Activation in %s needs activation.id because bonus type '%s' has no native action identity.",
+				descriptionID.get(), bonusType);
+			return false;
+		}
+		const bool nativeIdentityNeedsSpell = bonusType == "SPELLCASTER" ||
+			bonusType == "HEALER" || bonusType == "ADJACENT_SPELLCASTER";
+		if(activation.id.empty() && nativeIdentityNeedsSpell && ability["subtype"].isNull())
+		{
+			logMod->error("Activation in %s needs subtype or activation.id to derive an identity for '%s'.",
+				descriptionID.get(), bonusType);
+			return false;
+		}
 		activation.costs.focus = static_cast<int32_t>(std::clamp<int64_t>(ability["activation"]["costs"]["focus"].Integer(), 0, std::numeric_limits<int32_t>::max()));
+		// Settings are initialized before content parsing, so this is deliberately a
+		// load-time error rather than a battle-time surprise.  A zero-cost activation
+		// remains fully usable without Focus; only a positive declared cost requires it.
+		if(activation.costs.focus > 0 && !LIBRARY->engineSettings()->getValue(EGameSettings::COMBAT_FOCUS)["enabled"].Bool())
+		{
+			const auto identity = activation.id.empty()
+				? ability["type"].String() + ":" + ability["subtype"].String()
+				: activation.id;
+			logMod->error("Activation '%s' from mod '%s' (%s, type '%s', subtype '%s') declares focus cost %d while effective combat.focus.enabled is false.",
+				identity, ability.getModScope(), descriptionID.get(), ability["type"].String(), ability["subtype"].String(), activation.costs.focus);
+			return false;
+		}
+		if(!ability["activation"]["consumeUses"].isNull())
+			logMod->warn("Deprecated activation.consumeUses in %s; activation now always replaces native uses.", descriptionID.get());
 		activation.consumeUses = ability["activation"]["consumeUses"].Bool();
+		if(!ability["activation"]["turn"].isNull())
+			activation.turn = ActivationTurn{ability["activation"]["turn"]["returnsControl"].Bool()};
+		if(!ability["activation"]["cooldown"].isNull())
+		{
+			ActivationCooldown cooldown;
+			cooldown.key = ability["activation"]["cooldown"]["key"].String();
+			if(!ability["activation"]["cooldown"]["scope"].isNull())
+				cooldown.scope = ability["activation"]["cooldown"]["scope"].String() == "side" ? EActivationLimitScope::SIDE : EActivationLimitScope::STACK;
+			cooldown.initial = static_cast<int32_t>(std::clamp<int64_t>(ability["activation"]["cooldown"]["initial"].Integer(), 0, std::numeric_limits<int32_t>::max()));
+			cooldown.afterUse = static_cast<int32_t>(std::clamp<int64_t>(ability["activation"]["cooldown"]["afterUse"].Integer(), 0, std::numeric_limits<int32_t>::max()));
+			activation.cooldown = std::move(cooldown);
+		}
 		for(const auto & limitNode : ability["activation"]["limits"].Vector())
 		{
 			ActivationLimit limit;
 			limit.key = limitNode["key"].String();
-			limit.scope = EActivationLimitScope::SIDE;
-			limit.period = limitNode["period"].String() == "round" ? EActivationLimitPeriod::ROUND : EActivationLimitPeriod::BATTLE;
+			limit.scope = limitNode["scope"].String() == "stack" ? EActivationLimitScope::STACK : EActivationLimitScope::SIDE;
+			const auto period = limitNode["period"].String();
+			limit.period = period == "turn" ? EActivationLimitPeriod::TURN : period == "round" ? EActivationLimitPeriod::ROUND : EActivationLimitPeriod::BATTLE;
+			if(limit.scope == EActivationLimitScope::SIDE && limit.period == EActivationLimitPeriod::TURN)
+			{
+				logMod->error("activation limit cannot combine side scope with turn period in %s", descriptionID.get());
+				return false;
+			}
 			limit.max = static_cast<int32_t>(std::clamp<int64_t>(limitNode["max"].Integer(), 1, std::numeric_limits<int32_t>::max()));
 			activation.limits.push_back(std::move(limit));
+		}
+		if(activation.cooldown && !activation.cooldown->scope && activation.limits.size() > 1)
+		{
+			const auto scope = activation.limits.front().scope;
+			if(std::ranges::any_of(activation.limits, [scope](const auto & limit) { return limit.scope != scope; }))
+			{
+				logMod->error("activation cooldown scope is required when limits mix side and stack scopes in %s", descriptionID.get());
+				return false;
+			}
 		}
 		b->activation = activation;
 	}
@@ -820,6 +880,8 @@ bool JsonUtils::parseBonus(const JsonNode &ability, Bonus *b, const TextIdentifi
 		b->customIconPath = ImagePath::fromJson(ability["icon"]);
 
 	b->hidden = !ability["hidden"].isNull() && ability["hidden"].Bool();
+	if(!ability["actionReturnsControl"].isNull())
+		logMod->warn("Deprecated actionReturnsControl in %s; use activation.turn.returnsControl.", descriptionID.get());
 	b->actionReturnsControl = ability["actionReturnsControl"].Bool();
 
 	value = &ability["effectRange"];

@@ -11,6 +11,7 @@
 
 #include "../GameConstants.h"
 #include "../callback/GameCallbackHolder.h"
+#include "Activation.h"
 
 class CGHeroInstance;
 class CGTownInstance;
@@ -30,8 +31,8 @@ struct DLL_LINKAGE SideInBattle : public GameCallbackHolder
 	int32_t initialMana = 0;
 	int32_t additionalMana = 0;
 	int32_t focusPoints = 0;
-	std::map<std::string, int32_t> activationUsageBattle;
-	std::map<std::string, int32_t> activationUsageRound;
+	std::map<ActivationStateKey, int32_t> activationUsage;
+	std::map<ActivationStateKey, int32_t> activationCooldownReadyRound;
 
 	void init(const CGHeroInstance * Hero, const CArmedInstance * Army, const CGTownInstance * town);
 	const CArmedInstance * getArmy() const;
@@ -51,15 +52,31 @@ struct DLL_LINKAGE SideInBattle : public GameCallbackHolder
 			h & focusPoints;
 		else
 			focusPoints = 0;
-		if(h.hasFeature(Handler::Version::ACTIVATION_LIMITS))
+		if(h.hasFeature(Handler::Version::GENERIC_ACTIVATION_POLICIES))
 		{
-			h & activationUsageBattle;
-			h & activationUsageRound;
+			h & activationUsage;
+			h & activationCooldownReadyRound;
+		}
+		else if(h.hasFeature(Handler::Version::ACTIVATION_LIMITS))
+		{
+			std::map<std::string, int32_t> legacyBattle;
+			std::map<std::string, int32_t> legacyRound;
+			h & legacyBattle;
+			h & legacyRound;
+			if(!h.saving)
+			{
+				activationUsage.clear();
+				for(const auto & [key, value] : legacyBattle)
+					activationUsage[{key, EActivationLimitScope::SIDE, -1, EActivationLimitPeriod::BATTLE}] = value;
+				for(const auto & [key, value] : legacyRound)
+					activationUsage[{key, EActivationLimitScope::SIDE, -1, EActivationLimitPeriod::ROUND}] = value;
+				activationCooldownReadyRound.clear();
+			}
 		}
 		else if(!h.saving)
 		{
-			activationUsageBattle.clear();
-			activationUsageRound.clear();
+			activationUsage.clear();
+			activationCooldownReadyRound.clear();
 		}
 	}
 };

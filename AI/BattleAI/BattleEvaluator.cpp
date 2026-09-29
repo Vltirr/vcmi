@@ -154,9 +154,6 @@ std::string BattleEvaluator::findAttackAbility(const CStack * stack, const battl
 
 std::optional<PossibleSpellcast> BattleEvaluator::findBestCreatureSpell(const CStack * stack)
 {
-	if(!stack->canCast())
-		return std::nullopt;
-
 	std::vector<SpellID> spellsToCast;
 	TConstBonusListPtr bl = stack->getBonusesOfType(BonusType::SPELLCASTER);
 
@@ -174,6 +171,9 @@ std::optional<PossibleSpellcast> BattleEvaluator::findBestCreatureSpell(const CS
 
 	for(const auto spellID : spellsToCast)
 	{
+		const auto activationSource = battle::getActivationSource(stack, EActionType::MONSTER_SPELL, spellID);
+		if(!stack->canCast() && (!activationSource || !activationSource->activation))
+			continue;
 		if(!battle::isActivationAvailable(*cb->getBattle(battleID), stack, EActionType::MONSTER_SPELL, spellID))
 			continue;
 		const CSpell * spell = spellID.toSpell();

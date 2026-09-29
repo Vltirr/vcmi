@@ -557,7 +557,7 @@ bool BattleActionProcessor::doUnitSpellAction(const CBattleInfoCallback & battle
 
 	const CSpell * spell = SpellID(spellID).toSpell();
 	const auto source = spellcaster ? spellcaster : randSpellcaster;
-	spells::ActivationCaster caster(stack, !source->activation || source->activation->consumeUses || !battle.getBattle()->getFocusRules().enabled);
+	spells::ActivationCaster caster(stack, !source->activation);
 	spells::BattleCast parameters(&battle, &caster, spells::Mode::CREATURE_ACTIVE, spell);
 	int32_t spellLvl = 0;
 	if(spellcaster)
@@ -611,13 +611,8 @@ BattleActionProcessor::ActivationConsumption BattleActionProcessor::consumeActiv
 		return result;
 	}
 
-	if(stack->castSpellThisTurn && battle::actionReturnsControl(stack, ba.actionType, ba.spell, ba.activatedAbility))
-	{
-		gameHandler->complain("This stack already used its returning action this turn.");
-		result.valid = false;
-		return result;
-	}
-	if(source->type == BonusType::ENCHANTER && battle.battleGetEnchanterCounter(stack->unitSide()) != 0)
+	const auto resolution = battle::resolveActivation(battle, stack, ba.actionType, ba.spell, ba.activatedAbility);
+	if(source->type == BonusType::ENCHANTER && !source->activation->cooldown && battle.battleGetEnchanterCounter(stack->unitSide()) != 0)
 	{
 		gameHandler->complain("Enchanter ability is still on cooldown.");
 		result.valid = false;
@@ -652,26 +647,41 @@ BattleActionProcessor::ActivationConsumption BattleActionProcessor::consumeActiv
 	}
 
 	result.side = battle::focusSide(battle, stack);
-	const auto & rules = battle.getBattle()->getFocusRules();
-	if(rules.enabled && battle.getFocusCharges(result.side) < source->activation->costs.focus)
+	if(!resolution.focusAvailable)
 	{
-		gameHandler->complain("Not enough focus to activate this action.");
+		gameHandler->complain(battle.getBattle()->getFocusRules().enabled ? "Not enough focus to activate this action." : "Activation with focus cost requires combat.focus.enabled.");
 		result.valid = false;
 		return result;
 	}
-	if(!battle::areActivationLimitsAvailable(battle, stack, ba.actionType, ba.spell, ba.activatedAbility))
+	if(!resolution.limitsAvailable)
 	{
 		gameHandler->complain("Activation limit reached for this action.");
 		result.valid = false;
 		return result;
 	}
+	if(!resolution.cooldownAvailable)
+	{
+		gameHandler->complain("Activation is still on cooldown.");
+		result.valid = false;
+		return result;
+	}
 
-	result.focusCost = rules.enabled ? source->activation->costs.focus : 0;
-	result.limits = source->activation->limits;
+	result.focusCost = source->activation->costs.focus;
+	result.limits = resolution.limits;
+	result.cooldown = resolution.cooldown;
 	if(result.focusCost > 0)
 		gameHandler->spellcastEnvironment()->changeFocusCharges(battle, result.side, -result.focusCost);
 	for(const auto & limit : result.limits)
-		gameHandler->spellcastEnvironment()->changeActivationUsage(battle, result.side, limit.key, limit.period, 1);
+	{
+		result.previousUses.push_back(battle.getBattle()->getActivationUsage(result.side, limit));
+		gameHandler->spellcastEnvironment()->setActivationUsage(battle, result.side, limit, result.previousUses.back() + 1);
+	}
+	if(result.cooldown)
+	{
+		result.previousCooldownReadyRound = battle.getBattle()->getActivationCooldownReadyRound(result.side, *result.cooldown);
+		gameHandler->spellcastEnvironment()->setActivationCooldownReadyRound(battle, result.side, *result.cooldown,
+			battle.getBattle()->getRound() + source->activation->cooldown->afterUse);
+	}
 	return result;
 }
 bool BattleActionProcessor::doCreatureAbilityAction(const CBattleInfoCallback & battle, const BattleAction & ba)
@@ -775,7 +785,7 @@ bool BattleActionProcessor::doWalkAndSpellcastAction(const CBattleInfoCallback &
 	}
 
 	const CSpell * spell = spellID.toSpell();
-	spells::ActivationCaster caster(stack, !bonus->activation || bonus->activation->consumeUses || !battle.getBattle()->getFocusRules().enabled);
+	spells::ActivationCaster caster(stack, !bonus->activation);
 	spells::BattleCast parameters(&battle, &caster, spells::Mode::CREATURE_ACTIVE, spell);
 	battle::Target spellTarget;
 	spellTarget.emplace_back(destinationStack);
@@ -914,8 +924,10 @@ bool BattleActionProcessor::makeBattleActionImpl(const CBattleInfoCallback & bat
 	{
 		if(activation.focusCost > 0)
 			gameHandler->spellcastEnvironment()->changeFocusCharges(battle, activation.side, activation.focusCost);
-		for(const auto & limit : activation.limits)
-			gameHandler->spellcastEnvironment()->changeActivationUsage(battle, activation.side, limit.key, limit.period, -1);
+		for(size_t index = 0; index < activation.limits.size(); ++index)
+			gameHandler->spellcastEnvironment()->setActivationUsage(battle, activation.side, activation.limits[index], activation.previousUses[index]);
+		if(activation.cooldown)
+			gameHandler->spellcastEnvironment()->setActivationCooldownReadyRound(battle, activation.side, *activation.cooldown, activation.previousCooldownReadyRound);
 	}
 
 	if (!ba.isBattleEndAction())

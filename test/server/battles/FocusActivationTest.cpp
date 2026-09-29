@@ -13,6 +13,7 @@
 #include "../../../lib/battle/BattleAction.h"
 #include "../../../lib/bonuses/Bonus.h"
 #include "../../../lib/GameLibrary.h"
+#include "../../../lib/json/JsonBonus.h"
 
 #include <vcmi/CreatureService.h>
 #include "../../../lib/mapping/CMap.h"
@@ -36,13 +37,31 @@ protected:
 		map()->overrideGameSetting(EGameSettings::COMBAT_FOCUS, focus);
 	}
 
-	CStack * addFocusCaster(const std::vector<ActivationLimit> & limits = {})
+	void disableFocus()
+	{
+		JsonNode focus;
+		focus["enabled"].Bool() = false;
+		focus["pointsPerCharge"].Integer() = 1;
+		focus["maxCharges"].Integer() = 3;
+		map()->overrideGameSetting(EGameSettings::COMBAT_FOCUS, focus);
+	}
+
+	CStack * addFocusCaster(const std::vector<ActivationLimit> & limits = {}, int32_t focusCost = 1, std::optional<ActivationCooldown> cooldown = std::nullopt)
 	{
 		auto * caster = addStack(BattleSide::ATTACKER, CreatureID(0), BattleHex(leftHex), 1);
 		auto ability = std::make_shared<Bonus>(BonusDuration::PERMANENT, BonusType::SPELLCASTER, BonusSource::CREATURE_ABILITY, 3, BonusSourceID(), BonusSubtypeID(SpellID(SpellID::BLOODLUST)));
-		ability->activation = Activation{.costs = {.focus = 1}, .consumeUses = false, .limits = limits};
+		ability->activation = Activation{.costs = {.focus = focusCost}, .cooldown = std::move(cooldown), .consumeUses = false, .limits = limits};
 		caster->addNewBonus(ability);
 		return caster;
+	}
+
+	CStack * addFailingHealer(const std::vector<ActivationLimit> & limits, std::optional<ActivationCooldown> cooldown)
+	{
+		auto * healer = addStack(BattleSide::ATTACKER, CreatureID(0), BattleHex(leftHex), 1);
+		auto ability = std::make_shared<Bonus>(BonusDuration::PERMANENT, BonusType::HEALER, BonusSource::CREATURE_ABILITY, 3, BonusSourceID());
+		ability->activation = Activation{.costs = {.focus = 1}, .cooldown = std::move(cooldown), .limits = limits};
+		healer->addNewBonus(ability);
+		return healer;
 	}
 
 	CStack * addFocusAttacker(const std::string & id)
@@ -100,7 +119,160 @@ protected:
 		drainer->addNewBonus(ability);
 		return drainer;
 	}
+
+	CStack * addGenericEnchanter()
+	{
+		auto * enchanter = addStack(BattleSide::ATTACKER, CreatureID(0), BattleHex(leftHex), 1);
+		auto ability = std::make_shared<Bonus>(BonusDuration::PERMANENT, BonusType::ENCHANTER, BonusSource::CREATURE_ABILITY, 3, BonusSourceID(), BonusSubtypeID(SpellID(SpellID::BLOODLUST)));
+		ability->activation = Activation{
+			.id = "vcmi-test:enchanter",
+			.costs = {.focus = 0},
+			.turn = ActivationTurn{.returnsControl = true},
+			.cooldown = ActivationCooldown{.scope = EActivationLimitScope::SIDE, .afterUse = 3},
+			.limits = {{.scope = EActivationLimitScope::STACK, .period = EActivationLimitPeriod::TURN, .max = 1}}
+		};
+		enchanter->addNewBonus(ability);
+		return enchanter;
+	}
 };
+
+TEST_F(FocusActivationTest, zeroCostActivationWorksWhenFocusIsDisabled)
+{
+	startGame();
+	disableFocus();
+	startBattle();
+	auto * caster = addFocusCaster({}, 0);
+	beginCombat();
+	battle()->activeStack = caster->unitId();
+
+	battle::Target target;
+	target.emplace_back(caster);
+	EXPECT_TRUE(gameHandler->battles->makePlayerBattleAction(BattleID(0), PlayerColor(0),
+		BattleAction::makeCreatureSpellcast(caster, target, SpellID(SpellID::BLOODLUST))));
+	EXPECT_EQ(battle()->getFocusPoints(BattleSide::ATTACKER), 0);
+	EXPECT_FALSE(caster->castSpellThisTurn);
+}
+
+TEST_F(FocusActivationTest, positiveCostActivationIsRejectedWhenFocusIsDisabled)
+{
+	startGame();
+	disableFocus();
+	startBattle();
+	auto * caster = addFocusCaster({}, 1);
+	beginCombat();
+	battle()->activeStack = caster->unitId();
+
+	battle::Target target;
+	target.emplace_back(caster);
+	EXPECT_FALSE(gameHandler->battles->makePlayerBattleAction(BattleID(0), PlayerColor(0),
+		BattleAction::makeCreatureSpellcast(caster, target, SpellID(SpellID::BLOODLUST))));
+	EXPECT_EQ(battle()->getFocusPoints(BattleSide::ATTACKER), 0);
+}
+
+TEST_F(FocusActivationTest, loaderRejectsPositiveCostActivationWhenFocusIsDisabled)
+{
+	startGame();
+	disableFocus();
+
+	const std::string content = R"({
+		"type" : "SPELLCASTER",
+		"subtype" : "bloodlust",
+		"activation" : { "costs" : { "focus" : 1 } }
+	})";
+	JsonNode ability(content.data(), content.size(), "FocusActivationTest");
+	ability.setModScope("vcmi-test");
+	Bonus parsed;
+
+	EXPECT_FALSE(JsonUtils::parseBonus(ability, &parsed, TextIdentifier("vcmi-test:positiveFocusCost")));
+}
+
+TEST_F(FocusActivationTest, loaderAcceptsZeroCostActivationWhenFocusIsDisabled)
+{
+	startGame();
+	disableFocus();
+
+	const std::string content = R"({
+		"type" : "SPELLCASTER",
+		"subtype" : "bloodlust",
+		"activation" : { }
+	})";
+	JsonNode ability(content.data(), content.size(), "FocusActivationTest");
+	ability.setModScope("vcmi-test");
+	Bonus parsed;
+
+	EXPECT_TRUE(JsonUtils::parseBonus(ability, &parsed, TextIdentifier("vcmi-test:zeroFocusCost")));
+}
+
+TEST_F(FocusActivationTest, loaderAcceptsDerivedNativeIdentityWithoutExplicitKeys)
+{
+	startGame();
+
+	const std::string content = R"({
+		"type" : "SPELLCASTER",
+		"subtype" : "bloodlust",
+		"activation" : {
+			"limits" : [ { "scope" : "stack", "period" : "turn", "max" : 1 } ]
+		}
+	})";
+	JsonNode ability(content.data(), content.size(), "FocusActivationTest");
+	ability.setModScope("vcmi-test");
+	Bonus parsed;
+
+	EXPECT_TRUE(JsonUtils::parseBonus(ability, &parsed, TextIdentifier("vcmi-test:derivedIdentity")));
+}
+
+TEST_F(FocusActivationTest, loaderRejectsDeliberateActivationWithoutId)
+{
+	startGame();
+
+	const std::string content = R"({
+		"type" : "MANA_DRAIN",
+		"activation" : { }
+	})";
+	JsonNode ability(content.data(), content.size(), "FocusActivationTest");
+	ability.setModScope("vcmi-test");
+	Bonus parsed;
+
+	EXPECT_FALSE(JsonUtils::parseBonus(ability, &parsed, TextIdentifier("vcmi-test:missingId")));
+}
+
+TEST_F(FocusActivationTest, loaderRejectsAmbiguousCooldownScope)
+{
+	startGame();
+
+	const std::string content = R"({
+		"type" : "SPELLCASTER",
+		"subtype" : "bloodlust",
+		"activation" : {
+			"limits" : [
+				{ "scope" : "side", "period" : "battle", "max" : 1 },
+				{ "scope" : "stack", "period" : "round", "max" : 1 }
+			],
+			"cooldown" : { "afterUse" : 1 }
+		}
+	})";
+	JsonNode ability(content.data(), content.size(), "FocusActivationTest");
+	ability.setModScope("vcmi-test");
+	Bonus parsed;
+
+	EXPECT_FALSE(JsonUtils::parseBonus(ability, &parsed, TextIdentifier("vcmi-test:ambiguousCooldown")));
+}
+
+TEST_F(FocusActivationTest, activationIgnoresNativeSpellTurnMarker)
+{
+	startGame();
+	disableFocus();
+	startBattle();
+	auto * caster = addFocusCaster({}, 0);
+	beginCombat();
+	battle()->activeStack = caster->unitId();
+	caster->castSpellThisTurn = true;
+
+	battle::Target target;
+	target.emplace_back(caster);
+	EXPECT_TRUE(gameHandler->battles->makePlayerBattleAction(BattleID(0), PlayerColor(0),
+		BattleAction::makeCreatureSpellcast(caster, target, SpellID(SpellID::BLOODLUST))));
+}
 
 TEST_F(FocusActivationTest, rejectsUnaffordableConfiguredCreatureSpellBeforeDispatch)
 {
@@ -135,6 +307,69 @@ TEST_F(FocusActivationTest, consumesFocusOnlyWhenConfiguredCreatureSpellIsDispat
 
 	EXPECT_TRUE(gameHandler->battles->makePlayerBattleAction(BattleID(0), PlayerColor(0), action));
 	EXPECT_EQ(battle()->getFocusPoints(BattleSide::ATTACKER), 0);
+}
+
+TEST_F(FocusActivationTest, genericCooldownBlocksUntilItsAbsoluteReadyRound)
+{
+	startGame();
+	enableFocus();
+	startBattle();
+	auto * caster = addFocusCaster({}, 1, ActivationCooldown{.afterUse = 2});
+	beginCombat();
+	battle()->activeStack = caster->unitId();
+	battle()->setFocusPoints(BattleSide::ATTACKER, 3);
+
+	battle::Target target;
+	target.emplace_back(caster);
+	const auto action = BattleAction::makeCreatureSpellcast(caster, target, SpellID(SpellID::BLOODLUST));
+	EXPECT_TRUE(gameHandler->battles->makePlayerBattleAction(BattleID(0), PlayerColor(0), action));
+
+	const auto resolution = battle::resolveActivation(*battle(), caster, action.actionType, action.spell);
+	ASSERT_TRUE(resolution.cooldown.has_value());
+	EXPECT_EQ(battle()->getActivationCooldownReadyRound(BattleSide::ATTACKER, *resolution.cooldown), battle()->getRound() + 2);
+	EXPECT_FALSE(resolution.cooldownAvailable);
+	EXPECT_EQ(resolution.cooldownRoundsRemaining, 2);
+
+	battle()->nextRound();
+	EXPECT_EQ(battle::resolveActivation(*battle(), caster, action.actionType, action.spell).cooldownRoundsRemaining, 1);
+	battle()->nextRound();
+	EXPECT_TRUE(battle::resolveActivation(*battle(), caster, action.actionType, action.spell).cooldownAvailable);
+}
+
+TEST_F(FocusActivationTest, genericCooldownInitialBlocksBeforeAnyUse)
+{
+	startGame();
+	enableFocus();
+	startBattle();
+	auto * caster = addFocusCaster({}, 0, ActivationCooldown{.initial = 2});
+	beginCombat();
+	battle()->activeStack = caster->unitId();
+
+	const auto resolution = battle::resolveActivation(*battle(), caster, EActionType::MONSTER_SPELL, SpellID(SpellID::BLOODLUST));
+	ASSERT_TRUE(resolution.cooldown.has_value());
+	EXPECT_FALSE(resolution.cooldownAvailable);
+	EXPECT_EQ(resolution.cooldownRoundsRemaining, std::max(0, 3 - battle()->getRound()));
+}
+
+TEST_F(FocusActivationTest, failedEffectRestoresFocusLimitsAndCooldown)
+{
+	startGame();
+	enableFocus();
+	startBattle();
+	const ActivationLimit limit{.key = "rollback", .scope = EActivationLimitScope::STACK, .period = EActivationLimitPeriod::BATTLE, .max = 1};
+	auto * caster = addFailingHealer({limit}, ActivationCooldown{.afterUse = 2});
+	beginCombat();
+	battle()->activeStack = caster->unitId();
+	battle()->setFocusPoints(BattleSide::ATTACKER, 2);
+
+	const auto action = BattleAction::makeHeal(caster, caster);
+	const auto resolution = battle::resolveActivation(*battle(), caster, action.actionType, action.spell);
+	ASSERT_TRUE(resolution.cooldown.has_value());
+
+	EXPECT_FALSE(gameHandler->battles->makePlayerBattleAction(BattleID(0), PlayerColor(0), action));
+	EXPECT_EQ(battle()->getFocusPoints(BattleSide::ATTACKER), 2);
+	EXPECT_EQ(battle()->getActivationUsage(BattleSide::ATTACKER, resolution.limits.front()), 0);
+	EXPECT_EQ(battle()->getActivationCooldownReadyRound(BattleSide::ATTACKER, *resolution.cooldown), 0);
 }
 
 TEST_F(FocusActivationTest, sharedBattleLimitRejectsSecondStackOnSameSide)
@@ -180,6 +415,23 @@ TEST_F(FocusActivationTest, roundActivationUsageResetsAtNextRound)
 	EXPECT_EQ(battle()->getActivationUsage(BattleSide::DEFENDER, "focus-demo:thunderbolt", EActivationLimitPeriod::ROUND), 0);
 }
 
+TEST_F(FocusActivationTest, waitingKeepsTurnUsageButMoraleCreatesNewOpportunity)
+{
+	startGame();
+	startBattle();
+	auto * caster = addFocusCaster({}, 0);
+	beginCombat();
+	const ActivationStateKey key{"turnUsage", EActivationLimitScope::STACK, static_cast<int32_t>(caster->unitId()), EActivationLimitPeriod::TURN};
+	battle()->setActivationUsage(BattleSide::ATTACKER, key, 1);
+
+	caster->waiting = true;
+	battle()->nextTurn(caster->unitId(), BattleUnitTurnReason::TURN_QUEUE);
+	EXPECT_EQ(battle()->getActivationUsage(BattleSide::ATTACKER, key), 1);
+
+	battle()->nextTurn(caster->unitId(), BattleUnitTurnReason::MORALE);
+	EXPECT_EQ(battle()->getActivationUsage(BattleSide::ATTACKER, key), 0);
+}
+
 TEST_F(FocusActivationTest, manaDrainReturnsControlAndSharesItsRoundLimit)
 {
 	startGame();
@@ -214,6 +466,24 @@ TEST_F(FocusActivationTest, manaDrainReturnsControlAndSharesItsRoundLimit)
 	EXPECT_EQ(battle()->getFocusPoints(BattleSide::ATTACKER), 1);
 	EXPECT_EQ(battle()->getActivationUsage(BattleSide::ATTACKER, "focus-demo:wraithManaDrain", EActivationLimitPeriod::BATTLE), 2);
 	EXPECT_EQ(battle()->getActivationUsage(BattleSide::ATTACKER, "focus-demo:wraithManaDrain", EActivationLimitPeriod::ROUND), 1);
+}
+
+TEST_F(FocusActivationTest, genericEnchanterUsesActivationCooldownInsteadOfLegacyCounter)
+{
+	startGame();
+	disableFocus();
+	startBattle();
+	auto * enchanter = addGenericEnchanter();
+	beginCombat();
+	battle()->activeStack = enchanter->unitId();
+	battle()->getSide(BattleSide::ATTACKER).enchanterCounter = 7;
+
+	const auto action = BattleAction::makeCreatureAbility(enchanter, "vcmi-test:enchanter");
+	const auto resolution = battle::resolveActivation(*battle(), enchanter, action.actionType, action.spell, action.activatedAbility);
+	ASSERT_TRUE(resolution.cooldown.has_value());
+	EXPECT_TRUE(gameHandler->battles->makePlayerBattleAction(BattleID(0), PlayerColor(0), action));
+	EXPECT_EQ(battle()->getSide(BattleSide::ATTACKER).enchanterCounter, 7);
+	EXPECT_EQ(battle()->getActivationCooldownReadyRound(BattleSide::ATTACKER, *resolution.cooldown), battle()->getRound() + 3);
 }
 
 TEST_F(FocusActivationTest, deliberateAttackAbilityConsumesFocusAndAppliesItsExistingEffect)
@@ -299,7 +569,7 @@ TEST_F(FocusActivationTest, rejectsDeathStareAgainstNonLivingTargetBeforeChargin
 	auto * attacker = addFocusDeathStareAttacker();
 	const auto * skeleton = LIBRARY->creatures()->getByName("core:skeleton");
 	ASSERT_NE(skeleton, nullptr);
-	auto * defender = addStack(BattleSide::DEFENDER, skeleton, BattleHex(rightHex), 100);
+	auto * defender = addStack(BattleSide::DEFENDER, skeleton->getId(), BattleHex(rightHex), 100);
 	blockRetaliation(attacker);
 	beginCombat();
 	battle()->activeStack = attacker->unitId();

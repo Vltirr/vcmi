@@ -860,11 +860,12 @@ bool BattleFlowProcessor::activateEnchanter(const CBattleInfoCallback & battle, 
 		auto bonus = *RandomGeneratorUtil::nextItem(bonuses, gameHandler->getRandomGenerator());
 		bonuses.remove_if([&bonus](const Bonus * item) { return item == bonus.get(); });
 
-		if(battle.battleGetEnchanterCounter(stack->unitSide()) != 0 && bonus->parameters && bonus->parameters->toNumber() != 0)
+		const bool hasGenericCooldown = bonus->activation && bonus->activation->cooldown;
+		if(!hasGenericCooldown && battle.battleGetEnchanterCounter(stack->unitSide()) != 0 && bonus->parameters && bonus->parameters->toNumber() != 0)
 			continue;
 
 		const CSpell * spell = bonus->subtype.as<SpellID>().toSpell();
-		const bool consumeUses = !bonus->activation || bonus->activation->consumeUses || !battle.getBattle()->getFocusRules().enabled;
+		const bool consumeUses = !bonus->activation;
 		spells::ActivationCaster caster(stack, consumeUses);
 		spells::BattleCast parameters(&battle, &caster, spells::Mode::ENCHANTER, spell);
 		parameters.setSpellLevel(bonus->val);
@@ -873,7 +874,7 @@ bool BattleFlowProcessor::activateEnchanter(const CBattleInfoCallback & battle, 
 		{
 			cast = true;
 			int cooldown = bonus->parameters ? bonus->parameters->toNumber() : 0;
-			if(cooldown != 0)
+			if(!hasGenericCooldown && cooldown != 0)
 			{
 				BattleSetStackProperty property;
 				property.battleID = battle.getBattle()->getBattleID();

@@ -29,6 +29,7 @@ class CPicture;
 class CArtPlace;
 class CCommanderArtPlace;
 class LRClickableArea;
+class LRClickableAreaWText;
 class GraphicalPrimitiveCanvas;
 class CFilledTexture;
 class CSlider;
@@ -86,6 +87,7 @@ class CStackWindow : public CWindowObject
 	{
 		std::array<std::shared_ptr<CPicture>, 2> icon;
 		std::array<std::shared_ptr<CMultiLineLabel>, 2> description;
+		std::array<std::shared_ptr<LRClickableAreaWText>, 2> tooltip;
 		std::array<std::shared_ptr<GraphicalPrimitiveCanvas>, 2> frame;
 		std::array<std::vector<std::shared_ptr<CLabel>>, 2> bonusSource;
 	public:

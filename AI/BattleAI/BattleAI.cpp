@@ -101,11 +101,11 @@ std::optional<BattleAction> CBattleAI::useReturningCreatureAbility(const BattleI
 	const auto battle = cb->getBattle(battleID);
 	for(const auto & bonus : battle::getDeliberateActivationSources(stack, EActionType::CREATURE_ABILITY))
 	{
-		if(!bonus->actionReturnsControl)
+		if(!battle::actionReturnsControl(stack, EActionType::CREATURE_ABILITY, SpellID::NONE, bonus->activation->id))
 			continue;
 		if(!battle::isActivationAvailable(*battle, stack, EActionType::CREATURE_ABILITY, SpellID::NONE, bonus->activation->id))
 			continue;
-		if(bonus->type == BonusType::ENCHANTER && battle->battleGetEnchanterCounter(stack->unitSide()) != 0)
+		if(bonus->type == BonusType::ENCHANTER && !bonus->activation->cooldown && battle->battleGetEnchanterCounter(stack->unitSide()) != 0)
 			continue;
 		const auto * opponentHero = battle->battleGetFightingHero(battle->otherSide(stack->unitSide()));
 		if(bonus->type == BonusType::MANA_DRAIN && (!opponentHero || opponentHero->mana == 0))
@@ -328,6 +328,5 @@ std::optional<BattleAction> CBattleAI::considerFleeingOrSurrendering(const Battl
 
 	return result;
 }
-
 
 

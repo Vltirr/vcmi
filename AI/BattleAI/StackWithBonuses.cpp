@@ -247,7 +247,8 @@ void StackWithBonuses::spendMana(ServerCallback * server, const int spellCost) c
 HypotheticBattle::HypotheticBattle(const Environment * ENV, Subject realBattle)
 	: BattleProxy(realBattle),
 	env(ENV),
-	bonusTreeVersion(1)
+	bonusTreeVersion(1),
+		hypotheticalRound(realBattle->battleGetRound())
 {
 	auto activeUnit = realBattle->battleActiveUnit();
 	activeUnitId = activeUnit ? activeUnit->unitId() : -1;
@@ -320,8 +321,14 @@ int32_t HypotheticBattle::getActiveStackID() const
 	return activeUnitId;
 }
 
+int32_t HypotheticBattle::getRound() const
+{
+	return hypotheticalRound;
+}
+
 void HypotheticBattle::nextRound()
 {
+	++hypotheticalRound;
 	resetActivationUsageRound();
 	//TODO:HypotheticBattle::nextRound
 	for(auto unit : battleAliveUnits())
@@ -336,6 +343,10 @@ void HypotheticBattle::nextTurn(uint32_t unitId, BattleUnitTurnReason reason)
 {
 	activeUnitId = unitId;
 	auto unit = getForUpdate(unitId);
+	const bool newOpportunity = reason == BattleUnitTurnReason::MORALE ||
+		(reason == BattleUnitTurnReason::TURN_QUEUE && !unit->waiting);
+	if(newOpportunity)
+		resetActivationUsageTurn(static_cast<int32_t>(unitId));
 
 	unit->removeUnitBonus(Bonus::UntilGetsTurn);
 

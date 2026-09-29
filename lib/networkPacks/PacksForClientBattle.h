@@ -576,6 +576,8 @@ struct DLL_LINKAGE BattleActivationUsageChanged : public CPackForClient
 	BattleID battleID = BattleID::NONE;
 	BattleSide side = BattleSide::NONE;
 	std::string key;
+	EActivationLimitScope scope = EActivationLimitScope::SIDE;
+	int32_t stack = -1;
 	EActivationLimitPeriod period = EActivationLimitPeriod::BATTLE;
 	int32_t uses = 0;
 
@@ -584,8 +586,34 @@ struct DLL_LINKAGE BattleActivationUsageChanged : public CPackForClient
 		h & battleID;
 		h & side;
 		h & key;
+		h & scope;
+		h & stack;
 		h & period;
 		h & uses;
+	}
+
+protected:
+	void visitTyped(ICPackVisitor & visitor) override;
+};
+
+/// Absolute generic activation cooldown update. readyRound is deliberately not a decrementing counter.
+struct DLL_LINKAGE BattleActivationCooldownChanged : public CPackForClient
+{
+	BattleID battleID = BattleID::NONE;
+	BattleSide side = BattleSide::NONE;
+	std::string key;
+	EActivationLimitScope scope = EActivationLimitScope::STACK;
+	int32_t stack = -1;
+	int32_t readyRound = 0;
+
+	template <typename Handler> void serialize(Handler & h)
+	{
+		h & battleID;
+		h & side;
+		h & key;
+		h & scope;
+		h & stack;
+		h & readyRound;
 	}
 
 protected:

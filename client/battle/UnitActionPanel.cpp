@@ -12,6 +12,7 @@
 
 #include "BattleInterface.h"
 #include "BattleActionsController.h"
+#include "BattleStacksController.h"
 
 #include "../CPlayerInterface.h"
 #include "../GameEngine.h"
@@ -27,6 +28,8 @@
 
 #include "../../lib/CConfigHandler.h"
 #include "../../lib/CBonusTypeHandler.h"
+#include "../../lib/CCreatureHandler.h"
+#include "../../lib/CStack.h"
 #include "../../lib/GameLibrary.h"
 #include "../../lib/battle/CPlayerBattleCallback.h"
 #include "../../lib/bonuses/Bonus.h"
@@ -45,6 +48,14 @@ std::string focusCostText(int32_t focusCost)
 	MetaString text;
 	text.appendTextID(focusCost == 1 ? "vcmi.battle.focus.cost.one" : "vcmi.battle.focus.cost.many");
 	text.replaceNumber(focusCost);
+	return text.toString(&GAME->translator());
+}
+
+std::string cooldownText(int32_t rounds)
+{
+	MetaString text;
+	text.appendTextID(rounds == 1 ? "vcmi.battle.activation.cooldown.one" : "vcmi.battle.activation.cooldown.many");
+	text.replaceNumber(rounds);
 	return text.toString(&GAME->translator());
 }
 
@@ -97,11 +108,25 @@ std::shared_ptr<CIntObject> spellIcon(const CSpell * spell)
 	return std::make_shared<CAnimImage>(spellIcons, frame);
 }
 
-std::shared_ptr<CIntObject> actionIcon(const PossiblePlayerBattleAction & action)
+std::shared_ptr<CIntObject> actionIcon(const PossiblePlayerBattleAction & action, const CStack * stack = nullptr)
 {
 	const auto & source = action.source();
 	if(source)
 	{
+		if(source->type == BonusType::ENCHANTER && stack && stack->unitType())
+		{
+			const auto & creatureBonuses = stack->unitType()->getExportedBonusList();
+			const auto abilityIcon = std::ranges::find_if(creatureBonuses, [](const auto & bonus)
+			{
+				return bonus->type == BonusType::NONE && bonus->description.toString(&GAME->translator()).starts_with("{.Enchanter.}");
+			});
+			if(abilityIcon != creatureBonuses.end())
+			{
+				const ImagePath icon = LIBRARY->bth->bonusToGraphics(*abilityIcon);
+				if(!icon.empty())
+					return std::make_shared<CPicture>(icon);
+			}
+		}
 		const ImagePath bonusIcon = LIBRARY->bth->bonusToGraphics(std::const_pointer_cast<Bonus>(source));
 		if(!bonusIcon.empty())
 			return std::make_shared<CPicture>(bonusIcon);
@@ -188,6 +213,11 @@ bool UnitActionPanel::updateButton(ActionButton & button)
 	const auto focusedAction = std::ranges::find_if(button.actions, [](const auto & action) { return action.focusCost() > 0; });
 	const bool available = std::ranges::any_of(button.actions, [](const auto & action) { return action.isActivationAvailable(); });
 	const bool limitReached = std::ranges::any_of(button.actions, [](const auto & action) { return action.hasReachedActivationLimit(); });
+	const auto cooldownAction = std::ranges::max_element(button.actions, {}, [](const auto & action)
+	{
+		return action.hasActivationCooldown() ? action.activationCooldownRemaining() : 0;
+	});
+	const bool cooldownActive = cooldownAction != button.actions.end() && cooldownAction->hasActivationCooldown();
 	std::string hoverText = button.baseHoverText;
 	std::string helpText = button.baseHelpText;
 	if(focusedAction != button.actions.end())
@@ -195,7 +225,7 @@ bool UnitActionPanel::updateButton(ActionButton & button)
 		const std::string costText = focusCostText(focusedAction->focusCost());
 		hoverText += "\n" + costText;
 		helpText += "\n" + costText;
-		if(!available && !limitReached)
+		if(!available && !limitReached && !cooldownActive)
 		{
 			hoverText += "\n" + LIBRARY->generaltexth->translate("vcmi.battle.focus.insufficient");
 			helpText += "\n" + LIBRARY->generaltexth->translate("vcmi.battle.focus.insufficient");
@@ -205,6 +235,12 @@ bool UnitActionPanel::updateButton(ActionButton & button)
 	{
 		hoverText += "\n" + LIBRARY->generaltexth->translate("vcmi.battle.activation.limitReached");
 		helpText += "\n" + LIBRARY->generaltexth->translate("vcmi.battle.activation.limitReached");
+	}
+	if(cooldownActive)
+	{
+		const std::string cooldown = cooldownText(cooldownAction->activationCooldownRemaining());
+		hoverText += "\n" + cooldown;
+		helpText += "\n" + cooldown;
 	}
 
 	const bool deselected = !available && button.widget->isSelected();
@@ -294,7 +330,7 @@ void UnitActionPanel::testAndAddAbility(const PossiblePlayerBattleAction & actio
 		description = action.ability();
 	description = withActivationHeading(activationName(action, source), description);
 	auto button = std::make_shared<CToggleButton>(Point(2, 7 + 50 * index), AnimationPath::builtin("battleUnitAction"), CButton::tooltip(), callback);
-	auto icon = actionIcon(action);
+	auto icon = actionIcon(action, owner.stacksController->getActiveStack());
 	button->setOverlay(icon);
 	button->setAllowDeselection(true);
 	auto disabledOverlay = disabledActionOverlay(button, icon);
@@ -323,15 +359,19 @@ void UnitActionPanel::setPossibleActions(const std::vector<PossiblePlayerBattleA
 	testAndAddAction(newActions, actionsGenie, ImagePath::builtin("battle/actionGenie"), "vcmi.battle.action.genie");
 	testAndAddAction(newActions, actionsAttackLongWeapon, ImagePath::builtin("battle/actionLongWeapon"), "vcmi.battle.action.attackLongWeapon");
 
-	std::vector<SpellID> spells;
+	std::vector<const PossiblePlayerBattleAction *> spells;
 
 	for (const auto & action : newActions)
 		if (action.spellcast())
-			spells.push_back(action.spell());
+			spells.push_back(&action);
 
+	std::stable_sort(spells.begin(), spells.end(), [](const auto * lhs, const auto * rhs)
+	{
+		return lhs->focusCost() < rhs->focusCost();
+	});
 
-	for (const auto & spell : spells)
-		testAndAddSpell(newActions, spell);
+	for (const auto * spell : spells)
+		testAndAddSpell(newActions, spell->spell());
 
 	for(const auto & action : newActions)
 		if(action.isAbility())

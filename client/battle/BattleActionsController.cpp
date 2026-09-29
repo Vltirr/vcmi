@@ -248,8 +248,10 @@ bool BattleActionsController::isActiveStackSpellcaster() const
 	if (!casterStack)
 		return false;
 
-	bool spellcaster = casterStack->hasBonusOfType(BonusType::SPELLCASTER);
-	return (spellcaster && casterStack->canCast());
+	const bool spellcaster = casterStack->hasBonusOfType(BonusType::SPELLCASTER);
+	const bool activatedSpellcaster = std::ranges::any_of(*casterStack->getBonusesOfType(BonusType::SPELLCASTER),
+		[](const auto & bonus) { return bonus->activation.has_value(); });
+	return spellcaster && (casterStack->canCast() || activatedSpellcaster);
 }
 
 void BattleActionsController::enterCreatureCastingMode()
@@ -1249,8 +1251,12 @@ void BattleActionsController::tryActivateStackSpellcasting(const CStack * caster
 {
 	creatureSpells.clear();
 	TConstBonusListPtr bl = casterStack->getBonusesOfType(BonusType::SPELLCASTER);
+	const bool hasActivatedSpells = std::ranges::any_of(*bl, [](const auto & bonus)
+	{
+		return bonus->activation && bonus->subtype.as<SpellID>().hasValue();
+	});
 
-	if(casterStack->canCast() && !bl->empty())
+	if(casterStack->canCast() && !hasActivatedSpells && !bl->empty())
 	{
 		// faerie dragon can cast only one, randomly selected spell until their next move
 		//TODO: faerie dragon type spell should be selected by server
@@ -1262,7 +1268,7 @@ void BattleActionsController::tryActivateStackSpellcasting(const CStack * caster
 
 	for(const auto & bonus : *bl)
 	{
-		if(!bonus->parameters && bonus->subtype.as<SpellID>().hasValue())
+		if((bonus->activation || !bonus->parameters) && bonus->subtype.as<SpellID>().hasValue())
 			creatureSpells.push_back(bonus->subtype.as<SpellID>().toSpell());
 	}
 }
@@ -1350,6 +1356,8 @@ void BattleActionsController::onHexRightClicked(const BattleHex & clickedHex)
 	}
 
 	if(owner.windowObject->cancelSelectedUnitAction())
+		return;
+	if(clickedHex == BattleHex::INVALID)
 		return;
 
 	auto selectedStack = owner.getBattle()->battleGetStackByPos(clickedHex, true);

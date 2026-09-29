@@ -230,6 +230,37 @@ TEST_F(BonusActivationSchemaTest, acceptsAnIntegerFocusCost)
 	})"));
 }
 
+TEST_F(BonusActivationSchemaTest, acceptsZeroCostActivationWithoutFocus)
+{
+	EXPECT_TRUE(isValid(R"({
+		"type" : "SPELLCASTER",
+		"activation" : { }
+	})"));
+}
+
+TEST_F(BonusActivationSchemaTest, acceptsStackTurnLimitAndCooldown)
+{
+	EXPECT_TRUE(isValid(R"({
+		"type" : "ENCHANTER",
+		"activation" : {
+			"id" : "vcmi-test:enchanter",
+			"turn" : { "returnsControl" : true },
+			"limits" : [ { "scope" : "stack", "period" : "turn", "max" : 1 } ],
+			"cooldown" : { "scope" : "side", "initial" : 1, "afterUse" : 3 }
+		}
+	})"));
+}
+
+TEST_F(BonusActivationSchemaTest, rejectsSideTurnLimit)
+{
+	EXPECT_FALSE(isValid(R"({
+		"type" : "SPELLCASTER",
+		"activation" : {
+			"limits" : [ { "scope" : "side", "period" : "turn", "max" : 1 } ]
+		}
+	})"));
+}
+
 TEST_F(BonusActivationSchemaTest, acceptsAbilitySpecificReturnControl)
 {
 	EXPECT_TRUE(isValid(R"({

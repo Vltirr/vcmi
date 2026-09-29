@@ -638,18 +638,44 @@ int32_t BattleInfo::getEnchanterCounter(BattleSide side) const
 
 int32_t BattleInfo::getActivationUsage(BattleSide side, const std::string & key, EActivationLimitPeriod period) const
 {
-	const auto & usage = period == EActivationLimitPeriod::ROUND ? getSide(side).activationUsageRound : getSide(side).activationUsageBattle;
-	const auto it = usage.find(key);
-	return it == usage.end() ? 0 : it->second;
+	return getActivationUsage(side, ActivationStateKey{key, EActivationLimitScope::SIDE, -1, period});
 }
 
 void BattleInfo::setActivationUsage(BattleSide side, const std::string & key, EActivationLimitPeriod period, int32_t uses)
 {
-	auto & usage = period == EActivationLimitPeriod::ROUND ? getSide(side).activationUsageRound : getSide(side).activationUsageBattle;
+	setActivationUsage(side, ActivationStateKey{key, EActivationLimitScope::SIDE, -1, period}, uses);
+}
+
+int32_t BattleInfo::getActivationUsage(BattleSide side, const ActivationStateKey & key) const
+{
+	const auto & usage = getSide(side).activationUsage;
+	const auto it = usage.find(key);
+	return it == usage.end() ? 0 : it->second;
+}
+
+int32_t BattleInfo::getActivationCooldownReadyRound(BattleSide side, const ActivationStateKey & key) const
+{
+	const auto & cooldowns = getSide(side).activationCooldownReadyRound;
+	const auto it = cooldowns.find(key);
+	return it == cooldowns.end() ? 0 : it->second;
+}
+
+void BattleInfo::setActivationUsage(BattleSide side, const ActivationStateKey & key, int32_t uses)
+{
+	auto & usage = getSide(side).activationUsage;
 	if(uses > 0)
 		usage[key] = uses;
 	else
 		usage.erase(key);
+}
+
+void BattleInfo::setActivationCooldownReadyRound(BattleSide side, const ActivationStateKey & key, int32_t readyRound)
+{
+	auto & cooldowns = getSide(side).activationCooldownReadyRound;
+	if(readyRound > 0)
+		cooldowns[key] = readyRound;
+	else
+		cooldowns.erase(key);
 }
 
 const IBonusBearer * BattleInfo::getBonusBearer() const
@@ -692,7 +718,10 @@ void BattleInfo::nextRound()
 	{
 		sides.at(i).castSpellsCount = 0;
 		vstd::amax(--sides.at(i).enchanterCounter, 0);
-		sides.at(i).activationUsageRound.clear();
+		std::erase_if(sides.at(i).activationUsage, [](const auto & entry)
+		{
+			return entry.first.period == EActivationLimitPeriod::ROUND;
+		});
 	}
 	// first round starts right after pre-battle effects (built-in enchants, OPENING_BATTLE_SPELL)
 	// are applied, so skip the decrement here to grant them their full configured duration
@@ -717,6 +746,16 @@ void BattleInfo::nextTurn(uint32_t unitId, BattleUnitTurnReason reason)
 	activeStack = unitId;
 
 	CStack * st = getStack(activeStack);
+	const bool newOpportunity = reason == BattleUnitTurnReason::MORALE ||
+		(reason == BattleUnitTurnReason::TURN_QUEUE && !st->waiting);
+	if(newOpportunity)
+	{
+		for(auto side : {BattleSide::ATTACKER, BattleSide::DEFENDER})
+			std::erase_if(sides.at(side).activationUsage, [unitId](const auto & entry)
+			{
+				return entry.first.period == EActivationLimitPeriod::TURN && entry.first.stack == static_cast<int32_t>(unitId);
+			});
+	}
 
 	if (reason != BattleUnitTurnReason::UNIT_SPELLCAST)
 	{

@@ -18,6 +18,7 @@
 #include "../../lib/battle/SideInBattle.h"
 #include "../../lib/serializer/CMemorySerializer.h"
 #include "../../lib/serializer/ESerializationVersion.h"
+#include "../../client/replay/ReplayPackFilter.h"
 
 #include "../mock/BattleFake.h"
 #include "../../AI/BattleAI/StackWithBonuses.h"
@@ -204,34 +205,75 @@ TEST(FocusRulesTest, activationUsageNetworkUpdateChangesHypotheticalBattleState)
 	BattleActivationUsageChanged pack;
 	pack.side = BattleSide::DEFENDER;
 	pack.key = "focus-demo:wraithManaDrain";
+	pack.scope = EActivationLimitScope::STACK;
+	pack.stack = 42;
 	pack.period = EActivationLimitPeriod::BATTLE;
 	pack.uses = 2;
 
-	EXPECT_CALL(battle, setActivationUsage(BattleSide::DEFENDER, pack.key, EActivationLimitPeriod::BATTLE, 2));
+	EXPECT_CALL(battle, setActivationUsage(BattleSide::DEFENDER,
+		ActivationStateKey{pack.key, pack.scope, pack.stack, pack.period}, 2));
 	battle.accept(pack);
+}
+
+TEST(FocusRulesTest, cooldownNetworkUpdateChangesHypotheticalBattleState)
+{
+	test::battle::BattleFake battle;
+	BattleActivationCooldownChanged pack;
+	pack.side = BattleSide::ATTACKER;
+	pack.key = "focus-demo:enchanter";
+	pack.scope = EActivationLimitScope::SIDE;
+	pack.stack = -1;
+	pack.readyRound = 5;
+
+	EXPECT_CALL(battle, setActivationCooldownReadyRound(BattleSide::ATTACKER,
+		ActivationStateKey{pack.key, pack.scope, pack.stack, EActivationLimitPeriod::BATTLE}, 5));
+	battle.accept(pack);
+}
+
+TEST(FocusRulesTest, activationStatePacketsAreBattleReplayPackets)
+{
+	BattleActivationUsageChanged usagePack;
+	BattleActivationCooldownChanged cooldownPack;
+	EXPECT_EQ(ReplayPackFilter::classify(usagePack), EReplayPackKind::BATTLE);
+	EXPECT_EQ(ReplayPackFilter::classify(cooldownPack), EReplayPackKind::BATTLE);
 }
 
 TEST(FocusRulesTest, hypotheticalNextRoundResetsOnlyRoundActivationUsage)
 {
 	auto realBattle = std::make_shared<NiceMock<test::battle::BattleFake>>();
-	ON_CALL(*realBattle, getActivationUsage(BattleSide::ATTACKER, "roundAbility", EActivationLimitPeriod::ROUND)).WillByDefault(Return(1));
-	ON_CALL(*realBattle, getActivationUsage(BattleSide::ATTACKER, "battleAbility", EActivationLimitPeriod::BATTLE)).WillByDefault(Return(2));
+	const ActivationStateKey roundKey{"roundAbility", EActivationLimitScope::STACK, 7, EActivationLimitPeriod::ROUND};
+	const ActivationStateKey battleKey{"battleAbility", EActivationLimitScope::SIDE, -1, EActivationLimitPeriod::BATTLE};
+	const ActivationStateKey cooldownKey{"cooldownAbility", EActivationLimitScope::SIDE, -1, EActivationLimitPeriod::BATTLE};
+	ON_CALL(*realBattle, getRound()).WillByDefault(Return(2));
+	ON_CALL(*realBattle, getActivationUsage(BattleSide::ATTACKER, roundKey)).WillByDefault(Return(1));
+	ON_CALL(*realBattle, getActivationUsage(BattleSide::ATTACKER, battleKey)).WillByDefault(Return(2));
+	ON_CALL(*realBattle, getActivationCooldownReadyRound(BattleSide::ATTACKER, cooldownKey)).WillByDefault(Return(4));
 
 	HypotheticBattle hypothetical(nullptr, realBattle);
-	EXPECT_EQ(hypothetical.getActivationUsage(BattleSide::ATTACKER, "roundAbility", EActivationLimitPeriod::ROUND), 1);
-	EXPECT_EQ(hypothetical.getActivationUsage(BattleSide::ATTACKER, "battleAbility", EActivationLimitPeriod::BATTLE), 2);
+	EXPECT_EQ(hypothetical.getRound(), 2);
+	EXPECT_EQ(hypothetical.getActivationUsage(BattleSide::ATTACKER, roundKey), 1);
+	EXPECT_EQ(hypothetical.getActivationUsage(BattleSide::ATTACKER, battleKey), 2);
+	EXPECT_EQ(hypothetical.getActivationCooldownReadyRound(BattleSide::ATTACKER, cooldownKey) - hypothetical.getRound(), 2);
 
 	hypothetical.nextRound();
 
-	EXPECT_EQ(hypothetical.getActivationUsage(BattleSide::ATTACKER, "roundAbility", EActivationLimitPeriod::ROUND), 0);
-	EXPECT_EQ(hypothetical.getActivationUsage(BattleSide::ATTACKER, "battleAbility", EActivationLimitPeriod::BATTLE), 2);
+	EXPECT_EQ(hypothetical.getRound(), 3);
+	EXPECT_EQ(hypothetical.getActivationUsage(BattleSide::ATTACKER, roundKey), 0);
+	EXPECT_EQ(hypothetical.getActivationUsage(BattleSide::ATTACKER, battleKey), 2);
+	EXPECT_EQ(hypothetical.getActivationCooldownReadyRound(BattleSide::ATTACKER, cooldownKey) - hypothetical.getRound(), 1);
+
+	hypothetical.nextRound();
+	EXPECT_EQ(hypothetical.getRound(), 4);
+	EXPECT_EQ(hypothetical.getActivationCooldownReadyRound(BattleSide::ATTACKER, cooldownKey) - hypothetical.getRound(), 0);
 }
 
-TEST(FocusRulesTest, serializesSharedActivationUsage)
+TEST(FocusRulesTest, serializesActivationUsageAndCooldown)
 {
 	SideInBattle source(nullptr);
-	source.activationUsageBattle["focus-demo:resurrection"] = 1;
-	source.activationUsageRound["focus-demo:thunderbolt"] = 1;
+	source.activationUsage[{"focus-demo:resurrection", EActivationLimitScope::SIDE, -1, EActivationLimitPeriod::BATTLE}] = 1;
+	source.activationUsage[{"focus-demo:thunderbolt", EActivationLimitScope::STACK, 8, EActivationLimitPeriod::ROUND}] = 1;
+	source.activationCooldownReadyRound[{"focus-demo:enchanter", EActivationLimitScope::SIDE, -1, EActivationLimitPeriod::BATTLE}] = 5;
+	source.activationCooldownReadyRound[{"focus-demo:stackSpell", EActivationLimitScope::STACK, 8, EActivationLimitPeriod::BATTLE}] = 7;
 
 	CMemorySerializer memory;
 	memory.oser.version = ESerializationVersion::CURRENT;
@@ -240,11 +282,26 @@ TEST(FocusRulesTest, serializesSharedActivationUsage)
 
 	SideInBattle restored(nullptr);
 	memory.iser & restored;
-	EXPECT_EQ(restored.activationUsageBattle.at("focus-demo:resurrection"), 1);
-	EXPECT_EQ(restored.activationUsageRound.at("focus-demo:thunderbolt"), 1);
+	EXPECT_EQ(restored.activationUsage.at({"focus-demo:resurrection", EActivationLimitScope::SIDE, -1, EActivationLimitPeriod::BATTLE}), 1);
+	EXPECT_EQ(restored.activationUsage.at({"focus-demo:thunderbolt", EActivationLimitScope::STACK, 8, EActivationLimitPeriod::ROUND}), 1);
+	EXPECT_EQ(restored.activationCooldownReadyRound.at({"focus-demo:enchanter", EActivationLimitScope::SIDE, -1, EActivationLimitPeriod::BATTLE}), 5);
+	EXPECT_EQ(restored.activationCooldownReadyRound.at({"focus-demo:stackSpell", EActivationLimitScope::STACK, 8, EActivationLimitPeriod::BATTLE}), 7);
 }
 
-TEST(FocusRulesTest, concreteAbilityCanReturnControlWithoutChangingSpell)
+TEST(FocusRulesTest, activationTurnReturnsControlTakesPrecedenceOverLegacyFallback)
+{
+	test::MockCStack stack;
+	const auto bloodlust = SpellID(SpellID::BLOODLUST);
+	auto source = activationSource(BonusType::SPELLCASTER, BonusSubtypeID(bloodlust));
+	source->actionReturnsControl = true;
+	source->activation->turn = ActivationTurn{false};
+	stack.addNewBonus(source);
+
+	EXPECT_FALSE(battle::actionReturnsControl(&stack, EActionType::MONSTER_SPELL, bloodlust));
+	EXPECT_FALSE(battle::actionReturnsControl(&stack, EActionType::CATAPULT, SpellID::NONE));
+}
+
+TEST(FocusRulesTest, legacyReturnControlRemainsFallbackWithoutActivationTurn)
 {
 	test::MockCStack stack;
 	const auto bloodlust = SpellID(SpellID::BLOODLUST);
@@ -253,7 +310,6 @@ TEST(FocusRulesTest, concreteAbilityCanReturnControlWithoutChangingSpell)
 	stack.addNewBonus(source);
 
 	EXPECT_TRUE(battle::actionReturnsControl(&stack, EActionType::MONSTER_SPELL, bloodlust));
-	EXPECT_FALSE(battle::actionReturnsControl(&stack, EActionType::CATAPULT, SpellID::NONE));
 }
 
 TEST(FocusRulesTest, serializesSelectedAbilityInBattleAction)

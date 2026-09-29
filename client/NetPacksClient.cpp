@@ -914,6 +914,11 @@ void ApplyClientNetPackVisitor::visitBattleActivationUsageChanged(BattleActivati
 	callBattleInterfaceIfPresentForBothSides(cl, pack.battleID, &IBattleEventsReceiver::battleFocusChanged, pack.battleID);
 }
 
+void ApplyClientNetPackVisitor::visitBattleActivationCooldownChanged(BattleActivationCooldownChanged & pack)
+{
+	callBattleInterfaceIfPresentForBothSides(cl, pack.battleID, &IBattleEventsReceiver::battleFocusChanged, pack.battleID);
+}
+
 void ApplyClientNetPackVisitor::visitBattleUnitsChanged(BattleUnitsChanged & pack)
 {
 	callBattleInterfaceIfPresentForBothSides(cl, pack.battleID, &IBattleEventsReceiver::battleUnitsChanged, pack.battleID, pack.changedStacks);

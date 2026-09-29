@@ -272,10 +272,7 @@ void BattleFieldController::clickPressed(const Point & cursorPosition)
 
 void BattleFieldController::showPopupWindow(const Point & cursorPosition)
 {
-	BattleHex selectedHex = getHoveredHex();
-
-	if (selectedHex != BattleHex::INVALID)
-		owner.actionsController->onHexRightClicked(selectedHex);
+	owner.actionsController->onHexRightClicked(getHoveredHex());
 }
 
 void BattleFieldController::renderBattlefield(Canvas & canvas)
@@ -450,7 +447,10 @@ BattleHexArray BattleFieldController::getHighlightedHexesForMovementTarget()
 
 	bool canReach = owner.getBattle()->battleCanAttackHex(availableHexes, stack, hoveredHex);
 	bool canAttack = canReach && (owner.getBattle()->battleCanAttackUnit(stack, hoveredStack));
-	bool adjacentSpellCaster = stack->hasBonusOfType(BonusType::ADJACENT_SPELLCASTER) && stack->canCast();
+	const bool activatedAdjacentSpellCaster = std::ranges::any_of(*stack->getBonusesOfType(BonusType::ADJACENT_SPELLCASTER),
+		[](const auto & bonus) { return bonus->activation.has_value(); });
+	bool adjacentSpellCaster = stack->hasBonusOfType(BonusType::ADJACENT_SPELLCASTER) &&
+		(stack->canCast() || activatedAdjacentSpellCaster);
 	bool canCastAdjacentSpell = false;
 	if (canReach && adjacentSpellCaster && hoveredStack)
 	{

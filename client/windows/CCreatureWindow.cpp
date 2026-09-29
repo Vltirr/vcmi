@@ -35,6 +35,9 @@
 #include "../../lib/CBonusTypeHandler.h"
 #include "../../lib/CStack.h"
 #include "../../lib/GameLibrary.h"
+#include "../../lib/battle/Activation.h"
+#include "../../lib/battle/BattleInfo.h"
+#include "../../lib/battle/CPlayerBattleCallback.h"
 #include "../../lib/IGameSettings.h"
 #include "../../lib/bonuses/Propagators.h"
 #include "../../lib/callback/CCallback.h"
@@ -48,6 +51,59 @@
 #include "../../lib/texts/TextOperations.h"
 #include "../../lib/texts/Languages.h"
 
+namespace
+{
+
+std::string activationCooldownText(const std::string & suffix, int32_t rounds)
+{
+	MetaString text;
+	text.appendTextID(rounds == 1 ? "vcmi.battle.activation.cooldown." + suffix + ".one" : "vcmi.battle.activation.cooldown." + suffix + ".many");
+	text.replaceNumber(rounds);
+	return text.toString(&GAME->translator());
+}
+
+std::optional<EActionType> activationActionForBonus(const Bonus & bonus)
+{
+	switch(bonus.type)
+	{
+		case BonusType::SPELLCASTER:
+		case BonusType::RANDOM_SPELLCASTER:
+			return EActionType::MONSTER_SPELL;
+		case BonusType::SPELL_AFTER_ATTACK:
+		case BonusType::COMBAT_EVENT_TRIGGER:
+			return EActionType::WALK_AND_ATTACK;
+		case BonusType::HEALER:
+			return EActionType::STACK_HEAL;
+		case BonusType::CATAPULT:
+			return EActionType::CATAPULT;
+		case BonusType::ADJACENT_SPELLCASTER:
+			return EActionType::WALK_AND_CAST;
+		case BonusType::ENCHANTER:
+		case BonusType::MANA_DRAIN:
+			return EActionType::CREATURE_ABILITY;
+		default:
+			return std::nullopt;
+	}
+}
+
+int32_t activationCooldownRemaining(const CStack * stack, const std::shared_ptr<Bonus> & bonus)
+{
+	if(!stack || !bonus->activation || !bonus->activation->cooldown || !CPlayerInterface::battleInt)
+		return 0;
+
+	const auto action = activationActionForBonus(*bonus);
+	const auto battle = CPlayerInterface::battleInt->getBattle();
+	if(!action || !battle || !stack->getBattle() || battle->getBattle()->getBattleID() != stack->getBattle()->getBattleID())
+		return 0;
+
+	const SpellID spell = bonus->subtype.as<SpellID>();
+	const std::string ability = (*action == EActionType::CREATURE_ABILITY || *action == EActionType::WALK_AND_ATTACK)
+		? bonus->activation->id
+		: std::string();
+	return battle::resolveActivation(*battle, stack, *action, spell, ability).cooldownRoundsRemaining;
+}
+
+}
 
 class UnitView
 {
@@ -328,6 +384,7 @@ CStackWindow::BonusLineSection::BonusLineSection(CStackWindow * owner, size_t li
 				icon[leftRight] = std::make_shared<CPicture>(bi.imagePath, position.x, position.y);
 
 			description[leftRight] = std::make_shared<CMultiLineLabel>(Rect(position.x + 60, position.y, 137, 50), FONT_TINY, ETextAlignment::TOPLEFT, Colors::WHITE, bi.description);
+			tooltip[leftRight] = std::make_shared<LRClickableAreaWText>(Rect(position, Point(197, 52)), bi.description, bi.description);
 			drawBonusSource(leftRight, Point(position.x - 1, position.y - 1), bi);
 		}
 	}
@@ -996,20 +1053,47 @@ void CStackWindow::initBonusesList()
 	? static_cast<const IBonusBearer*>(info->stack)  // Use CStack in battle
 	: static_cast<const IBonusBearer*>(info->stackNode);  // Use CStackInstance outside of battle
 
-	auto bonusToString = [bonusSource](const std::shared_ptr<Bonus> & bonus) -> std::string
+	std::shared_ptr<Bonus> enchanterActivation;
+	auto isEnchanterLabel = [](const std::shared_ptr<Bonus> & bonus)
+	{
+		return bonus->type == BonusType::NONE && bonus->description.toString(&GAME->translator()).starts_with("{.Enchanter.}");
+	};
+	auto bonusToString = [this, bonusSource, &enchanterActivation, isEnchanterLabel](const std::shared_ptr<Bonus> & bonus) -> std::string
 	{
 		std::string description;
-		if(!bonus->description.empty())
+		const auto & activationBonus = isEnchanterLabel(bonus) && enchanterActivation ? enchanterActivation : bonus;
+		if(isEnchanterLabel(bonus) && enchanterActivation)
+		{
+			description = "{" + LIBRARY->generaltexth->translate("vcmi.bonus.ENCHANTER.activatedName") + "}\n";
+			description += LIBRARY->generaltexth->translate("vcmi.bonus.ENCHANTER.activatedDescription");
+		}
+		else if(bonus->type == BonusType::ENCHANTER && bonus->activation)
+		{
+			description = LIBRARY->generaltexth->translate("core.bonus.ENCHANTER.description");
+			if(const SpellID spell = bonus->subtype.as<SpellID>(); spell.hasValue())
+				boost::algorithm::replace_all(description, "${subtype.spell}", spell.toSpell()->getNameTranslated());
+		}
+		else if(!bonus->description.empty())
 			description = bonus->description.toString(&GAME->translator());
 		else
 			description = LIBRARY->getBth()->bonusToString(bonus, bonusSource);
 
-		if(bonus->activation && bonus->activation->costs.focus > 0)
+		if(activationBonus->activation && activationBonus->activation->costs.focus > 0)
 		{
 			MetaString cost;
-			cost.appendTextID(bonus->activation->costs.focus == 1 ? "vcmi.battle.focus.cost.one" : "vcmi.battle.focus.cost.many");
-			cost.replaceNumber(bonus->activation->costs.focus);
+			cost.appendTextID(activationBonus->activation->costs.focus == 1 ? "vcmi.battle.focus.cost.one" : "vcmi.battle.focus.cost.many");
+			cost.replaceNumber(activationBonus->activation->costs.focus);
 			description += "\n" + cost.toString(&GAME->translator());
+		}
+		if(activationBonus->activation && activationBonus->activation->cooldown)
+		{
+			const auto & cooldown = *activationBonus->activation->cooldown;
+			if(cooldown.initial > 0)
+				description += "\n" + activationCooldownText("initial", cooldown.initial);
+			if(cooldown.afterUse > 0)
+				description += "\n" + activationCooldownText("afterUse", cooldown.afterUse);
+			if(const int32_t remaining = activationCooldownRemaining(info->stack, activationBonus); remaining > 0)
+				description += "\n" + activationCooldownText("remaining", remaining);
 		}
 		return description;
 	};
@@ -1093,10 +1177,37 @@ void CStackWindow::initBonusesList()
 	}
 
 	std::sort(visibleBonuses.begin(), visibleBonuses.end(), bonusSortingPredicate);
+	// Reorder only the activated creature spells, leaving unrelated abilities in their existing slots.
+	std::vector<std::shared_ptr<Bonus>> activatedSpells;
+	auto isActivatedSpell = [](const std::shared_ptr<Bonus> & bonus)
+	{
+		return bonus->type == BonusType::SPELLCASTER && bonus->activation;
+	};
+	for(const auto & bonus : visibleBonuses)
+		if(isActivatedSpell(bonus))
+			activatedSpells.push_back(bonus);
+	std::stable_sort(activatedSpells.begin(), activatedSpells.end(), [](const auto & lhs, const auto & rhs)
+	{
+		return lhs->activation->costs.focus < rhs->activation->costs.focus;
+	});
+	size_t spellIndex = 0;
+	for(auto & bonus : visibleBonuses)
+		if(isActivatedSpell(bonus))
+			bonus = activatedSpells[spellIndex++];
 
+	const auto activatedEnchanter = std::ranges::find_if(visibleBonuses, [](const auto & bonus)
+	{
+		return bonus->type == BonusType::ENCHANTER && bonus->activation;
+	});
+	if(activatedEnchanter != visibleBonuses.end())
+		enchanterActivation = *activatedEnchanter;
+
+	std::set<std::string> displayedActivationIDs;
 	BonusInfo bonusInfo;
 	for(auto b : visibleBonuses)
 	{
+		if(b->type != BonusType::ENCHANTER && b->activation && !b->activation->id.empty() && !displayedActivationIDs.insert(b->activation->id).second)
+			continue;
 		bonusInfo.description = bonusToString(b);
 		//FIXME: we possibly use fakeNode, which does not have the correct bonus value
 		bonusInfo.imagePath = info->stackNode->bonusToGraphics(b);

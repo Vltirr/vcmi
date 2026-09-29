@@ -33,27 +33,60 @@ void BattleProxy::setFocusPoints(BattleSide side, int32_t points)
 
 int32_t BattleProxy::getActivationUsage(BattleSide side, const std::string & key, EActivationLimitPeriod period) const
 {
-	const auto index = std::make_tuple(side, key, period);
+	return getActivationUsage(side, ActivationStateKey{key, EActivationLimitScope::SIDE, -1, period});
+}
+
+int32_t BattleProxy::getActivationUsage(BattleSide side, const ActivationStateKey & key) const
+{
+	const auto index = std::make_pair(side, key);
 	const auto it = activationUsage.find(index);
 	if(it != activationUsage.end())
 		return it->second;
-	if(period == EActivationLimitPeriod::ROUND && activationUsageRoundReset)
+	if(key.period == EActivationLimitPeriod::ROUND && activationUsageRoundReset)
 		return 0;
-	return subject->getBattle()->getActivationUsage(side, key, period);
+	if(key.period == EActivationLimitPeriod::TURN && activationUsageTurnReset.contains(key.stack))
+		return 0;
+	return subject->getBattle()->getActivationUsage(side, key);
 }
 
 void BattleProxy::setActivationUsage(BattleSide side, const std::string & key, EActivationLimitPeriod period, int32_t uses)
 {
-	activationUsage[std::make_tuple(side, key, period)] = std::max(0, uses);
+	setActivationUsage(side, ActivationStateKey{key, EActivationLimitScope::SIDE, -1, period}, uses);
+}
+
+void BattleProxy::setActivationUsage(BattleSide side, const ActivationStateKey & key, int32_t uses)
+{
+	activationUsage[std::make_pair(side, key)] = std::max(0, uses);
+}
+
+int32_t BattleProxy::getActivationCooldownReadyRound(BattleSide side, const ActivationStateKey & key) const
+{
+	const auto index = std::make_pair(side, key);
+	const auto it = activationCooldownReadyRound.find(index);
+	return it == activationCooldownReadyRound.end() ? subject->getBattle()->getActivationCooldownReadyRound(side, key) : it->second;
+}
+
+void BattleProxy::setActivationCooldownReadyRound(BattleSide side, const ActivationStateKey & key, int32_t readyRound)
+{
+	activationCooldownReadyRound[std::make_pair(side, key)] = std::max(0, readyRound);
 }
 
 void BattleProxy::resetActivationUsageRound()
 {
 	std::erase_if(activationUsage, [](const auto & entry)
 	{
-		return std::get<2>(entry.first) == EActivationLimitPeriod::ROUND;
+		return entry.first.second.period == EActivationLimitPeriod::ROUND;
 	});
 	activationUsageRoundReset = true;
+}
+
+void BattleProxy::resetActivationUsageTurn(int32_t stack)
+{
+	std::erase_if(activationUsage, [stack](const auto & entry)
+	{
+		return entry.first.second.period == EActivationLimitPeriod::TURN && entry.first.second.stack == stack;
+	});
+	activationUsageTurnReset.insert(stack);
 }
 
 BattleProxy::BattleProxy(Subject subject_): 
@@ -165,4 +198,3 @@ const IBonusBearer * BattleProxy::getBonusBearer() const
 {
 	return subject->getBonusBearer();
 }
-

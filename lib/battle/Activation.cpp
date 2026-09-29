@@ -88,25 +88,89 @@ int32_t battle::getActivationFocusCost(const CStack * stack, EActionType action,
 	return source && source->activation ? source->activation->costs.focus : 0;
 }
 
+static std::string nativeActivationIdentity(const Bonus * source, EActionType action, const SpellID & spell, const std::string & ability)
+{
+	if(!ability.empty())
+		return ability;
+	if(source && source->activation && !source->activation->id.empty())
+		return source->activation->id;
+	const auto spellKey = [&]()
+	{
+		return spell.hasValue() ? spell.toSpell()->getJsonKey() : std::string();
+	};
+	switch(action)
+	{
+		case EActionType::MONSTER_SPELL:
+			return source && source->type == BonusType::RANDOM_SPELLCASTER ? "randomSpellcaster" : "monsterSpell:" + spellKey();
+		case EActionType::WALK_AND_CAST: return "walkAndCast:" + spellKey();
+		case EActionType::STACK_HEAL:
+			return source && source->subtype.as<SpellID>().hasValue() ? "heal:" + source->subtype.as<SpellID>().toSpell()->getJsonKey() : "heal";
+		case EActionType::CATAPULT: return "catapult";
+		default: return {};
+	}
+}
+
+static ActivationStateKey activationStateKey(const std::string & key, EActivationLimitScope scope, EActivationLimitPeriod period, const CStack * stack)
+{
+	return {key, scope, scope == EActivationLimitScope::STACK && stack ? static_cast<int32_t>(stack->unitId()) : -1, period};
+}
+
+battle::ActivationResolution battle::resolveActivation(const CBattleInfoCallback & battle, const CStack * stack, EActionType action, const SpellID & spell, const std::string & ability)
+{
+	ActivationResolution result;
+	result.source = getActivationSource(stack, action, spell, ability);
+	if(!result.source || !result.source->activation)
+	{
+		result.identity = nativeActivationIdentity(result.source.get(), action, spell, ability);
+		result.returnsControl = action == EActionType::MONSTER_SPELL && spell.hasValue() && spell.toSpell()->canCastWithoutSkip();
+		return result;
+	}
+	const auto & activation = *result.source->activation;
+	result.identity = nativeActivationIdentity(result.source.get(), action, spell, ability);
+	result.focusCost = activation.costs.focus;
+	result.returnsControl = activation.turn ? activation.turn->returnsControl : result.source->actionReturnsControl;
+	const auto side = focusSide(battle, stack);
+	result.focusAvailable = result.focusCost == 0 || (battle.getBattle()->getFocusRules().enabled && battle.getFocusCharges(side) >= result.focusCost);
+	for(const auto & limit : activation.limits)
+	{
+		const auto key = limit.key.empty() ? result.identity : limit.key;
+		const auto stateKey = activationStateKey(key, limit.scope, limit.period, stack);
+		result.limits.push_back(stateKey);
+		if(battle.getBattle()->getActivationUsage(side, stateKey) >= limit.max)
+			result.limitsAvailable = false;
+	}
+	if(activation.cooldown)
+	{
+		const auto & cooldown = *activation.cooldown;
+		EActivationLimitScope scope = EActivationLimitScope::STACK;
+		if(cooldown.scope)
+			scope = *cooldown.scope;
+		else if(!activation.limits.empty())
+		{
+			scope = activation.limits.front().scope;
+			for(const auto & limit : activation.limits)
+				if(limit.scope != scope)
+					return result; // malformed mixed scope is rejected by loader
+		}
+		const auto key = cooldown.key.empty() ? result.identity : cooldown.key;
+		result.cooldown = activationStateKey(key, scope, EActivationLimitPeriod::BATTLE, stack);
+		const int32_t readyRound = std::max(battle.getBattle()->getActivationCooldownReadyRound(side, *result.cooldown), cooldown.initial + 1);
+		result.cooldownRoundsRemaining = std::max(0, readyRound - battle.getBattle()->getRound());
+		result.cooldownAvailable = result.cooldownRoundsRemaining == 0;
+	}
+	return result;
+}
+
 bool battle::areActivationLimitsAvailable(const CBattleInfoCallback & battle, const CStack * stack, EActionType action, const SpellID & spell, const std::string & ability)
 {
-	const auto source = getActivationSource(stack, action, spell, ability);
-	if(!source || !source->activation)
-		return true;
-
-	const auto side = focusSide(battle, stack);
-	for(const auto & limit : source->activation->limits)
-	{
-		if(limit.scope == EActivationLimitScope::SIDE &&
-			battle.getBattle()->getActivationUsage(side, limit.key, limit.period) >= limit.max)
-			return false;
-	}
-	return true;
+	return resolveActivation(battle, stack, action, spell, ability).limitsAvailable;
 }
 
 bool battle::actionReturnsControl(const CStack * stack, EActionType action, const SpellID & spell, const std::string & ability)
 {
 	const auto source = getActivationSource(stack, action, spell, ability);
+	if(source && source->activation && source->activation->turn)
+		return source->activation->turn->returnsControl;
 	if(source && source->actionReturnsControl)
 		return true;
 	return action == EActionType::MONSTER_SPELL && spell.hasValue() && spell.toSpell()->canCastWithoutSkip();
@@ -170,27 +234,44 @@ bool battle::isActivationTargetAvailable(const CBattleInfoCallback & battle, con
 
 bool battle::isActivationAvailable(const CBattleInfoCallback & battle, const CStack * stack, EActionType action, const SpellID & spell, const std::string & ability)
 {
-	if(stack && stack->castSpellThisTurn && actionReturnsControl(stack, action, spell, ability))
-		return false;
-	const int32_t focusCost = getActivationFocusCost(stack, action, spell, ability);
-	const bool focusAvailable = focusCost == 0 || !battle.getBattle()->getFocusRules().enabled ||
-		battle.getFocusCharges(focusSide(battle, stack)) >= focusCost;
-	return focusAvailable && areActivationLimitsAvailable(battle, stack, action, spell, ability);
+	return resolveActivation(battle, stack, action, spell, ability).available();
 }
 
 void ServerCallback::changeActivationUsage(const IBattleInfoCallback & battle, BattleSide side, const std::string & key, EActivationLimitPeriod period, int32_t delta)
 {
-	if(!battle.getBattle() || key.empty() || (side != BattleSide::ATTACKER && side != BattleSide::DEFENDER))
+	const ActivationStateKey stateKey{key, EActivationLimitScope::SIDE, -1, period};
+	const auto current = battle.getBattle() ? battle.getBattle()->getActivationUsage(side, stateKey) : 0;
+	setActivationUsage(battle, side, stateKey, static_cast<int32_t>(std::clamp<int64_t>(static_cast<int64_t>(current) + delta, 0, std::numeric_limits<int32_t>::max())));
+}
+
+void ServerCallback::setActivationUsage(const IBattleInfoCallback & battle, BattleSide side, const ActivationStateKey & key, int32_t uses)
+{
+	if(!battle.getBattle() || key.key.empty() || (side != BattleSide::ATTACKER && side != BattleSide::DEFENDER))
 		return;
 	BattleActivationUsageChanged pack;
 	pack.battleID = battle.getBattle()->getBattleID();
 	pack.side = side;
-	pack.key = key;
-	pack.period = period;
-	const auto current = battle.getBattle()->getActivationUsage(side, key, period);
-	pack.uses = static_cast<int32_t>(std::clamp<int64_t>(static_cast<int64_t>(current) + delta, 0,
-		std::numeric_limits<int32_t>::max()));
-	if(pack.uses != battle.getBattle()->getActivationUsage(side, key, period))
+	pack.key = key.key;
+	pack.scope = key.scope;
+	pack.stack = key.stack;
+	pack.period = key.period;
+	pack.uses = std::max(0, uses);
+	if(pack.uses != battle.getBattle()->getActivationUsage(side, key))
+		apply(pack);
+}
+
+void ServerCallback::setActivationCooldownReadyRound(const IBattleInfoCallback & battle, BattleSide side, const ActivationStateKey & key, int32_t readyRound)
+{
+	if(!battle.getBattle() || key.key.empty() || (side != BattleSide::ATTACKER && side != BattleSide::DEFENDER))
+		return;
+	BattleActivationCooldownChanged pack;
+	pack.battleID = battle.getBattle()->getBattleID();
+	pack.side = side;
+	pack.key = key.key;
+	pack.scope = key.scope;
+	pack.stack = key.stack;
+	pack.readyRound = std::max(0, readyRound);
+	if(pack.readyRound != battle.getBattle()->getActivationCooldownReadyRound(side, key))
 		apply(pack);
 }
 

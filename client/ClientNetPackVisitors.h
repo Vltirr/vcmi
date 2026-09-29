@@ -86,6 +86,7 @@ public:
 	void visitBattleEnded(BattleEnded & pack) override;
 	void visitBattleFocusChanged(BattleFocusChanged & pack) override;
 	void visitBattleActivationUsageChanged(BattleActivationUsageChanged & pack) override;
+	void visitBattleActivationCooldownChanged(BattleActivationCooldownChanged & pack) override;
 	void visitBattleUnitsChanged(BattleUnitsChanged & pack) override;
 	void visitBattleObstaclesChanged(BattleObstaclesChanged & pack) override;
 	void visitCatapultAttack(CatapultAttack & pack) override;

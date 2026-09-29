@@ -1447,7 +1447,11 @@ void GameStatePackVisitor::visitStartAction(StartAction & pack)
 					st->waiting = false;
 					st->movedThisRound = true;
 				}
-				st->castSpellThisTurn = true;
+				// An activation owns its repetition policy through its resolved limits.  It
+				// must not acquire the native per-turn spell marker as a hidden second cap.
+				const auto source = battle::getActivationSource(st, pack.ba.actionType, pack.ba.spell, pack.ba.activatedAbility);
+				if(!source || !source->activation)
+					st->castSpellThisTurn = true;
 				break;
 			}
 			case EActionType::HERO_SPELL: //no change in current stack state
@@ -1504,6 +1508,12 @@ void GameStatePackVisitor::visitBattleActivationUsageChanged(BattleActivationUsa
 {
 	BattleStatePackVisitor battleVisitor(*gs.getBattle(pack.battleID));
 	battleVisitor.visitBattleActivationUsageChanged(pack);
+}
+
+void GameStatePackVisitor::visitBattleActivationCooldownChanged(BattleActivationCooldownChanged & pack)
+{
+	BattleStatePackVisitor battleVisitor(*gs.getBattle(pack.battleID));
+	battleVisitor.visitBattleActivationCooldownChanged(pack);
 }
 
 void GameStatePackVisitor::restorePreBattleState(BattleID battleID)
@@ -1807,5 +1817,10 @@ void BattleStatePackVisitor::visitBattleFocusChanged(BattleFocusChanged & pack)
 
 void BattleStatePackVisitor::visitBattleActivationUsageChanged(BattleActivationUsageChanged & pack)
 {
-	battleState.setActivationUsage(pack.side, pack.key, pack.period, pack.uses);
+	battleState.setActivationUsage(pack.side, {pack.key, pack.scope, pack.stack, pack.period}, pack.uses);
+}
+
+void BattleStatePackVisitor::visitBattleActivationCooldownChanged(BattleActivationCooldownChanged & pack)
+{
+	battleState.setActivationCooldownReadyRound(pack.side, {pack.key, pack.scope, pack.stack, EActivationLimitPeriod::BATTLE}, pack.readyRound);
 }

@@ -62,12 +62,13 @@ enum class ESerializationVersion : int32_t
 	ACTIVATION_LIMITS, // shared per-side battle and round usage counters
 	ABILITY_RETURNS_CONTROL, // per-bonus creature action turn behavior
 	ACTIVATED_CREATURE_ABILITIES, // selected bonus identity in activation policies and battle actions
+	GENERIC_ACTIVATION_POLICIES, // scoped turn limits and generic activation cooldowns
 
 	RELEASE_170 = HOTA_MAP_STACK_COUNT,
 	RELEASE_174 = CUSTOM_GARRISON_TITLE,
 
 	MINIMAL = RELEASE_170,
-	CURRENT = ACTIVATED_CREATURE_ABILITIES,
+	CURRENT = GENERIC_ACTIVATION_POLICIES,
 };
 
 static_assert(ESerializationVersion::MINIMAL <= ESerializationVersion::CURRENT, "Invalid serialization version definition!");

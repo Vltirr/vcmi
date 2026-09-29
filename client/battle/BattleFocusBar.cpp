@@ -40,8 +40,9 @@ constexpr int ICON_Y = TRACK_Y + TRACK_HEIGHT - ICON_VISIBLE_TOP_PADDING - ICON_
 constexpr int ORNAMENT_WIDTH = 104;
 constexpr int ORNAMENT_HEIGHT = 25;
 constexpr int ORNAMENT_Y = 20;
-constexpr int MAX_VISIBLE_CHECKPOINTS = 3;
 constexpr int MIN_SEGMENT_WIDTH = 3;
+
+constexpr int MAX_VISIBLE_CHECKPOINTS = 5;
 constexpr int STANDARD_WIDGET_WIDTH = ORIGINAL_FRAME_WIDTH;
 
 std::shared_ptr<IImage> loadFocusImage(const std::string & name)

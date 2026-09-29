@@ -34,7 +34,7 @@ locales. Esos artefactos se mantienen en `D:\Juegos\VCMI-Builds`.
 ## Estado visual aprobado
 
 La barra actual usa un marco de oro oscuro, una pista azul, relleno dorado para el
-progreso, separadores internos, hasta tres rombos de carga y un medallón engarzado
+progreso, separadores internos, hasta cinco rombos de carga y un medallón engarzado
 mediante un adorno azul y dorado.
 
 Las decisiones que deben considerarse fijas salvo petición expresa son:
@@ -120,7 +120,7 @@ Las constantes vigentes de `BattleFocusBar` son:
 | Rombo | 20x20, centrado verticalmente sobre el marco |
 | Medallón | 34x34 |
 | Adorno | 104x25 en `Y=20` |
-| Máximo de rombos visibles | 3 |
+| Máximo de rombos visibles | 5 |
 
 `STANDARD_WIDGET_WIDTH` permanece en 218. Esto es deliberado: mantiene el adorno,
 el medallón, la pista, los separadores y los rombos en las posiciones ya aprobadas,
@@ -153,8 +153,11 @@ recorte de la misma textura y crece de derecha a izquierda. El número de
 separadores se limita por la capacidad y por una anchura mínima de segmento de
 3 píxeles.
 
-Se muestran como máximo tres rombos representativos. Cada rombo se activa al
-alcanzar su umbral correspondiente. El medallón activo se usa cuando hay al menos
+Se muestran como máximo cinco rombos representativos. Cada rombo se activa al
+alcanzar su umbral correspondiente. Para capacidades tres, cuatro y cinco se
+distribuyen sobre la misma pista y se conservan los assets actuales. La creación de
+variantes explícitas de marco y pista queda aplazada por decisión del usuario: no se
+deben modificar ni generar PNG durante la fase de `activation`. El medallón activo se usa cuando hay al menos
 un punto de Focus; con cero puntos se muestra el medallón inactivo.
 
 El widget es exclusivamente visual y tiene la entrada deshabilitada.

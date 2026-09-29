@@ -39,7 +39,10 @@ class BattleActionProcessor : boost::noncopyable
 		bool valid = true;
 		BattleSide side = BattleSide::NONE;
 		int32_t focusCost = 0;
-		std::vector<ActivationLimit> limits;
+		std::vector<ActivationStateKey> limits;
+		std::vector<int32_t> previousUses;
+		std::optional<ActivationStateKey> cooldown;
+		int32_t previousCooldownReadyRound = 0;
 	};
 
 	struct MovementResult

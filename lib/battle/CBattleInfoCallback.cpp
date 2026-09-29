@@ -314,19 +314,21 @@ std::vector<PossiblePlayerBattleAction> CBattleInfoCallback::getClientActionsFor
 	{
 		auto configureActivation = [&](PossiblePlayerBattleAction & action, EActionType type)
 		{
-			const int32_t cost = battle::getActivationFocusCost(stack, type, action.spell(), action.ability());
-			const auto source = battle::getActivationSource(stack, type, action.spell(), action.ability());
-			if(!source || !source->activation)
+			const auto resolution = battle::resolveActivation(*this, stack, type, action.spell(), action.ability());
+			if(!resolution.source || !resolution.source->activation)
 				return;
-			const bool limitsAvailable = battle::areActivationLimitsAvailable(*this, stack, type, action.spell(), action.ability());
-			action.setActivation(cost, battle::isActivationAvailable(*this, stack, type, action.spell(), action.ability()), !limitsAvailable);
+			action.setActivation(resolution.focusCost, resolution.available(), !resolution.limitsAvailable,
+				!resolution.focusAvailable, !resolution.cooldownAvailable, resolution.cooldownRoundsRemaining);
 		};
-		if(stack->canCast()) //TODO: check for battlefield effects that prevent casting?
+		if(stack->canCast() || stack->hasBonusOfType(BonusType::SPELLCASTER) || stack->hasBonusOfType(BonusType::RANDOM_SPELLCASTER)) // activated actions may replace CASTS
 		{
 			if(stack->hasBonusOfType(BonusType::SPELLCASTER))
 			{
 				for(const auto & spellID : data.creatureSpellsToCast)
 				{
+					const auto activationSource = battle::getActivationSource(stack, EActionType::MONSTER_SPELL, spellID);
+					if(!stack->canCast() && (!activationSource || !activationSource->activation))
+						continue;
 					const CSpell *spell = spellID.toSpell();
 					PossiblePlayerBattleAction act = getCasterAction(spell, stack, spells::Mode::CREATURE_ACTIVE);
 					configureActivation(act, EActionType::MONSTER_SPELL);
@@ -368,7 +370,7 @@ std::vector<PossiblePlayerBattleAction> CBattleInfoCallback::getClientActionsFor
 
 		for(const auto & bonus : battle::getDeliberateActivationSources(stack, EActionType::CREATURE_ABILITY))
 		{
-			if(bonus->type == BonusType::ENCHANTER && battleGetEnchanterCounter(stack->unitSide()) != 0)
+			if(bonus->type == BonusType::ENCHANTER && !bonus->activation->cooldown && battleGetEnchanterCounter(stack->unitSide()) != 0)
 				continue;
 			const auto * opponentHero = battleGetFightingHero(otherSide(stack->unitSide()));
 			if(bonus->type == BonusType::MANA_DRAIN && (!opponentHero || opponentHero->mana == 0))
@@ -379,8 +381,9 @@ std::vector<PossiblePlayerBattleAction> CBattleInfoCallback::getClientActionsFor
 		}
 
 		const auto * siegedTown = battleGetDefendedTown();
+		const auto catapultActivation = battle::getActivationSource(stack, EActionType::CATAPULT, SpellID::NONE);
 		if(siegedTown && siegedTown->fortificationsLevel().wallsHealth > 0 && stack->hasBonusOfType(BonusType::CATAPULT) &&
-			!(stack->castSpellThisTurn && battle::actionReturnsControl(stack, EActionType::CATAPULT, SpellID::NONE))) //TODO: check shots
+			!(stack->castSpellThisTurn && (!catapultActivation || !catapultActivation->activation) && battle::actionReturnsControl(stack, EActionType::CATAPULT, SpellID::NONE))) //TODO: check shots
 		{
 			PossiblePlayerBattleAction action = PossiblePlayerBattleAction::CATAPULT;
 			configureActivation(action, EActionType::CATAPULT);
@@ -395,7 +398,8 @@ std::vector<PossiblePlayerBattleAction> CBattleInfoCallback::getClientActionsFor
 		if(stack->hasBonusOfType(BonusType::ADJACENT_SPELLCASTER))
 		{
 			SpellID spellID = stack->getBonus(Selector::type()(BonusType::ADJACENT_SPELLCASTER))->subtype.as<SpellID>();
-			if(stack->canCast()) //TODO: check for battlefield effects that prevent casting?
+			const auto activationSource = battle::getActivationSource(stack, EActionType::WALK_AND_CAST, spellID);
+			if(stack->canCast() || (activationSource && activationSource->activation)) //TODO: check for battlefield effects that prevent casting?
 				{
 					PossiblePlayerBattleAction action(PossiblePlayerBattleAction::WALK_AND_SPELLCAST, spellID);
 					configureActivation(action, EActionType::WALK_AND_CAST);
