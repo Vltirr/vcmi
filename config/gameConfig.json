@@ -582,12 +582,19 @@
 		"combat":
 		{
 			"focus": {
+				// Enable the shared Focus resource and its battle bars. Mods may override this.
 				"enabled": false,
+				// Points needed for one complete Focus charge.
 				"pointsPerCharge": 6,
-				"maxCharges": 3,
+				// Maximum charges stored per battle side; supported bar variants: 3, 4 or 5.
+				"maxCharges": 5,
+				// Points earned by the attacking side per effective melee hit, excluding retaliation.
 				"meleePoints": 2,
+				// Points earned by the attacking side per effective ranged hit, excluding retaliation.
 				"rangedPoints": 1,
+				// Points earned by the attacking side per effective long-reach hit, excluding retaliation.
 				"longReachPoints": 1,
+				// Points earned by the target's side per effective hit received, including retaliation.
 				"hitPoints": 1
 			},
 			// defines bias used for percentage-based ability rolls, such Death Blow of Dread Knight

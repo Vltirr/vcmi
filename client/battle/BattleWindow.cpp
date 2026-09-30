@@ -195,7 +195,7 @@ void BattleWindow::setPositionFocusBars()
 		focusY = queue->pos.bottom() - queueOverlap;
 
 	attackerFocusBar->moveTo(Point(pos.x + horizontalMargin, focusY));
-	defenderFocusBar->moveTo(Point(pos.x + pos.w - horizontalMargin - BattleFocusBar::WIDTH, focusY));
+	defenderFocusBar->moveTo(Point(pos.x + pos.w - horizontalMargin - defenderFocusBar->pos.w, focusY));
 }
 
 void BattleWindow::updateFocusBars()
@@ -209,6 +209,7 @@ void BattleWindow::updateFocusBars()
 		rules.pointsPerCharge, rules.maxCharges);
 	defenderFocusBar->updateState(rules.enabled, battle->getFocusPoints(BattleSide::DEFENDER),
 		rules.pointsPerCharge, rules.maxCharges);
+	setPositionFocusBars();
 }
 
 void BattleWindow::renderFocusBars(Canvas & to)

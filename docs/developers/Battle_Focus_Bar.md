@@ -33,20 +33,30 @@ locales. Esos artefactos se mantienen en `D:\Juegos\VCMI-Builds`.
 
 ## Estado visual aprobado
 
-La barra actual usa un marco de oro oscuro, una pista azul, relleno dorado para el
+La barra usa un marco de oro oscuro, una pista azul, relleno dorado para el
 progreso, separadores internos, hasta cinco rombos de carga y un medallón engarzado
-mediante un adorno azul y dorado.
+mediante un adorno azul y dorado. El 2026-09-30 el usuario autorizó variantes de
+cuatro y cinco cargas con extensión moderada y rombos menores; el 2026-10-01
+aceptó su resultado dentro del juego. La variante de tres conserva sus PNG y
+todas sus coordenadas anteriores.
+
+Revisión posterior del usuario: cinco cargas aceptadas visualmente, conservando
+su tamaño; en cuatro, el segundo rombo coincide con el medallón y queda detrás.
+Por petición del usuario, los rombos se dibujan ahora por encima del medallón,
+con aceptación visual del 2026-10-01. Por petición expresa, `config/gameConfig.json` usa ahora `maxCharges: 5`
+como valor base y comentarios de cada parámetro; también se actualizó la copia
+de configuración del run nuevo, sin recompilar ni modificar el run anterior.
 
 Las decisiones que deben considerarse fijas salvo petición expresa son:
 
-- la posición de los rombos;
+- la posición de los rombos en la variante de tres cargas;
 - el tamaño y la posición del medallón;
 - la posición vertical de la media luna y los brazos del adorno;
 - el orden relativo entre adorno, rombos y medallón;
 - el anclaje de las barras bajo la cola de iniciativa;
 - el renderizado de criaturas y héroes por encima de toda la interfaz de Focus.
 
-La última corrección amplía únicamente el extremo de cada marco en **5 píxeles
+La corrección anterior amplía únicamente el extremo de cada marco en **5 píxeles
 lógicos**. El remate dorado queda junto a la punta exterior del último rombo, sin
 ocultarlo y sin dejar una casilla final excesivamente larga. No se desplazó ningún
 rombo para conseguirlo.
@@ -72,6 +82,22 @@ Las variantes 4x están en:
 | `FocusBarOrnament.png` | Brazos, panel azul y media luna que engarzan el medallón | 104x25 | 416x101 | 104x25 |
 | `Icon_Energy_AddSection.png` | Medallón activo | 28x28 | 112x112 | 34x34 |
 | `Icon_Energy.png` | Medallón inactivo de grafito y oro | 28x28 | 112x112 | 34x34 |
+
+Variantes añadidas para cuatro y cinco cargas:
+
+| Asset | Tamaño 1x | Tamaño 4x | Tamaño lógico |
+| --- | ---: | ---: | ---: |
+| `FocusBarFrameDarkGold4.png` | 239x16 | 956x64 | 263x18 |
+| `ProgressBar_Energy4.png` | 224x8 | 896x32 | 246x9 |
+| `FocusBarFrameDarkGold5.png` | 276x16 | 1104x64 | 303x18 |
+| `ProgressBar_Energy5.png` | 261x8 | 1044x32 | 286x9 |
+
+Los remates del marco se conservan píxel por píxel (6 píxeles en 1x, 24 en 4x).
+Sólo se extiende el cuerpo central. Los rombos reutilizan sus PNG originales y
+se escalan a 16x16 para cuatro cargas y 14x14 para cinco. El script reproducible
+`D:\Juegos\VCMI-Builds\tooling\generate-focus-charge-variants.ps1` comprueba tamaños,
+remates, hashes de todos los originales y backups, simetría y espacio mínimo.
+La evidencia se guarda en `work\focus-charge-variants` del árbol externo.
 
 La errata `EnegyPoint` pertenece a los nombres históricos de los archivos. No debe
 corregirse sin actualizar también todas sus referencias.
@@ -105,7 +131,7 @@ El material de trabajo correspondiente está en:
 
 ## Geometría del widget
 
-Las constantes vigentes de `BattleFocusBar` son:
+La geometría de tres cargas de `BattleFocusBar` es:
 
 | Elemento | Geometría lógica |
 | --- | --- |
@@ -122,7 +148,7 @@ Las constantes vigentes de `BattleFocusBar` son:
 | Adorno | 104x25 en `Y=20` |
 | Máximo de rombos visibles | 5 |
 
-`STANDARD_WIDGET_WIDTH` permanece en 218. Esto es deliberado: mantiene el adorno,
+`STANDARD_WIDGET_WIDTH` permanece en 218 como base de tres cargas. Esto mantiene el adorno,
 el medallón, la pista, los separadores y los rombos en las posiciones ya aprobadas,
 mientras que `FRAME_WIDTH` pasa a 223.
 
@@ -131,6 +157,16 @@ En el defensor, el widget se ancla al mismo margen derecho y el marco crece 5
 píxeles hacia la izquierda. La compensación de `trackX` del defensor y las fórmulas
 especulares basadas en `WIDTH` conservan las coordenadas globales anteriores de
 todo el contenido. Por tanto, la ampliación sólo mueve los remates exteriores.
+
+Para cuatro/cinco cargas, `configureLayout` carga la variante de marco y relleno
+y añade 40/80 píxeles lógicos: widget 267/307x53, marco 263/303x18 y pista
+246/286x9. Cada punto, con seis puntos por carga, dispone de 10,25/9,53 píxeles
+incluyendo separador, frente a 11,44 con tres. Medallón y adorno mantienen sus
+tamaños y coordenadas verticales, centrados en la composición ampliada.
+La variante sólo se recarga al cambiar la capacidad visual; los puntos nuevos
+no recargan ni reescalan assets. El defensor se ancla con su `pos.w` real, no con
+la anchura constante de tres. Las barras crecen hacia el centro y conservan
+138/58 píxeles libres entre widgets en el campo de batalla lógico de 800 píxeles.
 
 No debe volver a resolverse este problema desplazando el último checkpoint: esa
 prueba hacía desaparecer visualmente la última casilla y fue descartada.
@@ -154,10 +190,10 @@ separadores se limita por la capacidad y por una anchura mínima de segmento de
 3 píxeles.
 
 Se muestran como máximo cinco rombos representativos. Cada rombo se activa al
-alcanzar su umbral correspondiente. Para capacidades tres, cuatro y cinco se
-distribuyen sobre la misma pista y se conservan los assets actuales. La creación de
-variantes explícitas de marco y pista queda aplazada por decisión del usuario: no se
-deben modificar ni generar PNG durante la fase de `activation`. El medallón activo se usa cuando hay al menos
+alcanzar su umbral correspondiente. Las capacidades tres, cuatro y cinco usan
+las variantes y dimensiones descritas arriba. El renderer conserva un fallback:
+capacidades menores usan la geometría de tres y mayores usan la de cinco, sin
+ampliar el esquema válido `[3, 4, 5]`. El medallón activo se usa cuando hay al menos
 un punto de Focus; con cero puntos se muestra el medallón inactivo.
 
 El widget es exclusivamente visual y tiene la entrada deshabilitada.
@@ -170,8 +206,8 @@ El widget es exclusivamente visual y tiene la entrada deshabilitada.
 2. relleno de progreso;
 3. separadores internos;
 4. adorno que abraza el medallón;
-5. rombos activos o inactivos;
-6. medallón activo o inactivo.
+5. medallón activo o inactivo;
+6. rombos activos o inactivos.
 
 Este orden garantiza que:
 
@@ -179,7 +215,8 @@ Este orden garantiza que:
 - `EnegyPoint_ProgressBar_Activ.png` y
   `EnegyPoint_ProgressBar_NotActiv.png` queden por encima del adorno;
 - el medallón quede por encima de la media luna, sin que el borde del adorno tape
-  su dibujo;
+  su dibujo, y los rombos queden por encima del medallón para mostrar completo el
+  segundo checkpoint en la variante de cuatro cargas;
 - la parte superior del medallón pueda invadir visualmente la barra.
 
 ## Posición y orden dentro de la batalla
@@ -297,7 +334,7 @@ Herramienta de build:
 
 `D:\Juegos\VCMI-Builds\tooling\build-vcmi.ps1`
 
-Run incremental activo:
+Run preservado del commit de hito `f82db7a81` (no reutilizar):
 
 `D:\Juegos\VCMI-Builds\runs\1.8.0-feature-battle-focus-93dd4eeac1-20260910-000212`
 
@@ -305,7 +342,7 @@ Instalación de prueba:
 
 `D:\Juegos\VCMI-Builds\runs\1.8.0-feature-battle-focus-93dd4eeac1-20260910-000212\install`
 
-Última compilación incremental del estado descrito en este documento:
+Compilación histórica de la geometría de tres cargas:
 
 - fecha: 2026-09-16;
 - estado: `Success`;
@@ -314,8 +351,37 @@ Instalación de prueba:
 - duración: 00:02:04;
 - toolset MSVC: 14.50.35717.
 
-La comprobación visual final fue manual dentro del juego y el ajuste de +5 píxeles
-fue aceptado. El asistente no debe abrir ni controlar el juego para estas
+Build de las variantes de cuatro/cinco, terminada el 2026-09-30:
+
+- run nuevo: `D:\Juegos\VCMI-Builds\runs\1.8.0-feature-battle-focus-f82db7a81e-20260930-090728`;
+- cliente: `install\VCMI_client.exe` dentro de ese run;
+- evidencia: `logs\20260930-090828\summary.txt`, `Status: Success`;
+- tres procesos, tests habilitados, duración 01:26:33;
+- el intento `Clean` inicial falló antes de compilar por acceso a Conan; se reanudó
+  como `Incremental` en el run nuevo vacío, sin reutilizar el del hito anterior;
+- 55/55 pruebas focales, informe `logs\20260930-090828\focus-tests.xml`;
+- ocho variantes instaladas verificadas por SHA-256; estado Git idéntico antes y
+  después de la build, PNG originales/backups intactos y validador de 31 criaturas correcto.
+
+La corrección posterior del orden de capas (rombos por encima del medallón) se
+compiló e instaló en el mismo run mediante una única build incremental de tres
+procesos con tests habilitados: `logs\20260930-230227\summary.txt`,
+`Status: Success`, duración 00:07:32. Las 55 pruebas focales volvieron a pasar;
+el cliente instalado coincide por SHA-256 con el compilado y ningún PNG original
+ni backup cambió. `install/config/gameConfig.json` conserva el nuevo máximo
+base de cinco y sus comentarios. El usuario aceptó cuatro/cinco el 2026-10-01.
+
+Después se corrigió un crash en `getDeliberateActivationSources`: el propietario
+de la lista de bonuses debe vivir durante todo el recorrido. No era un defecto
+de assets. Build incremental de tres procesos con tests habilitados:
+`logs\20261001-002540\summary.txt`, `Status: Success`, duración 00:41:16.
+Pasaron 56/56 pruebas focales, incluida la prueba determinista de vida útil;
+la DLL instalada coincide por SHA-256 con la compilada. El usuario confirmó que
+la versión corregida funciona bien. No se lanzó otra build por esta documentación.
+
+La comprobación visual anterior fue manual dentro del juego y el ajuste de +5 píxeles
+fue aceptado. Las nuevas variantes de cuatro/cinco están compiladas e instaladas;
+fueron aceptadas por el usuario. El asistente no debe abrir ni controlar el juego para estas
 comprobaciones salvo que el usuario lo solicite expresamente.
 
 ## Commits relevantes

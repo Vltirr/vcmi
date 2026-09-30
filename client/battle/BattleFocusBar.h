@@ -22,6 +22,7 @@ class BattleFocusBar : public CIntObject
 	int32_t currentPoints;
 	int32_t pointsPerCharge;
 	int32_t maxCharges;
+	int layoutCharges = 0;
 
 	std::shared_ptr<IImage> frame;
 	std::shared_ptr<IImage> progressFill;
@@ -32,6 +33,7 @@ class BattleFocusBar : public CIntObject
 	std::shared_ptr<IImage> activeIcon;
 	std::shared_ptr<IImage> inactiveIcon;
 
+	void configureLayout(int charges);
 	void render(Canvas & to) const;
 
 public:

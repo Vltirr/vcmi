@@ -42,7 +42,9 @@ std::vector<std::shared_ptr<const Bonus>> battle::getDeliberateActivationSources
 		return result;
 
 	std::set<std::string> listed;
-	for(const auto & bonus : *stack->getAllBonuses(Selector::all))
+	// Keep the returned list alive for the entire traversal, not just the range initializer.
+	const auto bonuses = stack->getAllBonuses(Selector::all);
+	for(const auto & bonus : *bonuses)
 	{
 		if(bonus->activation && !bonus->activation->id.empty() &&
 			isDeliberateAbilitySource(action, bonus->type) && listed.insert(bonus->activation->id).second)

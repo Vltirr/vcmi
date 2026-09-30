@@ -128,6 +128,39 @@ TEST(FocusRulesTest, deliberateAbilityIdsAreListedOnlyOnce)
 	EXPECT_EQ(sources.front()->activation->id, "focus-demo:rustDragonAcidBreath");
 }
 
+TEST(FocusRulesTest, deliberateSourcesKeepTheReturnedBonusListAliveDuringEnumeration)
+{
+	class TransientBonusStack : public CStack
+	{
+	public:
+		mutable BonusList bonuses;
+		mutable bool released = false;
+
+		TConstBonusListPtr getAllBonuses(const CSelector &, const std::string &) const override
+		{
+			// Invalidate the contents when the last owner is released, without reading freed memory in the test.
+			return TConstBonusListPtr(&bonuses, [this](const BonusList *)
+			{
+				released = true;
+				bonuses.clear();
+			});
+		}
+	};
+
+	TransientBonusStack stack;
+	auto attack = activationSource(BonusType::SPELL_AFTER_ATTACK, BonusSubtypeID(SpellID(SpellID::SLOW)));
+	attack->activation->id = "focus-demo:slowAttack";
+	stack.bonuses.push_back(attack);
+	stack.bonuses.push_back(activationSource(BonusType::SPELLCASTER));
+
+	const auto sources = battle::getDeliberateActivationSources(&stack, EActionType::WALK_AND_ATTACK);
+	EXPECT_TRUE(stack.released);
+	EXPECT_TRUE(stack.bonuses.empty());
+	ASSERT_EQ(sources.size(), 1);
+	EXPECT_EQ(sources.front(), attack);
+	EXPECT_EQ(sources.front()->activation->id, "focus-demo:slowAttack");
+}
+
 TEST(FocusRulesTest, networkUpdateChangesHypotheticalBattleState)
 {
 	test::battle::BattleFake battle;
