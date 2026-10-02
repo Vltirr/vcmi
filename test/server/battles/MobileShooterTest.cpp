@@ -12,10 +12,12 @@
 #include "BattleTestFixture.h"
 
 #include "../../../lib/battle/BattleAction.h"
+#include "../../../lib/battle/CObstacleInstance.h"
 #include "../../../lib/bonuses/Bonus.h"
 #include "../../../lib/bonuses/BonusCustomTypes.h"
 #include "../../../lib/bonuses/BonusParameters.h"
 #include "../../../lib/mapping/CMap.h"
+#include "../../../lib/mapObjects/CGHeroInstance.h"
 #include "../../../server/CGameHandler.h"
 #include "../../../server/battles/BattleProcessor.h"
 
@@ -165,6 +167,55 @@ TEST_F(MobileShooterTest, MobileShotWithFocusDisabledGeneratesNoFocus)
 	auto * target = addTarget(targetAtRangeThreeHex);
 	beginCombat();
 	ASSERT_TRUE(moveAndShoot(shooter, target));
+	expectFocus(0, 0);
+}
+
+TEST_F(MobileShooterTest, ReturningActivationCanBeFollowedByMobileShot)
+{
+	configureFocus();
+	defenderSideHero->mana = 20;
+	auto * shooter = addShooter(4);
+	auto ability = grant(shooter, BonusType::MANA_DRAIN, 5);
+	ability->activation = Activation{
+		.id = "vcmi-test:mobileManaDrain",
+		.costs = {.focus = 1},
+		.turn = ActivationTurn{.returnsControl = true}
+	};
+	auto * target = addTarget(targetAtRangeThreeHex);
+	beginCombat();
+	battle()->setFocusPoints(BattleSide::ATTACKER, 6);
+	battle()->activeStack = shooter->unitId();
+	ASSERT_TRUE(gameHandler->battles->makePlayerBattleAction(BattleID(0), PlayerColor(0),
+		BattleAction::makeCreatureAbility(shooter, ability->activation->id)));
+	EXPECT_EQ(defenderSideHero->mana, 15);
+	EXPECT_EQ(battle()->getActiveStackID(), shooter->unitId());
+	expectFocus(0, 0);
+	ASSERT_TRUE(moveAndShoot(shooter, target));
+	expectFocus(2, 3);
+}
+
+TEST_F(MobileShooterTest, HiddenTrapInterruptsMovementWithoutShotOrFocus)
+{
+	configureFocus();
+	auto * shooter = addShooter(4);
+	auto * target = addTarget(targetAtRangeThreeHex);
+	auto obstacle = std::make_shared<SpellCreatedObstacle>();
+	obstacle->uniqueID = 0;
+	obstacle->pos = BattleHex(destinationHex);
+	obstacle->customSize.insert(BattleHex(destinationHex));
+	obstacle->trigger = SpellID::NONE;
+	obstacle->casterSide = BattleSide::DEFENDER;
+	obstacle->hidden = true;
+	obstacle->nativeVisible = false;
+	obstacle->passable = true;
+	obstacle->trap = true;
+	battle()->obstacles.push_back(obstacle);
+	beginCombat();
+	const auto shots = shooter->shots.available();
+	const auto count = target->getCount();
+	ASSERT_TRUE(moveAndShoot(shooter, target));
+	EXPECT_EQ(shooter->shots.available(), shots);
+	EXPECT_EQ(target->getCount(), count);
 	expectFocus(0, 0);
 }
 

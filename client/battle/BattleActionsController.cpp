@@ -1603,6 +1603,7 @@ const std::vector<PossiblePlayerBattleAction> & BattleActionsController::getPoss
 
 void BattleActionsController::setPriorityActions(const std::vector<PossiblePlayerBattleAction> & actions)
 {
+	cancelMoveAndShootSelection();
 	possibleActions = actions;
 }
 
