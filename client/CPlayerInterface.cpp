@@ -22,6 +22,7 @@
 #include "adventureMap/CList.h"
 
 #include "battle/BattleEffectsController.h"
+#include "battle/BattleActionsController.h"
 #include "battle/BattleFieldController.h"
 #include "battle/BattleInterface.h"
 #include "battle/BattleResultWindow.h"
@@ -694,6 +695,14 @@ void CPlayerInterface::battleStart(const BattleID & battleID, const CCreatureSet
 	waitForAllDialogs();
 
 	BATTLE_EVENT_POSSIBLE_RETURN;
+}
+
+void CPlayerInterface::battleFocusChanged(const BattleID & battleID)
+{
+	EVENT_HANDLER_CALLED_BY_CLIENT;
+	BATTLE_EVENT_POSSIBLE_RETURN;
+	battleInt->windowObject->updateFocusBars();
+	battleInt->actionsController->updateActivationAvailability();
 }
 
 void CPlayerInterface::battleUnitsChanged(const BattleID & battleID, const std::vector<UnitChanges> & units)

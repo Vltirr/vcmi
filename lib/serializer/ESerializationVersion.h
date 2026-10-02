@@ -58,11 +58,18 @@ enum class ESerializationVersion : int32_t
 	TOWN_NAME_TEXT_ID, // renaming a town registers the new name in the map text container instead of storing free-form text
 	RECORD_TEXTS_METASTRING, // highscore scenario name and statistics map name are stored unresolved, to be rendered by the reader
 
+	BATTLE_FOCUS, // shared focus state and activation descriptors
+	ACTIVATION_LIMITS, // shared per-side battle and round usage counters
+	ABILITY_RETURNS_CONTROL, // per-bonus creature action turn behavior
+	ACTIVATED_CREATURE_ABILITIES, // selected bonus identity in activation policies and battle actions
+	GENERIC_ACTIVATION_POLICIES, // scoped turn limits and generic activation cooldowns
+	FOCUS_MOBILE_SHOOTER_INTEGRATION, // distinct action IDs for mobile shooting and creature abilities
+
 	RELEASE_170 = HOTA_MAP_STACK_COUNT,
 	RELEASE_174 = CUSTOM_GARRISON_TITLE,
 
 	MINIMAL = RELEASE_170,
-	CURRENT = RECORD_TEXTS_METASTRING,
+	CURRENT = FOCUS_MOBILE_SHOOTER_INTEGRATION,
 };
 
 static_assert(ESerializationVersion::MINIMAL <= ESerializationVersion::CURRENT, "Invalid serialization version definition!");

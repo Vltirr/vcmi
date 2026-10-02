@@ -11,6 +11,8 @@
 
 #include "../GameConstants.h"
 
+struct Bonus;
+
 class PossiblePlayerBattleAction // actions performed at l-click
 {
 public:
@@ -25,6 +27,7 @@ public:
 		ATTACK,
 		LONG_WEAPON_ATTACK,
 		WALK_AND_ATTACK,
+		ATTACK_ABILITY,
 		ATTACK_AND_RETURN,
 		SHOOT,
 		CATAPULT,
@@ -33,6 +36,7 @@ public:
 		WALK_AND_SHOOT,
 
 		RANDOM_GENIE_SPELL,   // random spell on a friendly creature
+		CREATURE_ABILITY,      // deliberate bonus-backed action without a target
 
 		NO_LOCATION,          // massive spells that affect every possible target, automatic casts
 		ANY_LOCATION,
@@ -46,6 +50,14 @@ public:
 private:
 	Actions action;
 	SpellID spellToCast;
+	int32_t activationFocusCost = 0;
+	bool activationAvailable = true;
+	bool activationFocusInsufficient = false;
+	bool activationLimitReached = false;
+	bool activationCooldownActive = false;
+	int32_t activationCooldownRoundsRemaining = 0;
+	std::string activatedAbility;
+	std::shared_ptr<const Bonus> abilitySource;
 
 public:
 	bool spellcast() const
@@ -64,6 +76,26 @@ public:
 		return spellToCast;
 	}
 
+	const std::string & ability() const { return activatedAbility; }
+	const std::shared_ptr<const Bonus> & source() const { return abilitySource; }
+	bool isAbility() const { return !activatedAbility.empty(); }
+
+	int32_t focusCost() const { return activationFocusCost; }
+	bool isActivationAvailable() const { return activationAvailable; }
+	bool hasReachedActivationLimit() const { return activationLimitReached; }
+	bool hasInsufficientActivationFocus() const { return activationFocusInsufficient; }
+	bool hasActivationCooldown() const { return activationCooldownActive; }
+	int32_t activationCooldownRemaining() const { return activationCooldownRoundsRemaining; }
+	void setActivation(int32_t focusCost, bool available, bool limitReached, bool focusInsufficient = false, bool cooldownActive = false, int32_t cooldownRemaining = 0)
+	{
+		activationFocusCost = focusCost;
+		activationAvailable = available;
+		activationLimitReached = limitReached;
+		activationFocusInsufficient = focusInsufficient;
+		activationCooldownActive = cooldownActive;
+		activationCooldownRoundsRemaining = cooldownRemaining;
+	}
+
 	PossiblePlayerBattleAction(Actions action, SpellID spellToCast = SpellID::NONE):
 		action(static_cast<Actions>(action)),
 		spellToCast(spellToCast)
@@ -71,13 +103,22 @@ public:
 		assert((spellToCast != SpellID::NONE) == spellcast());
 	}
 
+	PossiblePlayerBattleAction(Actions action, std::string ability, std::shared_ptr<const Bonus> source):
+		action(static_cast<Actions>(action)),
+		spellToCast(SpellID::NONE),
+		activatedAbility(std::move(ability)),
+		abilitySource(std::move(source))
+	{
+		assert((action == ATTACK_ABILITY || action == CREATURE_ABILITY) && !activatedAbility.empty());
+	}
+
 	bool operator == (const PossiblePlayerBattleAction & other) const
 	{
-		return action == other.action && spellToCast == other.spellToCast;
+		return action == other.action && spellToCast == other.spellToCast && activatedAbility == other.activatedAbility;
 	}
 
 	bool operator != (const PossiblePlayerBattleAction & other) const
 	{
-		return action != other.action || spellToCast != other.spellToCast;
+		return !(*this == other);
 	}
 };

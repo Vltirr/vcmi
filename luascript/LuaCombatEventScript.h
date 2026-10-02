@@ -25,6 +25,7 @@ public:
 	~LuaCombatEventScript() override;
 
 	bool handlesEvent(const CBattleInfoCallback & battle, CombatEventType event) const override;
+	bool isApplicable(const CBattleInfoCallback & battle, const battle::Unit * self, const battle::Unit * other, const JsonNode & parameters) const override;
 	void run(ServerCallback * server, const CBattleInfoCallback & battle, CombatEventType event, const battle::Unit * self, const battle::Unit * other, const JsonNode & parameters, const CombatEventPayload & payload) const override;
 
 private:

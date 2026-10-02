@@ -92,6 +92,9 @@ public:
 	/// initialize list of potential actions for new active stack
 	void activateStack();
 
+	/// update activation costs without recreating controls or changing the selected action mode
+	void updateActivationAvailability();
+
 	/// returns true if UI is currently in hero spell target selection mode
 	bool heroSpellcastingModeActive() const;
 	/// returns true if UI is currently in "F" hotkey creature spell target selection mode

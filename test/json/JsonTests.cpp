@@ -208,6 +208,142 @@ TEST_F(ScriptSchemaTest, spellEffectNeedsNoDescriptionOrPriority)
 	})"));
 }
 
+class BonusActivationSchemaTest : public ::testing::Test
+{
+protected:
+	static bool isValid(const std::string & text)
+	{
+		JsonNode node(text.data(), text.size(), "BonusActivationSchemaTest");
+		node.setModScope("vcmi-test");
+		return JsonUtils::validate(node, "bonusInstance.json", "BonusActivationSchemaTest");
+	}
+};
+
+TEST_F(BonusActivationSchemaTest, acceptsAnIntegerFocusCost)
+{
+	EXPECT_TRUE(isValid(R"({
+		"type" : "SPELLCASTER",
+		"activation" : {
+			"costs" : { "focus" : 1 },
+			"consumeUses" : false
+		}
+	})"));
+}
+
+TEST_F(BonusActivationSchemaTest, acceptsZeroCostActivationWithoutFocus)
+{
+	EXPECT_TRUE(isValid(R"({
+		"type" : "SPELLCASTER",
+		"activation" : { }
+	})"));
+}
+
+TEST_F(BonusActivationSchemaTest, acceptsStackTurnLimitAndCooldown)
+{
+	EXPECT_TRUE(isValid(R"({
+		"type" : "ENCHANTER",
+		"activation" : {
+			"id" : "vcmi-test:enchanter",
+			"turn" : { "returnsControl" : true },
+			"limits" : [ { "scope" : "stack", "period" : "turn", "max" : 1 } ],
+			"cooldown" : { "scope" : "side", "initial" : 1, "afterUse" : 3 }
+		}
+	})"));
+}
+
+TEST_F(BonusActivationSchemaTest, rejectsSideTurnLimit)
+{
+	EXPECT_FALSE(isValid(R"({
+		"type" : "SPELLCASTER",
+		"activation" : {
+			"limits" : [ { "scope" : "side", "period" : "turn", "max" : 1 } ]
+		}
+	})"));
+}
+
+TEST_F(BonusActivationSchemaTest, acceptsAbilitySpecificReturnControl)
+{
+	EXPECT_TRUE(isValid(R"({
+		"type" : "SPELLCASTER",
+		"actionReturnsControl" : true,
+		"activation" : {
+			"costs" : { "focus" : 1 },
+			"consumeUses" : false
+		}
+	})"));
+}
+
+TEST_F(BonusActivationSchemaTest, acceptsNonEmptyDeliberateAbilityId)
+{
+	EXPECT_TRUE(isValid(R"({
+		"type" : "SPELL_AFTER_ATTACK",
+		"subtype" : "slow",
+		"activation" : {
+			"id" : "focus-demo:slowAttack",
+			"costs" : { "focus" : 1 },
+			"consumeUses" : false
+		}
+	})"));
+}
+
+TEST_F(BonusActivationSchemaTest, rejectsEmptyDeliberateAbilityId)
+{
+	EXPECT_FALSE(isValid(R"({
+		"type" : "SPELL_AFTER_ATTACK",
+		"subtype" : "slow",
+		"activation" : {
+			"id" : "",
+			"costs" : { "focus" : 1 },
+			"consumeUses" : false
+		}
+	})"));
+}
+
+TEST_F(BonusActivationSchemaTest, acceptsSharedActivationLimit)
+{
+	EXPECT_TRUE(isValid(R"({
+		"type" : "SPELLCASTER",
+		"activation" : {
+			"costs" : { "focus" : 3 },
+			"consumeUses" : false,
+			"limits" : [ {
+				"key" : "focus-demo:archangelResurrection",
+				"scope" : "side",
+				"period" : "battle",
+				"max" : 1
+			} ]
+		}
+	})"));
+}
+
+TEST_F(BonusActivationSchemaTest, rejectsInvalidActivationLimit)
+{
+	EXPECT_FALSE(isValid(R"({
+		"type" : "SPELLCASTER",
+		"activation" : {
+			"costs" : { "focus" : 1 },
+			"consumeUses" : false,
+			"limits" : [ {
+				"key" : "",
+				"scope" : "stack",
+				"period" : "turn",
+				"max" : 0
+			} ]
+		}
+	})"));
+}
+
+TEST_F(BonusActivationSchemaTest, rejectsFractionalFocusCost)
+{
+	EXPECT_FALSE(isValid(R"({
+		"type" : "SPELLCASTER",
+		"activation" : {
+			"costs" : { "focus" : 1.5 },
+			"consumeUses" : false
+		}
+	})"));
+}
+
 TEST(JsonTest, floatsMatchTheNearestDouble)
 {
 	constexpr char text[] = R"({ "a" : 0.7, "b" : 1.75, "c" : -0.15, "d" : 1234.5678, "e" : 1e3 })";

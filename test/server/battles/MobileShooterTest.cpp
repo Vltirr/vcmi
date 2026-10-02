@@ -15,6 +15,7 @@
 #include "../../../lib/bonuses/Bonus.h"
 #include "../../../lib/bonuses/BonusCustomTypes.h"
 #include "../../../lib/bonuses/BonusParameters.h"
+#include "../../../lib/mapping/CMap.h"
 #include "../../../server/CGameHandler.h"
 #include "../../../server/battles/BattleProcessor.h"
 
@@ -68,7 +69,104 @@ public:
 			shooter, BattleHex(destinationHex), ::battle::Destination(target));
 		return gameHandler->battles->makePlayerBattleAction(BattleID(0), battle()->sideToPlayer(shooter->unitSide()), action);
 	}
+
+	void configureFocus(bool enabled = true)
+	{
+		JsonNode focus;
+		focus["enabled"].Bool() = enabled;
+		focus["pointsPerCharge"].Integer() = 6;
+		focus["maxCharges"].Integer() = 3;
+		focus["rangedPoints"].Integer() = 2;
+		focus["hitPoints"].Integer() = 3;
+		map()->overrideGameSetting(EGameSettings::COMBAT_FOCUS, focus);
+	}
+
+	void expectFocus(int attacker, int defender)
+	{
+		EXPECT_EQ(battle()->getFocusPoints(BattleSide::ATTACKER), attacker);
+		EXPECT_EQ(battle()->getFocusPoints(BattleSide::DEFENDER), defender);
+	}
 };
+
+TEST_F(MobileShooterTest, MobileShotGeneratesConfiguredFocusOnce)
+{
+	configureFocus();
+	auto * shooter = addShooter(4);
+	auto * target = addTarget(targetAtRangeThreeHex);
+	beginCombat();
+	ASSERT_TRUE(moveAndShoot(shooter, target));
+	expectFocus(2, 3);
+}
+
+TEST_F(MobileShooterTest, StationaryShotGeneratesSameFocus)
+{
+	configureFocus();
+	auto * shooter = addShooter(4);
+	auto * target = addTarget(targetAtRangeThreeHex);
+	beginCombat();
+	battle()->activeStack = shooter->unitId();
+	ASSERT_TRUE(gameHandler->battles->makePlayerBattleAction(BattleID(0), PlayerColor(0),
+		BattleAction::makeShotAttack(shooter, target)));
+	expectFocus(2, 3);
+}
+
+TEST_F(MobileShooterTest, MoveWithoutShotGeneratesNoFocus)
+{
+	configureFocus();
+	auto * shooter = addShooter(4);
+	addTarget(targetAtRangeThreeHex);
+	beginCombat();
+	battle()->activeStack = shooter->unitId();
+	ASSERT_TRUE(gameHandler->battles->makePlayerBattleAction(BattleID(0), PlayerColor(0),
+		BattleAction::makeMove(shooter, BattleHex(destinationHex))));
+	expectFocus(0, 0);
+}
+
+TEST_F(MobileShooterTest, RejectedMobileShotGeneratesNoFocus)
+{
+	configureFocus();
+	auto * shooter = addShooter(2);
+	auto * target = addTarget(targetAtRangeThreeHex);
+	beginCombat();
+	const auto shots = shooter->shots.available();
+	ASSERT_FALSE(moveAndShoot(shooter, target));
+	EXPECT_EQ(shooter->getPosition(), BattleHex(shooterHex));
+	EXPECT_EQ(shooter->shots.available(), shots);
+	expectFocus(0, 0);
+}
+
+TEST_F(MobileShooterTest, AdditionalMobileShotGeneratesFocusPerAttack)
+{
+	configureFocus();
+	auto * shooter = addShooter(4);
+	grant(shooter, BonusType::ADDITIONAL_ATTACK, 1);
+	auto * target = addTarget(targetAtRangeThreeHex);
+	beginCombat();
+	ASSERT_TRUE(moveAndShoot(shooter, target));
+	expectFocus(4, 6);
+}
+
+TEST_F(MobileShooterTest, MobileShotRespectsFocusCapacity)
+{
+	configureFocus();
+	auto * shooter = addShooter(4);
+	auto * target = addTarget(targetAtRangeThreeHex);
+	beginCombat();
+	battle()->setFocusPoints(BattleSide::ATTACKER, 17);
+	battle()->setFocusPoints(BattleSide::DEFENDER, 18);
+	ASSERT_TRUE(moveAndShoot(shooter, target));
+	expectFocus(18, 18);
+}
+
+TEST_F(MobileShooterTest, MobileShotWithFocusDisabledGeneratesNoFocus)
+{
+	configureFocus(false);
+	auto * shooter = addShooter(4);
+	auto * target = addTarget(targetAtRangeThreeHex);
+	beginCombat();
+	ASSERT_TRUE(moveAndShoot(shooter, target));
+	expectFocus(0, 0);
+}
 
 TEST_F(MobileShooterTest, ExecutesMovementAndShotAsOneAction)
 {

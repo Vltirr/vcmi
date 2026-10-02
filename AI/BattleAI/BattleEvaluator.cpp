@@ -26,6 +26,7 @@
 #include "../../lib/battle/BattleStateInfoForRetreat.h"
 #include "../../lib/battle/CObstacleInstance.h"
 #include "../../lib/battle/BattleAction.h"
+#include "../../lib/battle/Activation.h"
 #include "../../lib/CRandomGenerator.h"
 #include "../../lib/GameLibrary.h"
 
@@ -130,11 +131,29 @@ bool BattleEvaluator::hasWorkingTowers() const
 	return keepIntact || upperIntact || bottomIntact;
 }
 
+std::string BattleEvaluator::findAttackAbility(const CStack * stack, const battle::Unit * target) const
+{
+	const auto battle = cb->getBattle(battleID);
+	std::string selected;
+	int32_t selectedCost = -1;
+	for(const auto & bonus : battle::getDeliberateActivationSources(stack, EActionType::WALK_AND_ATTACK))
+	{
+		if(!battle::isActivationAvailable(*battle, stack, EActionType::WALK_AND_ATTACK, SpellID::NONE, bonus->activation->id))
+			continue;
+		if(!battle::isActivationTargetAvailable(*battle, stack, EActionType::WALK_AND_ATTACK, SpellID::NONE, bonus->activation->id, target))
+			continue;
+		const int32_t cost = battle::getActivationFocusCost(stack, EActionType::WALK_AND_ATTACK, SpellID::NONE, bonus->activation->id);
+		if(cost > selectedCost)
+		{
+			selected = bonus->activation->id;
+			selectedCost = cost;
+		}
+	}
+	return selected;
+}
+
 std::optional<PossibleSpellcast> BattleEvaluator::findBestCreatureSpell(const CStack * stack)
 {
-	if(!stack->canCast())
-		return std::nullopt;
-
 	std::vector<SpellID> spellsToCast;
 	TConstBonusListPtr bl = stack->getBonusesOfType(BonusType::SPELLCASTER);
 
@@ -152,6 +171,11 @@ std::optional<PossibleSpellcast> BattleEvaluator::findBestCreatureSpell(const CS
 
 	for(const auto spellID : spellsToCast)
 	{
+		const auto activationSource = battle::getActivationSource(stack, EActionType::MONSTER_SPELL, spellID);
+		if(!stack->canCast() && (!activationSource || !activationSource->activation))
+			continue;
+		if(!battle::isActivationAvailable(*cb->getBattle(battleID), stack, EActionType::MONSTER_SPELL, spellID))
+			continue;
 		const CSpell * spell = spellID.toSpell();
 
 		if(!spell->canBeCast(cb->getBattle(battleID).get(), spells::Mode::CREATURE_ACTIVE, stack))
@@ -291,7 +315,9 @@ BattleAction BattleEvaluator::selectStackAction(const CStack * stack)
 					}
 					
 					activeActionMade = true;
-					return BattleAction::makeMeleeAttack(stack, bestAttack.attack.defenderPos, bestAttack.from);
+					auto action = BattleAction::makeMeleeAttack(stack, bestAttack.attack.defenderPos, bestAttack.from);
+					action.activatedAbility = findAttackAbility(stack, bestAttack.attack.defender);
+					return action;
 				}
 			}
 		}
@@ -370,7 +396,9 @@ BattleAction BattleEvaluator::moveOrAttack(const CStack * stack, const BattleHex
 	if(attackOnTheWay)
 	{
 		activeActionMade = true;
-		return BattleAction::makeMeleeAttack(stack, attackOnTheWay->attack.defender->getPosition(), attackOnTheWay->from);
+		auto action = BattleAction::makeMeleeAttack(stack, attackOnTheWay->attack.defender->getPosition(), attackOnTheWay->from);
+		action.activatedAbility = findAttackAbility(stack, attackOnTheWay->attack.defender);
+		return action;
 	}
 	else
 	{

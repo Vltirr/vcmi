@@ -13,6 +13,7 @@
 #include "BattleActionsController.h"
 #include "BattleConsole.h"
 #include "BattleFieldController.h"
+#include "BattleFocusBar.h"
 #include "BattleInterface.h"
 #include "BattleStacksController.h"
 #include "HeroInfoWindow.h"
@@ -128,6 +129,7 @@ BattleWindow::BattleWindow(BattleInterface & Owner)
 	owner.fieldController->createHeroes();
 
 	createQueue();
+	createFocusBars();
 	createQuickSpellWindow();
 	createStickyHeroInfoWindows();
 	createTimerInfoWindows();
@@ -166,6 +168,56 @@ void BattleWindow::createQueue()
 
 	if (!showQueue)
 		queue->disable();
+}
+
+void BattleWindow::createFocusBars()
+{
+	OBJECT_CONSTRUCTION;
+
+	attackerFocusBar = std::make_shared<BattleFocusBar>(BattleSide::ATTACKER);
+	defenderFocusBar = std::make_shared<BattleFocusBar>(BattleSide::DEFENDER);
+	removeChild(attackerFocusBar.get());
+	removeChild(defenderFocusBar.get());
+	updateFocusBars();
+	setPositionFocusBars();
+}
+
+void BattleWindow::setPositionFocusBars()
+{
+	if(!attackerFocusBar || !defenderFocusBar)
+		return;
+
+	constexpr int horizontalMargin = 64;
+	constexpr int queueOverlap = 7;
+	int focusY = pos.y;
+
+	if(queue && !queue->isDisabled() && (!queue->embedded || queue->pos.y >= pos.y))
+		focusY = queue->pos.bottom() - queueOverlap;
+
+	attackerFocusBar->moveTo(Point(pos.x + horizontalMargin, focusY));
+	defenderFocusBar->moveTo(Point(pos.x + pos.w - horizontalMargin - defenderFocusBar->pos.w, focusY));
+}
+
+void BattleWindow::updateFocusBars()
+{
+	if(!attackerFocusBar || !defenderFocusBar)
+		return;
+
+	const auto battle = owner.getBattle();
+	const auto rules = battle->getBattle()->getFocusRules();
+	attackerFocusBar->updateState(rules.enabled, battle->getFocusPoints(BattleSide::ATTACKER),
+		rules.pointsPerCharge, rules.maxCharges);
+	defenderFocusBar->updateState(rules.enabled, battle->getFocusPoints(BattleSide::DEFENDER),
+		rules.pointsPerCharge, rules.maxCharges);
+	setPositionFocusBars();
+}
+
+void BattleWindow::renderFocusBars(Canvas & to)
+{
+	if(attackerFocusBar && !attackerFocusBar->isDisabled())
+		attackerFocusBar->showAll(to);
+	if(defenderFocusBar && !defenderFocusBar->isDisabled())
+		defenderFocusBar->showAll(to);
 }
 
 void BattleWindow::createStickyHeroInfoWindows()
@@ -356,6 +408,7 @@ void BattleWindow::hideQueue()
 		pos.h -= queue->pos.h;
 	}
 	pos = center();
+	setPositionFocusBars();
 	setPositionInfoWindow();
 	ENGINE->windows().totalRedraw();
 }
@@ -370,6 +423,7 @@ void BattleWindow::showQueue()
 
 	createQueue();
 	updateQueue();
+	setPositionFocusBars();
 	setPositionInfoWindow();
 	ENGINE->windows().totalRedraw();
 }
@@ -758,6 +812,16 @@ void BattleWindow::setPossibleActions(const std::vector<PossiblePlayerBattleActi
 	unitActionWindow->setPossibleActions(actions);
 }
 
+void BattleWindow::updateActivationAvailability(const std::vector<PossiblePlayerBattleAction> & actions)
+{
+	unitActionWindow->updateActivationAvailability(actions);
+}
+
+bool BattleWindow::cancelSelectedUnitAction()
+{
+	return unitActionWindow->cancelSelectedAction();
+}
+
 void BattleWindow::bAutofightf()
 {
 	if (owner.actionsController->heroSpellcastingModeActive())
@@ -1018,6 +1082,7 @@ void BattleWindow::onScreenResize()
 		hideStickyHeroWindows();
 		showStickyHeroWindows();
 	}
+	setPositionFocusBars();
 }
 
 void BattleWindow::close()

@@ -31,6 +31,15 @@ public:
 	MOCK_CONST_METHOD1(getSideHero, const CGHeroInstance *(BattleSide));
 	MOCK_CONST_METHOD1(getCastSpells, int32_t(BattleSide));
 	MOCK_CONST_METHOD1(getEnchanterCounter, int32_t(BattleSide));
+	MOCK_CONST_METHOD1(getFocusPoints, int32_t(BattleSide));
+	MOCK_CONST_METHOD0(getFocusRules, FocusRules());
+	MOCK_CONST_METHOD3(getActivationUsage, int32_t(BattleSide, const std::string &, EActivationLimitPeriod));
+	MOCK_CONST_METHOD2(getActivationUsage, int32_t(BattleSide, const ActivationStateKey &));
+	MOCK_CONST_METHOD2(getActivationCooldownReadyRound, int32_t(BattleSide, const ActivationStateKey &));
+	MOCK_METHOD2(setFocusPoints, void(BattleSide, int32_t));
+	MOCK_METHOD4(setActivationUsage, void(BattleSide, const std::string &, EActivationLimitPeriod, int32_t));
+	MOCK_METHOD3(setActivationUsage, void(BattleSide, const ActivationStateKey &, int32_t));
+	MOCK_METHOD3(setActivationCooldownReadyRound, void(BattleSide, const ActivationStateKey &, int32_t));
 	MOCK_CONST_METHOD0(getTacticDist, ui8());
 	MOCK_CONST_METHOD0(getTacticsSide, BattleSide());
 	MOCK_CONST_METHOD0(getRound, int32_t());
@@ -57,6 +66,5 @@ public:
 	MOCK_METHOD1(removeObstacle, void(uint32_t));
 	MOCK_METHOD1(updateObstacle, void(const ObstacleChanges &));
 };
-
 
 

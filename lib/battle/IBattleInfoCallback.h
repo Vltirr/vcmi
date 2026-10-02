@@ -59,6 +59,9 @@ public:
 
 	virtual const scripting::Pool & getScriptContextPool() const = 0;
 	virtual const IBattleInfo * getBattle() const = 0;
+	int32_t getFocusPoints(BattleSide side) const;
+	int32_t getFocusCharges(BattleSide side) const;
+	int32_t getFocusCapacity() const;
 	virtual std::optional<PlayerColor> getPlayerID() const = 0;
 
 	virtual TerrainId battleTerrainType() const = 0;
