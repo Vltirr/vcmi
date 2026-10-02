@@ -188,8 +188,6 @@ Battle logic is split:
 
 Changes to rules should go in `lib/battle/` (especially `BattleInfo.h`, `CBattleInfoCallback.h`, etc.), except for what an attack is worth - that is a Lua script, `scripts/damage/damageCalculator.lua`. See [`docs/developers/Battlefield.md`](docs/developers/Battlefield.md) for details on the battle system.
 
-Before modifying the battle Focus bar UI, read [`docs/developers/Battle_Focus_Bar.md`](docs/developers/Battle_Focus_Bar.md). It records the approved geometry, asset variants, layer order, visual constraints, and local verification workflow for this feature.
-
 ### Working with Configuration Files
 
 Game configuration uses JSON:
