@@ -40,6 +40,7 @@ class CSpellWindow : public CWindowObject, public IVideoHolder
 		std::shared_ptr<CLabel> name;
 		std::shared_ptr<CLabel> level;
 		std::shared_ptr<CLabel> cost;
+		std::string learnedSpellRequirement() const;
 	public:
 		SpellArea(Rect pos, CSpellWindow * owner);
 		~SpellArea();

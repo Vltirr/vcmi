@@ -158,6 +158,8 @@ public:
 	ArtifactID getReplacedWarMachine(ArtifactID newWarMachine) const;
 	bool hasSpellbook() const;
 	int maxSpellLevel() const;
+	/// Maximum level usable from learned spells; external spell grants bypass this limit.
+	int maxCastableSpellLevel() const;
 	void addSpellToSpellbook(const SpellID & spell);
 	void removeSpellFromSpellbook(const SpellID & spell);
 	bool spellbookContainsSpell(const SpellID & spell) const;

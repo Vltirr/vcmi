@@ -385,6 +385,7 @@ public:
 	/// that only its innate specialty distinguishes it from another caster.
 	void configureCaster(CGHeroInstance * hero, SpellID spell, int spellpower)
 	{
+		hero->setSecSkillLevel(SecondarySkill::WISDOM, MasteryLevel::EXPERT, ChangeValueMode::ABSOLUTE);
 		hero->setPrimarySkill(PrimarySkill::SPELL_POWER, spellpower, ChangeValueMode::ABSOLUTE);
 		hero->setPrimarySkill(PrimarySkill::KNOWLEDGE, 20, ChangeValueMode::ABSOLUTE);
 		for(auto school : {SecondarySkill::AIR_MAGIC, SecondarySkill::FIRE_MAGIC, SecondarySkill::WATER_MAGIC, SecondarySkill::EARTH_MAGIC})
@@ -576,6 +577,7 @@ TEST_F(BattleSpellCastTest, battleResurrection)
 
 	attacker->setSecSkillLevel(SecondarySkill::EARTH_MAGIC, 3, ChangeValueMode::ABSOLUTE);
 	attacker->addSpellToSpellbook(SpellID::RESURRECTION);
+	attacker->setSecSkillLevel(SecondarySkill::WISDOM, MasteryLevel::EXPERT, ChangeValueMode::ABSOLUTE);
 	attacker->setPrimarySkill(PrimarySkill::SPELL_POWER, 100, ChangeValueMode::ABSOLUTE);
 	attacker->setPrimarySkill(PrimarySkill::KNOWLEDGE, 20, ChangeValueMode::ABSOLUTE);
 	attacker->mana = attacker->manaLimit();
@@ -718,6 +720,7 @@ TEST_F(BattleSpellCastTest, chainLightningChainsToDistinctUnits)
 			.heroPrimary(0, 0, 20, 20)
 			.heroEquipped({{ArtifactPosition::SPELLBOOK, ArtifactID::SPELLBOOK}})
 			.heroSpells({SpellID(SpellID::CHAIN_LIGHTNING)})
+			.heroSecondarySkills({{SecondarySkill::WISDOM, MasteryLevel::EXPERT}})
 			.heroGarrison({{pikeman, 1}}) // token army so the battle is valid
 		.hero({7, 7, 0}, HeroTypeID(1), PlayerColor(1))
 			.heroGarrison({{pikeman, stackCount}, {pikeman, stackCount}, {pikeman, stackCount},

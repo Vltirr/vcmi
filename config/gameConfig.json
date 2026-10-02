@@ -841,7 +841,7 @@
 				},
 				"wisdom" :
 				{
-					"type" : "MAX_LEARNABLE_SPELL_LEVEL", //Hero can always learn level 1 and 2 spells
+					"type" : "MAX_LEARNABLE_SPELL_LEVEL", //Hero can always cast level 1 and 2 spells from the book
 					"val" : 2,
 					"valueType" : "BASE_NUMBER"
 				},

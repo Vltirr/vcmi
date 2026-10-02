@@ -13,12 +13,15 @@
 #include "AI/Nullkiller2/AIUtility.h"
 
 #include "nullkiller2/NullkillerTest.h"
+#include "server/battles/BattleTestFixture.h"
 
 #include "lib/CPlayerState.h"
 #include "lib/gameState/CGameState.h"
 #include "lib/gameState/QuestInfo.h"
 #include "lib/mapObjects/CGHeroInstance.h"
 #include "lib/mapObjects/Quest.h"
+#include "lib/spells/CSpell.h"
+#include "server/CGameHandler.h"
 
 namespace
 {
@@ -60,4 +63,36 @@ TEST_F(Nullkiller2_AIUtility, trackedSeerWithoutActiveQuestIsNotVisitable)
 	gateway->initGameInterface(std::shared_ptr<Environment>(), callback);
 
 	EXPECT_FALSE(NK2AI::shouldVisit(gateway->nullkiller.get(), hero, seer));
+}
+
+namespace
+{
+class Nullkiller2_ScrollValue : public BattleTestFixture {};
+}
+
+TEST_F(Nullkiller2_ScrollValue, EquippedScrollKeepsValueWhenItsLearnedSpellIsBlocked)
+{
+	startGame();
+	giveArtifact(attackerSideHero, ArtifactID::SPELLBOOK, ArtifactPosition::SPELLBOOK);
+	gameHandler->changeSpells(attackerSideHero, true, {SpellID::IMPLOSION});
+	ASSERT_TRUE(gameHandler->giveHeroNewScroll(attackerSideHero, SpellID::IMPLOSION, ArtifactPosition::MISC1));
+	const auto * scroll = attackerSideHero->getArt(ArtifactPosition::MISC1);
+	ASSERT_NE(scroll, nullptr);
+	EXPECT_TRUE(attackerSideHero->canCastThisSpell(SpellID(SpellID::IMPLOSION).toSpell()));
+	EXPECT_GT(NK2AI::getArtifactScoreForHero(attackerSideHero, scroll), 0);
+	attackerSideHero->setSecSkillLevel(SecondarySkill::WISDOM, 3, ChangeValueMode::ABSOLUTE);
+	EXPECT_EQ(NK2AI::getArtifactScoreForHero(attackerSideHero, scroll), 0);
+	attackerSideHero->setSecSkillLevel(SecondarySkill::WISDOM, 0, ChangeValueMode::ABSOLUTE);
+	EXPECT_GT(NK2AI::getArtifactScoreForHero(attackerSideHero, scroll), 0);
+}
+
+TEST_F(Nullkiller2_ScrollValue, EquippedScrollKeepsValueWhenSpellIsNotLearned)
+{
+	startGame();
+	giveArtifact(attackerSideHero, ArtifactID::SPELLBOOK, ArtifactPosition::SPELLBOOK);
+	ASSERT_TRUE(gameHandler->giveHeroNewScroll(attackerSideHero, SpellID::IMPLOSION, ArtifactPosition::MISC1));
+	const auto * scroll = attackerSideHero->getArt(ArtifactPosition::MISC1);
+	ASSERT_NE(scroll, nullptr);
+	EXPECT_FALSE(attackerSideHero->spellbookContainsSpell(SpellID::IMPLOSION));
+	EXPECT_GT(NK2AI::getArtifactScoreForHero(attackerSideHero, scroll), 0);
 }

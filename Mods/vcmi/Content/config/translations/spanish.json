@@ -1024,6 +1024,7 @@
 	"vcmi.spellBook.tab.help": "Vuelva para ver los hechizos %s",
 	"vcmi.spellBook.tab.hover": "%s Hechizos",
 	"vcmi.spellBook.zero_level.hint": "niv 0",
+	"vcmi.spellBook.wisdomRequired": "Conoces este hechizo de nivel %d, pero tu héroe solo puede lanzar hechizos aprendidos hasta el nivel %d. Mejora Sabiduría para lanzarlo; no necesitas aprenderlo de nuevo.",
 	"vcmi.spellResearch.abort": "Abortar",
 	"vcmi.spellResearch.canNotAfford": "No puedes permitirte reemplazar {%SPELL1} por {%SPELL2}.",
 	"vcmi.spellResearch.comeAgain": "La investigación ya ha sido realizada hoy. Vuelva mañana.",

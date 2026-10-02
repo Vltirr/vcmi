@@ -246,7 +246,7 @@ float HeroManager::getMagicStrength(const CGHeroInstance * hero) const
 	{
 		auto spell = spellId.toSpell();
 
-		if (!spell->isAdventure())
+		if (!spell->isAdventure() || !hero->canCastThisSpell(spell))
 			continue;
 
 		auto schoolLevel = hero->getSpellSchoolLevel(spell);

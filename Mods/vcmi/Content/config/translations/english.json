@@ -1144,6 +1144,7 @@
 	"vcmi.spellBook.tab.help": "Turn to view %s spells",
 	"vcmi.spellBook.tab.hover": "%s Spells",
 	"vcmi.spellBook.zero_level.hint": "0th lev",
+	"vcmi.spellBook.wisdomRequired": "This level %d spell is known, but your hero can cast learned spells only up to level %d. Improve Wisdom to cast it; you do not need to learn it again.",
 	"vcmi.spellResearch.abort": "Abort",
 	"vcmi.spellResearch.canNotAfford": "You can't afford to replace {%SPELL1} with {%SPELL2}.",
 	"vcmi.spellResearch.comeAgain": "Research has already been done today. Come back tomorrow.",

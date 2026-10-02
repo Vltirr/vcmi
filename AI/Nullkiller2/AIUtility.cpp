@@ -553,7 +553,8 @@ int64_t getArtifactScoreForHero(const CGHeroInstance * hero, const CArtifactInst
 		auto spellID = artifact->getScrollSpellID();
 		auto spell = spellID.toEntity(LIBRARY);
 
-		if (hero->getSpellsInSpellbook().count(spellID))
+		if (hero->hasSpellbook() && hero->spellbookContainsSpell(spellID)
+			&& spell->getLevel() <= hero->maxCastableSpellLevel())
 			return 0;
 		else
 			return spell->getLevel() * 100;

@@ -63,7 +63,7 @@
 								}
 							]
 						},
-						"message" : [ 106, "{%s}. ", 108 ] // No Wisdom
+						"message" : [ 106, "{%s}. ", 174 ] // Already known
 					},
 					{
 						"message" : [ 106, "{%s}. ", 109 ] // No spellbook

@@ -164,7 +164,8 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 	std::ranges::sort(sortedSchools, [&](SpellSchool a, SpellSchool b) {
 		auto cnt = [&](SpellSchool s) {
 			return std::ranges::count_if(LIBRARY->spellh->objects, [&](auto const & sp) {
-				return myHero->canCastThisSpell(sp.get()) && sp->schools.count(s);
+				return ((!sp->isSpecial() && myHero->spellbookContainsSpell(sp->getId())) || myHero->canCastThisSpell(sp.get()))
+					&& sp->schools.count(s);
 			});
 		};
 		return cnt(a) > cnt(b);
@@ -344,7 +345,9 @@ void CSpellWindow::processSpells()
 			continue;
 		}
 
-		if(!spell->isCreatureAbility() && myHero->canCastThisSpell(spell.get()) && searchTextFound)
+		if(!spell->isCreatureAbility()
+			&& ((!spell->isSpecial() && myHero->spellbookContainsSpell(spell->getId())) || myHero->canCastThisSpell(spell.get()))
+			&& searchTextFound)
 			mySpells.push_back(spell.get());
 	}
 
@@ -715,6 +718,19 @@ CSpellWindow::SpellArea::SpellArea(Rect pos, CSpellWindow * owner)
 
 CSpellWindow::SpellArea::~SpellArea() = default;
 
+std::string CSpellWindow::SpellArea::learnedSpellRequirement() const
+{
+	if(owner->onSpellSelect || !mySpell || !owner->myHero->spellbookContainsSpell(mySpell->getId())
+		|| mySpell->getLevel() <= owner->myHero->maxCastableSpellLevel()
+		|| owner->myHero->canCastThisSpell(mySpell))
+		return {};
+
+	MetaString message = MetaString::createFromTextID("vcmi.spellBook.wisdomRequired");
+	message.replaceNumber(mySpell->getLevel());
+	message.replaceNumber(owner->myHero->maxCastableSpellLevel());
+	return message.toString(&GAME->translator());
+}
+
 void CSpellWindow::SpellArea::clickPressed(const Point & cursorPosition)
 {
 	if(mySpell)
@@ -725,6 +741,13 @@ void CSpellWindow::SpellArea::clickPressed(const Point & cursorPosition)
 		{
 			owner->onSpellSelect(mySpell->id);
 			owner->close();
+			return;
+		}
+
+		const auto requirement = learnedSpellRequirement();
+		if(!requirement.empty())
+		{
+			GAME->interface()->showInfoDialog(requirement);
 			return;
 		}
 
@@ -825,7 +848,10 @@ void CSpellWindow::SpellArea::showPopupWindow(const Point & cursorPosition)
 			dmgInfo = dmgText.toString(&GAME->translator());
 		}
 
-		CRClickPopup::createAndPush(mySpell->getDescriptionTranslated(schoolLevel) + dmgInfo, std::make_shared<CComponent>(ComponentType::SPELL, mySpell->id));
+		const auto requirement = learnedSpellRequirement();
+		const auto description = mySpell->getDescriptionTranslated(schoolLevel) + dmgInfo
+			+ (requirement.empty() ? std::string() : "\n\n" + requirement);
+		CRClickPopup::createAndPush(description, std::make_shared<CComponent>(ComponentType::SPELL, mySpell->id));
 	}
 }
 
@@ -876,7 +902,7 @@ void CSpellWindow::SpellArea::setSpell(const CSpell * spell)
 		}
 
 		ColorRGBA firstLineColor, secondLineColor;
-		if(spellCost > owner->myHero->mana && !owner->onSpellSelect) //hero cannot cast this spell
+		if(!owner->onSpellSelect && (!owner->myHero->canCastThisSpell(mySpell) || spellCost > owner->myHero->mana))
 		{
 			firstLineColor = Colors::WHITE;
 			secondLineColor = Colors::ORANGE;
