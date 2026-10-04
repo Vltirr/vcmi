@@ -35,8 +35,8 @@ class CSpellWindow : public CWindowObject, public IVideoHolder
 		const CSpell * mySpell;
 		int schoolLevel; //range: 0 none, 3 - expert
 		CSpellWindow * owner;
-		std::shared_ptr<CAnimImage> image;
-		std::shared_ptr<CAnimImage> schoolBorder;
+		std::shared_ptr<CPicture> image;
+		std::shared_ptr<CPicture> schoolBorder;
 		std::shared_ptr<CLabel> name;
 		std::shared_ptr<CLabel> level;
 		std::shared_ptr<CLabel> cost;
@@ -65,6 +65,8 @@ class CSpellWindow : public CWindowObject, public IVideoHolder
 
 		InteractiveArea(const Rect &myRect, const std::function<void()> & funcL, int helpTextId, CSpellWindow * _owner);
 		InteractiveArea(const Rect &myRect, const std::function<void()> & funcL, std::string textId, CSpellWindow * _owner);
+		InteractiveArea(const Rect &myRect, const std::function<void()> & funcL, CSpellWindow * _owner);
+		void setHelp(const std::string & hover, const std::string & help);
 	};
 
 	std::shared_ptr<CPicture> leftCorner;
@@ -92,6 +94,10 @@ class CSpellWindow : public CWindowObject, public IVideoHolder
 
 	std::shared_ptr<CToggleButton> showAllSpells;
 	std::shared_ptr<CLabel> showAllSpellsDescription;
+	std::shared_ptr<CPicture> availabilityBookmark;
+	std::array<std::shared_ptr<CPicture>, 2> availabilityBookmarkIcons;
+	std::shared_ptr<InteractiveArea> availabilityBookmarkArea;
+	bool showOnlyCastableSpells = false;
 
 	std::shared_ptr<VideoWidgetOnce> video;
 
@@ -119,6 +125,9 @@ class CSpellWindow : public CWindowObject, public IVideoHolder
 	CPlayerInterface * myInt;
 
 	void processSpells();
+	bool isSpellUnavailable(const CSpell * spell) const;
+	void toggleSpellAvailability();
+	void updateAvailabilityBookmark();
 	void searchInput();
 	void computeSpellsPerArea(); //recalculates spellAreas::mySpell
 

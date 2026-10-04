@@ -30,6 +30,7 @@ struct ScalableImageParameters : boost::noncopyable
 
 	PlayerColor player = PlayerColor::CANNOT_DETERMINE;
 	uint8_t alphaValue = 255;
+	uint8_t brightness = 255;
 
 	bool flipVertical = false;
 	bool flipHorizontal = false;
@@ -118,6 +119,7 @@ public:
 	Rect contentRect() const override;
 	Point dimensions() const override;
 	void setAlpha(uint8_t value) override;
+	void setBrightness(uint8_t value) override;
 	void draw(SDL_Surface * where, const Point & pos, const Rect * src, int scalingFactor) const override;
 	void setOverlayColor(const ColorRGBA & color) override;
 	void setEffectColor(const ColorRGBA & color) override;

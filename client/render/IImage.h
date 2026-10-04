@@ -100,6 +100,8 @@ public:
 	virtual void adjustPalette(const ColorFilter & shifter, uint32_t colorsToSkipMask) = 0;
 
 	virtual void setAlpha(uint8_t value) = 0;
+	/// Changes RGB brightness without changing transparency. 255 restores original colors.
+	virtual void setBrightness(uint8_t value) = 0;
 
 	virtual void setOverlayColor(const ColorRGBA & color) = 0;
 	virtual void setEffectColor(const ColorRGBA & color) = 0;

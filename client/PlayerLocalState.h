@@ -44,6 +44,8 @@ class PlayerLocalState
 	std::vector<const CGTownInstance *> ownedTowns; //our towns on the adventure map
 
 	PlayerSpellbookSetting spellbookSettings;
+	/// Per-player UI preference, keyed by the hero's stable ID rather than its pointer.
+	std::set<ObjectInstanceID> heroesShowingOnlyCastableSpells;
 
 	SpellID currentSpell;
 
@@ -58,6 +60,8 @@ public:
 
 	const PlayerSpellbookSetting & getSpellbookSettings() const;
 	void setSpellbookSettings(const PlayerSpellbookSetting & newSettings);
+	bool getShowOnlyCastableSpells(ObjectInstanceID hero) const;
+	void setShowOnlyCastableSpells(ObjectInstanceID hero, bool enabled);
 
 	const std::vector<const CGTownInstance *> & getOwnedTowns();
 	const CGTownInstance * getOwnedTown(size_t index);

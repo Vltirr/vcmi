@@ -30,6 +30,7 @@ public:
 
 	bool isTransparent(const Point & coords) const override{ return false;};
 	void setAlpha(uint8_t value) override{};
+	void setBrightness(uint8_t value) override{};
 	void playerColored(const PlayerColor & player) override{};
 	void setOverlayColor(const ColorRGBA & color) override{};
 	void setEffectColor(const ColorRGBA & color) override{};

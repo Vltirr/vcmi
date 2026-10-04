@@ -1092,7 +1092,9 @@ void CPlayerInterface::showInfoDialog(const std::string &text, const std::vector
 		return;
 	}
 
-	waitWhileDialog();
+	// Dialogs requested by UI input must not wait on their own GUI thread.
+	if(!ENGINE->amIGuiThread())
+		waitWhileDialog();
 
 	if ((makingTurn || (battleInt && battleInt->curInt && battleInt->curInt.get() == this)) && ENGINE->windows().count() > 0 && GAME->interface() == this)
 	{
