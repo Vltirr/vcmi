@@ -27,6 +27,7 @@
 #include "../media/IVideoPlayer.h"
 #include "../render/CAnimation.h"
 #include "../render/IRenderHandler.h"
+#include "../render/IImage.h"
 #include "../widgets/GraphicalPrimitiveCanvas.h"
 #include "../widgets/CComponent.h"
 #include "../widgets/CTextInput.h"
@@ -98,6 +99,20 @@ CSpellWindow::InteractiveArea::InteractiveArea(const Rect & myRect, const std::f
 	owner = _owner;
 }
 
+CSpellWindow::InteractiveArea::InteractiveArea(const Rect & myRect, const std::function<void()> & funcL, CSpellWindow * _owner):
+	onLeft(funcL),
+	owner(_owner)
+{
+	addUsedEvents(LCLICK | SHOW_POPUP | HOVER);
+	pos = myRect;
+}
+
+void CSpellWindow::InteractiveArea::setHelp(const std::string & hover, const std::string & help)
+{
+	hoverText = hover;
+	helpText = help;
+}
+
 void CSpellWindow::InteractiveArea::clickPressed(const Point & cursorPosition)
 {
 	ENGINE->input().hapticFeedback();
@@ -164,7 +179,8 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 	std::ranges::sort(sortedSchools, [&](SpellSchool a, SpellSchool b) {
 		auto cnt = [&](SpellSchool s) {
 			return std::ranges::count_if(LIBRARY->spellh->objects, [&](auto const & sp) {
-				return myHero->canCastThisSpell(sp.get()) && sp->schools.count(s);
+				return ((!sp->isSpecial() && myHero->spellbookContainsSpell(sp->getId())) || myHero->canCastThisSpell(sp.get()))
+					&& sp->schools.count(s);
 			});
 		};
 		return cnt(a) > cnt(b);
@@ -218,6 +234,27 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 		Point boxPos = r.bottomLeft() + Point(-2, 5);
 		showAllSpells = std::make_shared<CToggleButton>(boxPos, AnimationPath::builtin("sysopchk.def"), CButton::tooltip(LIBRARY->generaltexth->translate("core.help.458.hover"), LIBRARY->generaltexth->translate("core.help.458.hover")), [this](bool state){ searchInput(); });
 		showAllSpellsDescription = std::make_shared<CLabel>(boxPos.x + 40, boxPos.y + 12, FONT_SMALL, ETextAlignment::CENTERLEFT, Colors::WHITE, LIBRARY->generaltexth->translate("core.help.458.hover"));
+	}
+	else
+	{
+		const Point bookmarkPosition(isBigSpellbook ? 379 : 288, isBigSpellbook ? 465 : 406);
+		showOnlyCastableSpells = myInt->localState->getShowOnlyCastableSpells(myHero->id);
+		const Rect bookmarkArtwork(417, 406, 37, 45);
+		// The mana ribbon is blank in SpelBack; its number is a separate label.
+		// Reuse these original pixels, just as createBigSpellBook does, without scaling.
+		auto spellbook = ENGINE->renderHandler().loadImage(ImagePath::builtin("SpelBack"), EImageBlitMode::OPAQUE);
+		availabilityBookmark = std::make_shared<CPicture>(spellbook, bookmarkArtwork, bookmarkPosition.x, bookmarkPosition.y);
+		availabilityBookmark->removeUsedEvents(LCLICK | SHOW_POPUP);
+		const std::array bookmarkIcons = {"spellbook/allSpellsIcon.png", "spellbook/castableSpellsIcon.png"};
+		for(size_t i = 0; i < availabilityBookmarkIcons.size(); ++i)
+		{
+			availabilityBookmarkIcons[i] = std::make_shared<CPicture>(ImagePath::builtin(bookmarkIcons[i]), bookmarkPosition + Point(7, 5));
+			availabilityBookmarkIcons[i]->scaleTo(Point(23, 23));
+			availabilityBookmarkIcons[i]->removeUsedEvents(LCLICK | SHOW_POPUP);
+		}
+		availabilityBookmarkIcons[1]->disable();
+		availabilityBookmarkArea = std::make_shared<InteractiveArea>(Rect(bookmarkPosition + pos.topLeft(), bookmarkArtwork.dimensions()), std::bind(&CSpellWindow::toggleSpellAvailability, this), this);
+		updateAvailabilityBookmark();
 	}
 
 	processSpells();
@@ -318,6 +355,29 @@ void CSpellWindow::searchInput()
 	computeSpellsPerArea();
 }
 
+bool CSpellWindow::isSpellUnavailable(const CSpell * spell) const
+{
+	return !myHero->canCastThisSpell(spell) || myInt->cb->getSpellCost(spell, myHero) > myHero->mana;
+}
+
+void CSpellWindow::updateAvailabilityBookmark()
+{
+	availabilityBookmarkIcons[0]->setEnabled(!showOnlyCastableSpells);
+	availabilityBookmarkIcons[1]->setEnabled(showOnlyCastableSpells);
+	availabilityBookmarkArea->setHelp(
+		LIBRARY->generaltexth->translate(showOnlyCastableSpells ? "vcmi.spellBook.castableSpellsHover" : "vcmi.spellBook.allSpellsHover"),
+		LIBRARY->generaltexth->translate("vcmi.spellBook.availabilityHelp"));
+}
+
+void CSpellWindow::toggleSpellAvailability()
+{
+	showOnlyCastableSpells = !showOnlyCastableSpells;
+	myInt->localState->setShowOnlyCastableSpells(myHero->id, showOnlyCastableSpells);
+	updateAvailabilityBookmark();
+	availabilityBookmarkArea->hover(true);
+	searchInput();
+}
+
 void CSpellWindow::processSpells()
 {
 	mySpells.clear();
@@ -344,7 +404,10 @@ void CSpellWindow::processSpells()
 			continue;
 		}
 
-		if(!spell->isCreatureAbility() && myHero->canCastThisSpell(spell.get()) && searchTextFound)
+		if(!spell->isCreatureAbility()
+			&& ((!spell->isSpecial() && myHero->spellbookContainsSpell(spell->getId())) || myHero->canCastThisSpell(spell.get()))
+			&& (!showOnlyCastableSpells || !isSpellUnavailable(spell.get()))
+			&& searchTextFound)
 			mySpells.push_back(spell.get());
 	}
 
@@ -702,9 +765,6 @@ CSpellWindow::SpellArea::SpellArea(Rect pos, CSpellWindow * owner)
 
 	OBJECT_CONSTRUCTION;
 
-	image = std::make_shared<CAnimImage>(AnimationPath::builtin("Spells"), 0, 0);
-	image->visible = false;
-
 	name = std::make_shared<CLabel>(39, 70, FONT_TINY, ETextAlignment::CENTER);
 	level = std::make_shared<CLabel>(39, 82, FONT_TINY, ETextAlignment::CENTER);
 	cost = std::make_shared<CLabel>(39, 94, FONT_TINY, ETextAlignment::CENTER);
@@ -714,6 +774,19 @@ CSpellWindow::SpellArea::SpellArea(Rect pos, CSpellWindow * owner)
 }
 
 CSpellWindow::SpellArea::~SpellArea() = default;
+
+std::string CSpellWindow::SpellArea::learnedSpellRequirement() const
+{
+	if(owner->onSpellSelect || !mySpell || !owner->myHero->spellbookContainsSpell(mySpell->getId())
+		|| mySpell->getLevel() <= owner->myHero->maxCastableSpellLevel()
+		|| owner->myHero->canCastThisSpell(mySpell))
+		return {};
+
+	MetaString message = MetaString::createFromTextID("vcmi.spellBook.wisdomRequired");
+	message.replaceNumber(mySpell->getLevel());
+	message.replaceNumber(owner->myHero->maxCastableSpellLevel());
+	return message.toString(&GAME->translator());
+}
 
 void CSpellWindow::SpellArea::clickPressed(const Point & cursorPosition)
 {
@@ -725,6 +798,13 @@ void CSpellWindow::SpellArea::clickPressed(const Point & cursorPosition)
 		{
 			owner->onSpellSelect(mySpell->id);
 			owner->close();
+			return;
+		}
+
+		const auto requirement = learnedSpellRequirement();
+		if(!requirement.empty())
+		{
+			GAME->interface()->showInfoDialog(requirement);
 			return;
 		}
 
@@ -825,7 +905,10 @@ void CSpellWindow::SpellArea::showPopupWindow(const Point & cursorPosition)
 			dmgInfo = dmgText.toString(&GAME->translator());
 		}
 
-		CRClickPopup::createAndPush(mySpell->getDescriptionTranslated(schoolLevel) + dmgInfo, std::make_shared<CComponent>(ComponentType::SPELL, mySpell->id));
+		const auto requirement = learnedSpellRequirement();
+		const auto description = mySpell->getDescriptionTranslated(schoolLevel) + dmgInfo
+			+ (requirement.empty() ? std::string() : "\n\n" + requirement);
+		CRClickPopup::createAndPush(description, std::make_shared<CComponent>(ComponentType::SPELL, mySpell->id));
 	}
 }
 
@@ -848,7 +931,7 @@ void CSpellWindow::SpellArea::hover(bool on)
 void CSpellWindow::SpellArea::setSpell(const CSpell * spell)
 {
 	schoolBorder.reset();
-	image->visible = false;
+	image.reset();
 	name->setText("");
 	level->setText("");
 	cost->setText("");
@@ -859,24 +942,27 @@ void CSpellWindow::SpellArea::setSpell(const CSpell * spell)
 		schoolLevel = owner->myHero->getSpellSchoolLevel(mySpell, &whichSchool);
 		auto spellCost = owner->myInt->cb->getSpellCost(mySpell, owner->myHero);
 
-		image->setFrame(mySpell->id.getNum());
-		image->visible = true;
-
 		{
 			OBJECT_CONSTRUCTION;
+			const uint8_t brightness = !owner->onSpellSelect && owner->isSpellUnavailable(mySpell) ? 120 : 255;
+			// A private image reference keeps brightness changes local to this spell slot.
+			auto sprite = ENGINE->renderHandler().loadImage(AnimationPath::builtin("Spells"), mySpell->id.getNum(), 0, EImageBlitMode::COLORKEY);
+			sprite->setBrightness(brightness);
+			image = std::make_shared<CPicture>(sprite, Point(0, 0));
+			image->removeUsedEvents(LCLICK | SHOW_POPUP);
 
-			schoolBorder.reset();
-			if (owner->selectedTab == SpellSchool::ANY)
+			const auto borderSchool = owner->selectedTab == SpellSchool::ANY ? whichSchool : owner->selectedTab;
+			if(borderSchool.hasValue())
 			{
-				if (whichSchool.hasValue())
-					schoolBorder = std::make_shared<CAnimImage>(LIBRARY->spellSchoolHandler->getById(whichSchool)->getSpellBordersPath(), schoolLevel);
+				auto borderSprite = ENGINE->renderHandler().loadImage(LIBRARY->spellSchoolHandler->getById(borderSchool)->getSpellBordersPath(), schoolLevel, 0, EImageBlitMode::COLORKEY);
+				borderSprite->setBrightness(brightness);
+				schoolBorder = std::make_shared<CPicture>(borderSprite, Point(0, 0));
+				schoolBorder->removeUsedEvents(LCLICK | SHOW_POPUP);
 			}
-			else
-				schoolBorder = std::make_shared<CAnimImage>(LIBRARY->spellSchoolHandler->getById(owner->selectedTab)->getSpellBordersPath(), schoolLevel);
 		}
 
 		ColorRGBA firstLineColor, secondLineColor;
-		if(spellCost > owner->myHero->mana && !owner->onSpellSelect) //hero cannot cast this spell
+		if(!owner->onSpellSelect && owner->isSpellUnavailable(mySpell))
 		{
 			firstLineColor = Colors::WHITE;
 			secondLineColor = Colors::ORANGE;

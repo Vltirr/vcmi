@@ -20,6 +20,7 @@ class CGTownInstance;
 class CButton;
 class BattleInterface;
 class BattleConsole;
+class BattleFocusBar;
 class BattleRenderer;
 class StackQueue;
 class TurnTimerWidget;
@@ -35,6 +36,8 @@ class BattleWindow : public InterfaceObjectConfigurable
 
 	std::shared_ptr<StackQueue> queue;
 	std::shared_ptr<BattleConsole> console;
+	std::shared_ptr<BattleFocusBar> attackerFocusBar;
+	std::shared_ptr<BattleFocusBar> defenderFocusBar;
 	std::shared_ptr<HeroInfoBasicPanel> attackerHeroWindow;
 	std::shared_ptr<HeroInfoBasicPanel> defenderHeroWindow;
 	std::shared_ptr<StackInfoBasicPanel> attackerStackWindow;
@@ -76,6 +79,8 @@ class BattleWindow : public InterfaceObjectConfigurable
 	/// flip battle queue visibility to opposite
 	void toggleQueueVisibility();
 	void createQueue();
+	void createFocusBars();
+	void setPositionFocusBars();
 
 	/// flip a boolean battle display setting (hex grid / mouse shadow / movement shadow)
 	void toggleBattleSetting(const std::string & name);
@@ -125,6 +130,11 @@ public:
 	/// Refresh queue after turn order changes
 	void updateQueue();
 
+	/// Refresh both Focus widgets after the shared battle resource changes
+	void updateFocusBars();
+	/// Draw Focus after the battlefield background and before its creatures and effects
+	void renderFocusBars(Canvas & to);
+
 	// Set positions for hero & stack info window
 	void setPositionInfoWindow();
 
@@ -155,7 +165,11 @@ public:
 	/// Set possible alternative options to fill unit actions panel
 	void setPossibleActions(const std::vector<PossiblePlayerBattleAction> & allActions);
 
+	/// Refresh activation availability without rebuilding the action panel
+	void updateActivationAvailability(const std::vector<PossiblePlayerBattleAction> & allActions);
+	/// Cancels the action selected in the unit action panel, if any.
+	bool cancelSelectedUnitAction();
+
 	/// ends battle with autocombat
 	void endWithAutocombat();
 };
-

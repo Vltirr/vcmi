@@ -272,6 +272,18 @@ void ScalableImageShared::draw(SDL_Surface * where, const Point & dest, const Re
 		return images[index];
 	};
 
+	const auto bodyColorMultiplier = [&](const ISharedImage & body)
+	{
+		// Upscaling may convert an indexed sprite to RGBA, where its palette is ignored.
+		if(parameters.palette && !body.getPalette())
+			return ColorRGBA(
+				parameters.colorMultiplier.r * parameters.brightness / 255,
+				parameters.colorMultiplier.g * parameters.brightness / 255,
+				parameters.colorMultiplier.b * parameters.brightness / 255,
+				parameters.colorMultiplier.a);
+		return parameters.colorMultiplier;
+	};
+
 	bool shadowLoading = scaled.at(scalingFactor).shadow.at(0) && scaled.at(scalingFactor).shadow.at(0)->isLoading();
 	bool bodyLoading = scaled.at(scalingFactor).body.at(0) && scaled.at(scalingFactor).body.at(0)->isLoading();
 	bool overlayLoading = scaled.at(scalingFactor).overlay.at(0) && scaled.at(scalingFactor).overlay.at(0)->isLoading();
@@ -280,7 +292,8 @@ void ScalableImageShared::draw(SDL_Surface * where, const Point & dest, const Re
 
 	if (shadowLoading || bodyLoading || overlayLoading || playerLoading || grayscaleLoading)
 	{
-		getFlippedImage(scaled[1].body)->scaledDraw(where, parameters.palette, dimensions() * scalingFactor, dest, src, parameters.colorMultiplier, parameters.alphaValue, locator.layer);
+		auto body = getFlippedImage(scaled[1].body);
+		body->scaledDraw(where, parameters.palette, dimensions() * scalingFactor, dest, src, bodyColorMultiplier(*body), parameters.alphaValue, locator.layer);
 
 		if (parameters.effectColorMultiplier.a != ColorRGBA::ALPHA_TRANSPARENT)
 			getFlippedImage(scaled[1].body)->scaledDraw(where, parameters.palette, dimensions() * scalingFactor, dest, src, parameters.effectColorMultiplier, parameters.alphaValue, locator.layer);
@@ -297,7 +310,10 @@ void ScalableImageShared::draw(SDL_Surface * where, const Point & dest, const Re
 	else
 	{
 		if (scaled.at(scalingFactor).body.at(0))
-			getFlippedImage(scaled.at(scalingFactor).body)->draw(where, parameters.palette, dest, src, parameters.colorMultiplier, parameters.alphaValue, locator.layer);
+		{
+			auto body = getFlippedImage(scaled.at(scalingFactor).body);
+			body->draw(where, parameters.palette, dest, src, bodyColorMultiplier(*body), parameters.alphaValue, locator.layer);
+		}
 
 		if (scaled.at(scalingFactor).bodyGrayscale.at(0) && parameters.effectColorMultiplier.a != ColorRGBA::ALPHA_TRANSPARENT)
 			getFlippedImage(scaled.at(scalingFactor).bodyGrayscale)->draw(where, parameters.palette, dest, src, parameters.effectColorMultiplier, parameters.alphaValue, locator.layer);
@@ -361,6 +377,19 @@ Point ScalableImageInstance::dimensions() const
 void ScalableImageInstance::setAlpha(uint8_t value)
 {
 	parameters.alphaValue = value;
+}
+
+void ScalableImageInstance::setBrightness(uint8_t value)
+{
+	parameters.brightness = value;
+	if(parameters.palette)
+	{
+		const float brightness = value / 255.f;
+		parameters.adjustPalette(image->getPalette(), blitMode,
+			ColorFilter::genRangeShifter(0, 0, 0, brightness, brightness, brightness), 0);
+	}
+	else
+		parameters.colorMultiplier = ColorRGBA(value, value, value);
 }
 
 void ScalableImageInstance::draw(SDL_Surface * where, const Point & pos, const Rect * src, int scalingFactor) const

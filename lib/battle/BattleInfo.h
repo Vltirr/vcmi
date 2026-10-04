@@ -110,6 +110,15 @@ public:
 
 	int32_t getCastSpells(BattleSide side) const override;
 	int32_t getEnchanterCounter(BattleSide side) const override;
+	int32_t getFocusPoints(BattleSide side) const override;
+	FocusRules getFocusRules() const override;
+	int32_t getActivationUsage(BattleSide side, const std::string & key, EActivationLimitPeriod period) const override;
+	int32_t getActivationUsage(BattleSide side, const ActivationStateKey & key) const override;
+	int32_t getActivationCooldownReadyRound(BattleSide side, const ActivationStateKey & key) const override;
+	void setFocusPoints(BattleSide side, int32_t points) override;
+	void setActivationUsage(BattleSide side, const std::string & key, EActivationLimitPeriod period, int32_t uses) override;
+	void setActivationUsage(BattleSide side, const ActivationStateKey & key, int32_t uses) override;
+	void setActivationCooldownReadyRound(BattleSide side, const ActivationStateKey & key, int32_t readyRound) override;
 
 	const IBonusBearer * getBonusBearer() const override;
 

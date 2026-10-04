@@ -132,6 +132,7 @@ public:
 	BattleID getBattleID() const override;
 
 	int32_t getActiveStackID() const override;
+	int32_t getRound() const override;
 
 	battle::Units getUnitsIf(const battle::UnitFilter & predicate) const override;
 
@@ -215,6 +216,7 @@ private:
 
 	int32_t bonusTreeVersion;
 	int32_t activeUnitId;
+	int32_t hypotheticalRound;
 	mutable uint32_t nextId;
 
 	std::unique_ptr<HypotheticServerCallback> serverCallback;

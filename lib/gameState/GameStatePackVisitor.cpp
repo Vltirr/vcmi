@@ -16,6 +16,7 @@
 #include "../CPlayerState.h"
 #include "../CStack.h"
 #include "../IGameSettings.h"
+#include "../battle/Activation.h"
 
 #include "../campaign/CampaignState.h"
 #include "../entities/artifact/ArtifactUtils.h"
@@ -1438,18 +1439,19 @@ void GameStatePackVisitor::visitStartAction(StartAction & pack)
 				st->waitedThisTurn = true;
 				break;
 			case EActionType::MONSTER_SPELL:
+			case EActionType::CATAPULT:
+			case EActionType::CREATURE_ABILITY:
 			{
-				SpellID spellID = pack.ba.spell;
-				if (spellID.hasValue() && spellID.toSpell()->canCastWithoutSkip())
-				{
-					//state does not change
-				}
-				else
+				if(!battle::actionReturnsControl(st, pack.ba.actionType, pack.ba.spell, pack.ba.activatedAbility))
 				{
 					st->waiting = false;
 					st->movedThisRound = true;
 				}
-				st->castSpellThisTurn = true;
+				// An activation owns its repetition policy through its resolved limits.  It
+				// must not acquire the native per-turn spell marker as a hidden second cap.
+				const auto source = battle::getActivationSource(st, pack.ba.actionType, pack.ba.spell, pack.ba.activatedAbility);
+				if(!source || !source->activation)
+					st->castSpellThisTurn = true;
 				break;
 			}
 			case EActionType::HERO_SPELL: //no change in current stack state
@@ -1494,6 +1496,24 @@ void GameStatePackVisitor::visitBattleUnitsChanged(BattleUnitsChanged & pack)
 {
 	BattleStatePackVisitor battleVisitor(*gs.getBattle(pack.battleID));
 	pack.visitTyped(battleVisitor);
+}
+
+void GameStatePackVisitor::visitBattleFocusChanged(BattleFocusChanged & pack)
+{
+	BattleStatePackVisitor battleVisitor(*gs.getBattle(pack.battleID));
+	battleVisitor.visitBattleFocusChanged(pack);
+}
+
+void GameStatePackVisitor::visitBattleActivationUsageChanged(BattleActivationUsageChanged & pack)
+{
+	BattleStatePackVisitor battleVisitor(*gs.getBattle(pack.battleID));
+	battleVisitor.visitBattleActivationUsageChanged(pack);
+}
+
+void GameStatePackVisitor::visitBattleActivationCooldownChanged(BattleActivationCooldownChanged & pack)
+{
+	BattleStatePackVisitor battleVisitor(*gs.getBattle(pack.battleID));
+	battleVisitor.visitBattleActivationCooldownChanged(pack);
 }
 
 void GameStatePackVisitor::restorePreBattleState(BattleID battleID)
@@ -1788,4 +1808,19 @@ void BattleStatePackVisitor::visitBattleUnitsChanged(BattleUnitsChanged & pack)
 				break;
 		}
 	}
+}
+
+void BattleStatePackVisitor::visitBattleFocusChanged(BattleFocusChanged & pack)
+{
+	battleState.setFocusPoints(pack.side, pack.points);
+}
+
+void BattleStatePackVisitor::visitBattleActivationUsageChanged(BattleActivationUsageChanged & pack)
+{
+	battleState.setActivationUsage(pack.side, {pack.key, pack.scope, pack.stack, pack.period}, pack.uses);
+}
+
+void BattleStatePackVisitor::visitBattleActivationCooldownChanged(BattleActivationCooldownChanged & pack)
+{
+	battleState.setActivationCooldownReadyRound(pack.side, {pack.key, pack.scope, pack.stack, EActivationLimitPeriod::BATTLE}, pack.readyRound);
 }

@@ -34,6 +34,22 @@ void PlayerLocalState::setSpellbookSettings(const PlayerSpellbookSetting & newSe
 	spellbookSettings = newSettings;
 }
 
+bool PlayerLocalState::getShowOnlyCastableSpells(ObjectInstanceID hero) const
+{
+	return heroesShowingOnlyCastableSpells.contains(hero);
+}
+
+void PlayerLocalState::setShowOnlyCastableSpells(ObjectInstanceID hero, bool enabled)
+{
+	if(getShowOnlyCastableSpells(hero) == enabled)
+		return;
+	if(enabled)
+		heroesShowingOnlyCastableSpells.insert(hero);
+	else
+		heroesShowingOnlyCastableSpells.erase(hero);
+	synchronizeState();
+}
+
 void PlayerLocalState::setPath(const CGHeroInstance * h, const CGPath & path)
 {
 	paths[h] = path;
@@ -353,6 +369,12 @@ void PlayerLocalState::serialize(JsonNode & dest) const
 	dest["spellbook"]["pageAdvmap"].Integer() = spellbookSettings.spellbookLastPageAdvmap;
 	dest["spellbook"]["tabBattle"].Integer() = spellbookSettings.spellbookLastTabBattle;
 	dest["spellbook"]["tabAdvmap"].Integer() = spellbookSettings.spellbookLastTabAdvmap;
+	for(const auto hero : heroesShowingOnlyCastableSpells)
+	{
+		JsonNode record;
+		record.Integer() = hero.getNum();
+		dest["spellbook"]["onlyCastableHeroes"].Vector().push_back(record);
+	}
 
 	if (currentSelection)
 		dest["currentSelection"].Integer() = currentSelection->id.getNum();
@@ -371,6 +393,7 @@ void PlayerLocalState::deserialize(const JsonNode & source)
 	sleepingHeroes.clear();
 	wanderingHeroes.clear();
 	ownedTowns.clear();
+	heroesShowingOnlyCastableSpells.clear();
 
 	for (auto const & town : source["towns"].Vector())
 	{
@@ -418,6 +441,14 @@ void PlayerLocalState::deserialize(const JsonNode & source)
 		spellbookSettings.spellbookLastPageAdvmap = source["spellbook"]["pageAdvmap"].Integer();
 		spellbookSettings.spellbookLastTabBattle = SpellSchool(source["spellbook"]["tabBattle"].Integer());
 		spellbookSettings.spellbookLastTabAdvmap = SpellSchool(source["spellbook"]["tabAdvmap"].Integer());
+		for(const auto & record : source["spellbook"]["onlyCastableHeroes"].Vector())
+		{
+			if(!record.isNumber())
+				continue;
+			ObjectInstanceID heroID(record.Integer());
+			if(heroID.getNum() >= 0)
+				heroesShowingOnlyCastableSpells.insert(heroID);
+		}
 	}
 
 	// append any owned heroes / towns that were not present in loaded state

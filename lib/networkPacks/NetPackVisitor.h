@@ -118,6 +118,9 @@ public:
 	virtual void visitBattleResultsApplied(BattleResultsApplied & pack) {}
 	virtual void visitBattleEnded(BattleEnded & pack) {}
 	virtual void visitBattleObstaclesChanged(BattleObstaclesChanged & pack) {}
+	virtual void visitBattleFocusChanged(BattleFocusChanged & pack) {}
+	virtual void visitBattleActivationUsageChanged(BattleActivationUsageChanged & pack) {}
+	virtual void visitBattleActivationCooldownChanged(BattleActivationCooldownChanged & pack) {}
 	virtual void visitBattleSetStackProperty(BattleSetStackProperty & pack) {}
 	virtual void visitBattleTriggerEffect(BattleTriggerEffect & pack) {}
 	virtual void visitBattleAnimationPlayed(BattleAnimationPlayed & pack) {}

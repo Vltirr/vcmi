@@ -11,6 +11,7 @@
 #pragma once
 #include "CBattleInfoEssentials.h"
 #include "BattleUnitTurnReason.h"
+#include "FocusRules.h"
 
 class ObstacleChanges;
 class UnitChanges;
@@ -20,6 +21,8 @@ class JsonNode;
 class JsonSerializeFormat;
 class BattleField;
 class int3;
+enum class EActivationLimitPeriod : int8_t;
+struct ActivationStateKey;
 
 namespace vstd
 {
@@ -64,6 +67,11 @@ public:
 
 	virtual int32_t getCastSpells(BattleSide side) const = 0;
 	virtual int32_t getEnchanterCounter(BattleSide side) const = 0;
+	virtual int32_t getFocusPoints(BattleSide side) const = 0;
+	virtual FocusRules getFocusRules() const = 0;
+	virtual int32_t getActivationUsage(BattleSide side, const std::string & key, EActivationLimitPeriod period) const = 0;
+	virtual int32_t getActivationUsage(BattleSide side, const ActivationStateKey & key) const = 0;
+	virtual int32_t getActivationCooldownReadyRound(BattleSide side, const ActivationStateKey & key) const = 0;
 
 	virtual ui8 getTacticDist() const = 0;
 	virtual BattleSide getTacticsSide() const = 0;
@@ -81,6 +89,10 @@ public:
 class DLL_LINKAGE IBattleState : public IBattleInfo
 {
 public:
+	virtual void setFocusPoints(BattleSide side, int32_t points) = 0;
+	virtual void setActivationUsage(BattleSide side, const std::string & key, EActivationLimitPeriod period, int32_t uses) = 0;
+	virtual void setActivationUsage(BattleSide side, const ActivationStateKey & key, int32_t uses) = 0;
+	virtual void setActivationCooldownReadyRound(BattleSide side, const ActivationStateKey & key, int32_t readyRound) = 0;
 	virtual void nextRound() = 0;
 	virtual void nextTurn(uint32_t unitId, BattleUnitTurnReason reason) = 0;
 

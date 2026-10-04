@@ -1,0 +1,572 @@
+{
+	"core:archangel": {
+		"abilities": {
+			"resurrects": {
+				"activation": {
+					"costs": {
+						"focus": 3
+					},
+					"cooldown": { "scope": "side", "afterUse": 5 }
+				}
+			}
+		}
+	},
+	"core:masterGenie": {
+		"abilities": {
+			"randomSpellcaster": {
+				"activation": {
+					"turn": { "returnsControl": true },
+					"costs": {
+						"focus": 1
+					},
+					"cooldown": { "scope": "side", "afterUse": 2 }
+				}
+			}
+		}
+	},
+	"core:pitLord": {
+		"abilities": {
+			"resurrects": {
+				"activation": {
+					"costs": {
+						"focus": 2
+					},
+					"cooldown": { "scope": "side", "afterUse": 3 }
+				}
+			}
+		}
+	},
+	"core:ogreMage": {
+		"abilities": {
+			"castsBloodlust": {
+				"activation": {
+					"turn": { "returnsControl": true },
+					"costs": {
+						"focus": 1
+					}
+				}
+			}
+		}
+	},
+	"core:cyclop": {
+		"abilities": {
+			"canShootWalls": {
+				"activation": {
+					"limits": [{ "key": "focus-3:cyclopsWallShot", "scope": "side", "period": "round", "max": 1 }],
+					"turn": { "returnsControl": true },
+					"costs": {
+						"focus": 1
+					}
+				}
+			}
+		}
+	},
+	"core:cyclopKing": {
+		"abilities": {
+			"canShootWalls": {
+				"activation": {
+					"limits": [{ "key": "focus-3:cyclopsWallShot", "scope": "side", "period": "round", "max": 1 }],
+					"turn": { "returnsControl": true },
+					"costs": {
+						"focus": 1
+					}
+				}
+			}
+		}
+	},
+	"core:stormElemental": {
+		"abilities": {
+			"spellcaster": {
+				"activation": {
+					"turn": { "returnsControl": true },
+					"costs": {
+						"focus": 1
+					}
+				}
+			}
+		}
+	},
+	"core:iceElemental": {
+		"abilities": {
+			"spellcaster": {
+				"activation": {
+					"turn": { "returnsControl": true },
+					"costs": {
+						"focus": 1
+					}
+				}
+			}
+		}
+	},
+	"core:energyElemental": {
+		"abilities": {
+			"spellcaster": {
+				"activation": {
+					"turn": { "returnsControl": true },
+					"costs": {
+						"focus": 1
+					}
+				}
+			}
+		}
+	},
+	"core:magmaElemental": {
+		"abilities": {
+			"spellcaster": {
+				"activation": {
+					"turn": { "returnsControl": true },
+					"costs": {
+						"focus": 1
+					}
+				}
+			}
+		}
+	},
+	"core:fairieDragon": {
+		"abilities": {
+			"castsMagicArrow": {
+				"activation": {
+					"turn": { "returnsControl": true },
+					"costs": {
+						"focus": 1
+					},
+					"limits": [{ "key": "focus-3:fairieDragonCost1", "scope": "side", "period": "round", "max": 1 }]
+				}
+			},
+			"castsIceBolt": {
+				"activation": {
+					"turn": { "returnsControl": true },
+					"costs": {
+						"focus": 1
+					},
+					"limits": [{ "key": "focus-3:fairieDragonCost1", "scope": "side", "period": "round", "max": 1 }]
+				}
+			},
+			"castsLightningBolt": {
+				"activation": {
+					"turn": { "returnsControl": true },
+					"costs": {
+						"focus": 1
+					},
+					"limits": [{ "key": "focus-3:fairieDragonCost1", "scope": "side", "period": "round", "max": 1 }]
+				}
+			},
+			"castsChainLightning": {
+				"activation": {
+					"costs": {
+						"focus": 3
+					}
+				}
+			},
+			"castsFrostRing": {
+				"activation": {
+					"costs": {
+						"focus": 2
+					},
+					"limits": [{ "key": "focus-3:fairieDragonCost2", "scope": "side", "period": "round", "max": 1 }]
+				}
+			},
+			"castsFireball": {
+				"activation": {
+					"costs": {
+						"focus": 2
+					},
+					"limits": [{ "key": "focus-3:fairieDragonCost2", "scope": "side", "period": "round", "max": 1 }]
+				}
+			},
+			"castsInferno": {
+				"activation": {
+					"costs": {
+						"focus": 2
+					},
+					"limits": [{ "key": "focus-3:fairieDragonCost2", "scope": "side", "period": "round", "max": 1 }]
+				}
+			},
+			"castsMeteorShower": {
+				"activation": {
+					"costs": {
+						"focus": 2
+					},
+					"limits": [{ "key": "focus-3:fairieDragonCost2", "scope": "side", "period": "round", "max": 1 }]
+				}
+			}
+		}
+	},
+	"core:fireDragonFly": {
+		"abilities": {
+			"castWeakness": {
+				"val": 100,
+				"activation": {
+					"id": "focus-3:dragonFlyWeakness",
+					"costs": {
+						"focus": 1
+					},
+					"limits": [{ "scope": "side", "period": "round", "max": 1 }]
+				}
+			}
+		}
+	},
+	"core:basilisk": {
+		"abilities": {
+			"petrify": {
+				"val": 100,
+				"activation": {
+					"id": "focus-3:basiliskPetrification",
+					"costs": {
+						"focus": 2
+					},
+					"cooldown": { "scope": "side", "afterUse": 4 }
+				}
+			}
+		}
+	},
+	"core:greaterBasilisk": {
+		"abilities": {
+			"petrify": {
+				"val": 100,
+				"activation": {
+					"id": "focus-3:basiliskPetrification",
+					"costs": {
+						"focus": 2
+					},
+					"cooldown": { "scope": "side", "afterUse": 4 }
+				}
+			}
+		}
+	},
+	"core:medusa": {
+		"abilities": {
+			"petrification": {
+				"val": 100,
+				"activation": {
+					"id": "focus-3:medusaPetrification",
+					"costs": {
+						"focus": 2
+					},
+					"cooldown": { "scope": "side", "afterUse": 4 }
+				}
+			}
+		}
+	},
+	"core:medusaQueen": {
+		"abilities": {
+			"petrification": {
+				"val": 100,
+				"activation": {
+					"id": "focus-3:medusaPetrification",
+					"costs": {
+						"focus": 2
+					},
+					"cooldown": { "scope": "side", "afterUse": 4 }
+				}
+			}
+		}
+	},
+	"core:scorpicore": {
+		"abilities": {
+			"paralize": {
+				"val": 100,
+				"activation": {
+					"id": "focus-3:scorpicoreParalysis",
+					"costs": {
+						"focus": 3
+					},
+					"limits": [
+						{
+							"key": "focus-3:scorpicoreParalysis",
+							"scope": "side",
+							"period": "round",
+							"max": 1
+						}
+					]
+				}
+			}
+		}
+	},
+	"core:unicorn": {
+		"abilities": {
+			"blinds": {
+				"val": 100,
+				"activation": {
+					"id": "focus-3:unicornBlind",
+					"costs": {
+						"focus": 3
+					},
+					"limits": [
+						{
+							"key": "focus-3:unicornBlind",
+							"scope": "side",
+							"period": "round",
+							"max": 1
+						}
+					]
+				}
+			}
+		}
+	},
+	"core:warUnicorn": {
+		"abilities": {
+			"blinds": {
+				"val": 100,
+				"activation": {
+					"id": "focus-3:unicornBlind",
+					"costs": {
+						"focus": 3
+					},
+					"limits": [
+						{
+							"key": "focus-3:unicornBlind",
+							"scope": "side",
+							"period": "round",
+							"max": 1
+						}
+					]
+				}
+			}
+		}
+	},
+	"core:zombieLord": {
+		"abilities": {
+			"castDisease": {
+				"val": 100,
+				"activation": {
+					"id": "focus-3:zombieLordDisease",
+					"costs": {
+						"focus": 1
+					},
+					"limits": [{ "scope": "side", "period": "round", "max": 1 }]
+				}
+			}
+		}
+	},
+	"core:mummy": {
+		"abilities": {
+			"castCurse": {
+				"val": 100,
+				"activation": {
+					"id": "focus-3:mummyCurse",
+					"costs": {
+						"focus": 1
+					},
+					"cooldown": { "scope": "side", "afterUse": 2 }
+				}
+			}
+		}
+	},
+	"core:blackKnight": {
+		"abilities": {
+			"curses": {
+				"val": 100,
+				"activation": {
+					"id": "focus-3:blackKnightCurse",
+					"costs": {
+						"focus": 1
+					},
+					"cooldown": { "scope": "side", "afterUse": 2 }
+				}
+			}
+		}
+	},
+	"core:dreadKnight": {
+		"abilities": {
+			"curses": {
+				"val": 100,
+				"activation": {
+					"id": "focus-3:blackKnightCurse",
+					"costs": {
+						"focus": 1
+					},
+					"cooldown": { "scope": "side", "afterUse": 2 }
+				}
+			}
+		}
+	},
+	"core:ghostDragon": {
+		"abilities": {
+			"age": {
+				"val": 100,
+				"activation": {
+					"id": "focus-3:ghostDragonAging",
+					"costs": {
+						"focus": 2
+					},
+					"cooldown": { "scope": "side", "afterUse": 4 }
+				}
+			}
+		}
+	},
+	"core:mightyGorgon": {
+		"abilities": {
+			"deathStare": {
+				"activation": {
+					"id": "focus-3:mightyGorgonDeathStare",
+					"costs": {
+						"focus": 2
+					},
+					"cooldown": { "scope": "side", "afterUse": 2 }
+				}
+			}
+		}
+	},
+	"core:wyvernMonarch": {
+		"abilities": {
+			"poison": {
+				"val": 100,
+				"activation": {
+					"id": "focus-3:wyvernPoison",
+					"costs": {
+						"focus": 2
+					},
+					"limits": [{ "scope": "side", "period": "round", "max": 1 }]
+				}
+			}
+		}
+	},
+	"core:thunderbird": {
+		"abilities": {
+			"thunderOnAttack": {
+				"val": 100,
+				"activation": {
+					"id": "focus-3:thunderbirdLightning",
+					"costs": {
+						"focus": 2
+					},
+					"limits": [
+						{
+							"key": "focus-3:thunderbirdLightning",
+							"scope": "side",
+							"period": "round",
+							"max": 1
+						}
+					]
+				}
+			}
+		}
+	},
+	"core:rustDragon": {
+		"abilities": {
+			"acidBreath": {
+				"val": 100,
+				"activation": {
+					"id": "focus-3:rustDragonAcidBreath",
+					"costs": {
+						"focus": 2
+					}
+				}
+			},
+			"reduceDefence": {
+				"val": 100,
+				"activation": {
+					"id": "focus-3:rustDragonAcidBreath",
+					"costs": {
+						"focus": 2
+					}
+				}
+			}
+		}
+	},
+	"core:vampireLord": {
+		"abilities": {
+			"drainsLife": {
+				"activation": {
+					"id": "focus-3:vampireLifeDrain",
+					"costs": {
+						"focus": 2
+					}
+				}
+			}
+		}
+	},
+	"core:enchanter": {
+		"abilities": {
+			"castsHaste": {
+				"activation": {
+					"id": "focus-3:enchanterSpell",
+					"turn": { "returnsControl": true },
+					"cooldown": { "scope": "side", "initial": 1, "afterUse": 3 },
+					"costs": {
+						"focus": 2
+					}
+				}
+			},
+			"castsSlow": {
+				"activation": {
+					"id": "focus-3:enchanterSpell",
+					"turn": { "returnsControl": true },
+					"cooldown": { "scope": "side", "initial": 1, "afterUse": 3 },
+					"costs": {
+						"focus": 2
+					}
+				}
+			},
+			"castsStoneSkin": {
+				"activation": {
+					"id": "focus-3:enchanterSpell",
+					"turn": { "returnsControl": true },
+					"cooldown": { "scope": "side", "initial": 1, "afterUse": 3 },
+					"costs": {
+						"focus": 2
+					}
+				}
+			},
+			"castsBless": {
+				"activation": {
+					"id": "focus-3:enchanterSpell",
+					"turn": { "returnsControl": true },
+					"cooldown": { "scope": "side", "initial": 1, "afterUse": 3 },
+					"costs": {
+						"focus": 2
+					}
+				}
+			},
+			"castsWeakness": {
+				"activation": {
+					"id": "focus-3:enchanterSpell",
+					"turn": { "returnsControl": true },
+					"cooldown": { "scope": "side", "initial": 1, "afterUse": 3 },
+					"costs": {
+						"focus": 2
+					}
+				}
+			},
+			"castsAirShield": {
+				"activation": {
+					"id": "focus-3:enchanterSpell",
+					"turn": { "returnsControl": true },
+					"cooldown": { "scope": "side", "initial": 1, "afterUse": 3 },
+					"costs": {
+						"focus": 2
+					}
+				}
+			}
+		}
+	},
+	"core:wraith": {
+		"abilities": {
+			"drainsMana": {
+				"val": 5,
+				"activation": {
+					"id": "focus-3:wraithManaDrain",
+					"turn": { "returnsControl": true },
+					"costs": {
+						"focus": 1
+					},
+					"limits": [
+						{
+							"key": "focus-3:wraithManaDrain",
+							"scope": "side",
+							"period": "battle",
+							"max": 3
+						},
+						{
+							"key": "focus-3:wraithManaDrain",
+							"scope": "side",
+							"period": "round",
+							"max": 1
+						},
+					]
+				}
+			}
+		}
+	}
+}

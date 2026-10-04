@@ -1,0 +1,17 @@
+{
+	"name": "Focus — 5 charges",
+	"description": "Shared battle focus costs for selected official activated creature abilities.",
+	"version": "2.0.0",
+	"author": "VCMI focus experiment",
+	"modType": "Mechanics",
+	"keepDisabled": true,
+	"conflicts": ["focus-3"],
+	"settings": {"combat": {"focus": {"enabled": true, "pointsPerCharge": 6, "maxCharges": 5}}},
+	"creatures": ["config/focusAbilities.json"],
+	"translations": ["config/translations/english.json"],
+	"spanish": {
+		"name": "Cargas de concentración — 5 cargas",
+		"description": "Costes de concentración compartida para habilidades activas oficiales seleccionadas.",
+		"translations": ["config/translations/spanish.json"]
+	}
+}

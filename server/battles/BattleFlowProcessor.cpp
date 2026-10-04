@@ -10,6 +10,8 @@
 #include "StdInc.h"
 #include "BattleFlowProcessor.h"
 
+#include "../../lib/battle/Activation.h"
+
 #include "BattleProcessor.h"
 
 #include "../CGameHandler.h"
@@ -709,18 +711,13 @@ void BattleFlowProcessor::onActionMade(const CBattleInfoCallback & battle, const
 	if(battle.battleGetTacticDist() != 0)
 		return;
 
-	// creature will not skip the turn after casting a spell if spell uses canCastWithoutSkip
-	if(ba.actionType == EActionType::MONSTER_SPELL)
+	if((ba.actionType == EActionType::MONSTER_SPELL || ba.actionType == EActionType::CATAPULT || ba.actionType == EActionType::CREATURE_ABILITY) &&
+		battle::actionReturnsControl(actedStack, ba.actionType, ba.spell, ba.activatedAbility))
 	{
 		assert(activeStack != nullptr);
 		assert(actedStack != nullptr);
-
-		// NOTE: in case of random spellcaster, (e.g. Master Genie) spell has been selected by server and was not present in action received from player
-		if(actedStack->castSpellThisTurn && ba.spell.hasValue() && ba.spell.toSpell()->canCastWithoutSkip())
-		{
-			setActiveStack(battle, actedStack, BattleUnitTurnReason::UNIT_SPELLCAST);
-			return;
-		}
+		setActiveStack(battle, actedStack, BattleUnitTurnReason::UNIT_SPELLCAST);
+		return;
 	}
 
 	if (ba.isUnitAction())
@@ -838,79 +835,104 @@ void BattleFlowProcessor::stackTurnTrigger(const CBattleInfoCallback & battle, c
 				}
 			}
 		}
-		if(st->hasBonusOfType(BonusType::MANA_DRAIN) && !st->drainedMana)
-		{
-			const CGHeroInstance * opponentHero = battle.battleGetFightingHero(battle.otherSide(st->unitSide()));
-			if(opponentHero)
-			{
-				ui32 manaDrained = st->valOfBonuses(BonusType::MANA_DRAIN);
-				vstd::amin(manaDrained, opponentHero->mana);
-				if(manaDrained)
-				{
-					bte.effect = BonusType::MANA_DRAIN;
-					bte.val = manaDrained;
-					bte.additionalInfo = opponentHero->id.getNum(); //for sanity
-					gameHandler->sendAndApply(bte);
-				}
-			}
-		}
-		if (st->hasBonusOfType(BonusType::FEARFUL))
+		BonusList passiveManaDrain = *st->getBonusesOfType(BonusType::MANA_DRAIN);
+		passiveManaDrain.remove_if([](const Bonus * bonus) { return bonus->activation.has_value(); });
+		if(!passiveManaDrain.empty() && !st->drainedMana)
+			activateManaDrain(battle, st);
+
+		if(st->hasBonusOfType(BonusType::FEARFUL))
 		{
 			int chance = st->valOfBonuses(BonusType::FEARFUL);
 			ObjectInstanceID opponentArmyID = battle.battleGetArmyObject(battle.otherSide(st->unitSide()))->id;
-
 			if (gameHandler->randomizer->rollCombatAbility(opponentArmyID, chance))
 			{
 				bte.effect = BonusType::FEARFUL;
 				gameHandler->sendAndApply(bte);
 			}
 		}
-		BonusList bl = *(st->getBonuses(Selector::type()(BonusType::ENCHANTER)));
-		bl.remove_if([](const Bonus * b)
+
+		BonusList passiveEnchanter = *st->getBonuses(Selector::type()(BonusType::ENCHANTER));
+		passiveEnchanter.remove_if([](const Bonus * bonus)
 		{
-			return b->subtype.as<SpellID>() == SpellID::NONE;
+			return bonus->activation.has_value() || bonus->subtype.as<SpellID>() == SpellID::NONE;
 		});
+		if(!passiveEnchanter.empty() && st->canCast())
+			activateEnchanter(battle, st);
+	}
+}
 
-		BattleSide side = battle.playerToSide(st->unitOwner());
-		if(st->canCast())
+bool BattleFlowProcessor::activateManaDrain(const CBattleInfoCallback & battle, const CStack * stack, const std::string & ability)
+{
+	BonusList bonuses = *stack->getBonusesOfType(BonusType::MANA_DRAIN);
+	bonuses.remove_if([&ability](const Bonus * bonus)
+	{
+		return ability.empty() ? bonus->activation.has_value() : !bonus->activation || bonus->activation->id != ability;
+	});
+	if(bonuses.empty())
+		return false;
+
+	const CGHeroInstance * opponentHero = battle.battleGetFightingHero(battle.otherSide(stack->unitSide()));
+	if(!opponentHero)
+		return false;
+
+	ui32 manaDrained = bonuses.totalValue();
+	vstd::amin(manaDrained, opponentHero->mana);
+	if(!manaDrained)
+		return false;
+
+	BattleTriggerEffect effect;
+	effect.battleID = battle.getBattle()->getBattleID();
+	effect.stackID = stack->unitId();
+	effect.effect = BonusType::MANA_DRAIN;
+	effect.val = manaDrained;
+	effect.additionalInfo = opponentHero->id.getNum();
+	gameHandler->sendAndApply(effect);
+	return true;
+}
+
+bool BattleFlowProcessor::activateEnchanter(const CBattleInfoCallback & battle, const CStack * stack, const std::string & ability)
+{
+	BonusList bonuses = *stack->getBonuses(Selector::type()(BonusType::ENCHANTER));
+	bonuses.remove_if([&ability](const Bonus * bonus)
+	{
+		if(bonus->subtype.as<SpellID>() == SpellID::NONE)
+			return true;
+		return ability.empty() ? bonus->activation.has_value() : !bonus->activation || bonus->activation->id != ability;
+	});
+
+	bool cast = false;
+	while(!bonuses.empty() && !cast)
+	{
+		auto bonus = *RandomGeneratorUtil::nextItem(bonuses, gameHandler->getRandomGenerator());
+		bonuses.remove_if([&bonus](const Bonus * item) { return item == bonus.get(); });
+
+		const bool hasGenericCooldown = bonus->activation && bonus->activation->cooldown;
+		if(!hasGenericCooldown && battle.battleGetEnchanterCounter(stack->unitSide()) != 0 && bonus->parameters && bonus->parameters->toNumber() != 0)
+			continue;
+
+		const CSpell * spell = bonus->subtype.as<SpellID>().toSpell();
+		const bool consumeUses = !bonus->activation;
+		spells::ActivationCaster caster(stack, consumeUses);
+		spells::BattleCast parameters(&battle, &caster, spells::Mode::ENCHANTER, spell);
+		parameters.setSpellLevel(bonus->val);
+
+		if(parameters.castIfPossible(gameHandler->spellcastEnvironment(), spells::Target(1, parameters.forceMassive ? spells::Destination() : spells::Destination(stack))))
 		{
-			bool cast = false;
-			while(!bl.empty() && !cast)
+			cast = true;
+			int cooldown = bonus->parameters ? bonus->parameters->toNumber() : 0;
+			if(!hasGenericCooldown && cooldown != 0)
 			{
-				auto bonus = *RandomGeneratorUtil::nextItem(bl, gameHandler->getRandomGenerator());
-				auto spellID = bonus->subtype.as<SpellID>();
-				const CSpell * spell = SpellID(spellID).toSpell();
-				bl.remove_if([&bonus](const Bonus * b)
-				{
-					return b == bonus.get();
-				});
-
-				if (battle.battleGetEnchanterCounter(side) != 0 && bonus->parameters && bonus->parameters->toNumber() != 0)
-					continue; // cooldown
-
-				spells::BattleCast parameters(&battle, st, spells::Mode::ENCHANTER, spell);
-				parameters.setSpellLevel(bonus->val);
-
-				//todo: recheck effect level
-				if(parameters.castIfPossible(gameHandler->spellcastEnvironment(), spells::Target(1, parameters.forceMassive ? spells::Destination() : spells::Destination(st))))
-				{
-					cast = true;
-
-					int cooldown = bonus->parameters ? bonus->parameters->toNumber() : 0;
-					if (cooldown != 0)
-					{
-						BattleSetStackProperty ssp;
-						ssp.battleID = battle.getBattle()->getBattleID();
-						ssp.which = BattleSetStackProperty::ENCHANTER_COUNTER;
-						ssp.absolute = false;
-						ssp.val = cooldown;
-						ssp.stackID = st->unitId();
-						gameHandler->sendAndApply(ssp);
-					}
-				}
+				BattleSetStackProperty property;
+				property.battleID = battle.getBattle()->getBattleID();
+				property.which = BattleSetStackProperty::ENCHANTER_COUNTER;
+				property.absolute = false;
+				property.val = cooldown;
+				property.stackID = stack->unitId();
+				gameHandler->sendAndApply(property);
 			}
 		}
 	}
+	return cast;
 }
 
 void BattleFlowProcessor::setActiveStack(const CBattleInfoCallback & battle, const battle::Unit * stack, BattleUnitTurnReason reason)

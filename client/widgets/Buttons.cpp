@@ -194,12 +194,16 @@ void CButton::setState(EButtonState newState)
 
 	if (newState == EButtonState::BLOCKED)
 	{
-		removeUsedEvents(LCLICK | SHOW_POPUP | HOVER | KEYBOARD);
-		// a blocked button no longer receives hover-out, so drop any status-bar text it set
+		removeUsedEvents(LCLICK | KEYBOARD);
+		if(hoverEnabledWhenBlocked)
+			addUsedEvents(SHOW_POPUP | HOVER);
+		else
+			removeUsedEvents(SHOW_POPUP | HOVER);
+
 		const std::string & name = hoverTexts[vstd::to_underlying(getState())].empty()
 			? hoverTexts[0]
 			: hoverTexts[vstd::to_underlying(getState())];
-		if(!name.empty())
+		if(!name.empty() && !hoverEnabledWhenBlocked)
 			ENGINE->statusbar()->clearIfMatching(name);
 	}
 	else
@@ -231,6 +235,18 @@ bool CButton::isPressed()
 void CButton::setHoverable(bool on)
 {
 	hoverable = on;
+}
+
+void CButton::setHoverEnabledWhenBlocked(bool on)
+{
+	hoverEnabledWhenBlocked = on;
+	if(isBlocked())
+	{
+		if(on)
+			addUsedEvents(SHOW_POPUP | HOVER);
+		else
+			removeUsedEvents(SHOW_POPUP | HOVER);
+	}
 }
 
 void CButton::setSoundDisabled(bool on)
@@ -347,7 +363,7 @@ void CButton::hover (bool on)
 		? hoverTexts[0]
 		: hoverTexts[vstd::to_underlying(getState())];
 
-	if(!name.empty() && !isBlocked()) //if there is no name, there is nothing to display also
+	if(!name.empty() && (!isBlocked() || hoverEnabledWhenBlocked)) //if there is no name, there is nothing to display also
 	{
 		if (on)
 			ENGINE->statusbar()->write(name);
@@ -384,6 +400,7 @@ CButton::CButton(Point position, const AnimationPath &defName, const std::pair<s
 	callback(Callback),
 	helpBox(help.second),
 	hoverable(false),
+	hoverEnabledWhenBlocked(false),
 	soundDisabled(false)
 {
 	addUsedEvents(LCLICK | SHOW_POPUP | HOVER | KEYBOARD);
@@ -493,6 +510,9 @@ CToggleButton::CToggleButton(Point position, const AnimationPath &defName, const
 
 void CToggleButton::doSelect(bool on)
 {
+	if(isBlocked())
+		return;
+
 	if (on)
 	{
 		setState(EButtonState::HIGHLIGHTED);

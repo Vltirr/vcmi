@@ -27,6 +27,8 @@ public:
 	EActionType actionType; //use ActionType enum for values
 
 	SpellID spell;
+	/// Deliberately selected bonus-backed ability. Empty for ordinary actions.
+	std::string activatedAbility;
 
 	BattleAction();
 
@@ -40,6 +42,7 @@ public:
 		const battle::Destination & target);
 	static BattleAction makeWalkAndCast(const battle::Unit * stack, const BattleHex & castFrom, const battle::Unit * target, const SpellID & spellID);
 	static BattleAction makeCreatureSpellcast(const battle::Unit * stack, const battle::Target & target, const SpellID & spellID);
+	static BattleAction makeCreatureAbility(const battle::Unit * stack, const std::string & ability);
 	static BattleAction makeMove(const battle::Unit * stack, const BattleHex & dest);
 	static BattleAction makeEndOFTacticPhase(BattleSide side);
 	static BattleAction makeRetreat(BattleSide side);
@@ -61,8 +64,25 @@ public:
 	{
 		h & side;
 		h & stackNumber;
-		h & actionType;
+		// The pre-Focus mobile-shooter branch used 15 for WALK_AND_SHOOT.
+		// Focus already used 15 for CREATURE_ABILITY; keep that identity stable.
+		auto serializedAction = actionType;
+		if(h.saving && !h.hasFeature(Handler::Version::BATTLE_FOCUS)
+			&& actionType == EActionType::WALK_AND_SHOOT)
+			serializedAction = EActionType::CREATURE_ABILITY;
+		h & serializedAction;
+		if(!h.saving)
+		{
+			actionType = serializedAction;
+			if(!h.hasFeature(Handler::Version::BATTLE_FOCUS)
+				&& serializedAction == EActionType::CREATURE_ABILITY)
+				actionType = EActionType::WALK_AND_SHOOT;
+		}
 		h & spell;
+		if(h.hasFeature(Handler::Version::ACTIVATED_CREATURE_ABILITIES))
+			h & activatedAbility;
+		else if(!h.saving)
+			activatedAbility.clear();
 		h & target;
 	}
 

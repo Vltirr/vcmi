@@ -46,6 +46,7 @@ struct DLL_LINKAGE CombatEventPayload final : public scripting::ApiSerializable<
 	bool ranged = false;
 	bool isCounter = false;
 	int32_t attackIndex = 0;
+	std::string activatedAbility;
 
 	template<typename Serializer>
 	void serializeScript(Serializer & s)
@@ -54,5 +55,6 @@ struct DLL_LINKAGE CombatEventPayload final : public scripting::ApiSerializable<
 		s("ranged",      ranged,      "Whether the attack that caused this event was a shot.");
 		s("isCounter",   isCounter,   "Whether the attack is a counterattack - either a first strike or a regular retaliation.");
 		s("attackIndex", attackIndex, "Zero-based index of this attack among those its own side makes in this action, so a second blow of a double attack is 1. A counterattack is its side's attack 0.");
+		s("activatedAbility", activatedAbility, "Stable id of the deliberately selected ability applied to this attack, or empty for an ordinary attack.");
 	}
 };

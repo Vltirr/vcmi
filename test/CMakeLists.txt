@@ -16,7 +16,8 @@ set(test_SRCS
  		CVcmiTestConfig.cpp
  		JsonComparer.cpp
 
- 		battle/BattleHexTest.cpp
+	battle/BattleHexTest.cpp
+	battle/FocusRulesTest.cpp
  		battle/CBattleInfoCallbackTest.cpp
  		battle/CHealthTest.cpp
 		battle/CUnitStateTest.cpp
@@ -43,6 +44,7 @@ set(test_SRCS
 		game/BattleSpellCastTest.cpp
 		game/HeroRecruitmentTest.cpp
 		game/HeroSecondarySkillsTest.cpp
+		server/battles/LearnNowCastLaterTest.cpp
 		game/MovementCostTest.cpp
 
 		json/JsonTests.cpp
@@ -107,6 +109,7 @@ set(test_SRCS
 		server/battles/CombatEventTriggerTest.cpp
 		server/battles/DamageCalculatorTest.cpp
 		server/battles/DeathStareTest.cpp
+		server/battles/FocusActivationTest.cpp
 		server/battles/DestructionTest.cpp
 		server/battles/EnchantedTest.cpp
 		server/battles/FireShieldTest.cpp
@@ -274,7 +277,8 @@ target_include_directories(vcmitest
 # Running tests one by one using ctest not recommended due to vcmi having
 # slow global initialization.
 gtest_discover_tests(vcmitest
-	WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/bin/")
+	WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/bin/"
+	DISCOVERY_TIMEOUT 60)
 
 vcmi_set_output_dir(vcmitest "")
 

@@ -498,7 +498,7 @@ void BattleResultProcessor::battleFinalize(const BattleID & battleID, const Batt
 				const auto spell = spellId.toEntity(LIBRARY->spells());
 				if(spell
 					&& spell->getLevel() <= eagleEyeLevel
-					&& !winnerHero->spellbookContainsSpell(spell->getId())
+					&& winnerHero->canLearnSpell(spell, true)
 					&& gameHandler->getRandomGenerator().nextInt(99) < winnerHero->valOfBonuses(BonusType::LEARN_BATTLE_SPELL_CHANCE))
 				{
 					resultsApplied.learnedSpells.spells.insert(spell->getId());

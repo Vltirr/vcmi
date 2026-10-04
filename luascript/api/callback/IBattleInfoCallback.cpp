@@ -36,6 +36,10 @@ namespace scripting::api
 
 void IBattleInfoCallbackProxy::registerMethods(MethodRegistrar & R)
 {
+	const LuaParam focusSide[] = {{"side", "Battle side."}};
+	R.method<&BattleCb::getFocusPoints>("getFocusPoints", focusSide, {"Total focus points."}, "Returns total points for the side.");
+	R.method<&BattleCb::getFocusCharges>("getFocusCharges", focusSide, {"Complete charges."}, "Returns complete focus charges.");
+	R.method<&BattleCb::getFocusCapacity>("getFocusCapacity", {"Maximum charges, zero when disabled."}, "Returns focus capacity.");
 	R.method<&BattleCb::battleTacticDist>("getTacticDistance", {},
 		"Returns the available tactic phase distance, or 0 if the tactic phase has ended.");
 	R.cfunction<&IBattleInfoCallbackProxy::getAvailableHex>("getAvailableHex",

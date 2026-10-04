@@ -15,6 +15,10 @@ Script.__index = Script
 
 local SPELL = "core:deathStare"
 
+function Script:isApplicable(battle, unit, other)
+	return unit:isAlive() and other ~= nil and other:isAlive() and other:isLiving()
+end
+
 --- Which of the situations the attack that just happened is.
 local function situationOf(battle, unit, other, payload)
 	if not payload.ranged then return "melee" end

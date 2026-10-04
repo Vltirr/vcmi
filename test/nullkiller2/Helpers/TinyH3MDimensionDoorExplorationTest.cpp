@@ -38,7 +38,7 @@ TinyH3M::TinyH3MBuilder makeDimensionDoorExplorationMap(bool withDimensionDoor)
 		.hero({5, 5, 0}, HeroTypeID(0), PLAYER)
 		.heroGarrison({{CreatureID(27), 1}})
 		.heroPrimary(10, 10, 10, 50)
-		.heroSecondarySkills({{SecondarySkill::AIR_MAGIC, 3}})
+		.heroSecondarySkills({{SecondarySkill::AIR_MAGIC, 3}, {SecondarySkill::WISDOM, 3}})
 		.heroEquipped({{ArtifactPosition::SPELLBOOK, ArtifactID::SPELLBOOK}})
 		.heroSpells(withDimensionDoor ? std::vector<SpellID>{DIMENSION_DOOR} : std::vector<SpellID>{});
 
@@ -126,6 +126,24 @@ TEST_F(TinyH3MDimensionDoorExplorationTest, GeneratedHeroWithoutDimensionDoorDoe
 	const auto gateway = makeGateway(PLAYER);
 	NK2AI::ExplorationHelper helper(hero, gateway->nullkiller.get());
 
+	EXPECT_FALSE(helper.canUseDimensionDoor());
+	EXPECT_FALSE(helper.considerDimensionDoorExplorationTargets());
+}
+
+TEST_F(TinyH3MDimensionDoorExplorationTest, KnownDimensionDoorWithoutWisdomDoesNotCast)
+{
+	overrideSettingBeforeInit(EGameSettings::SPELLS_DIMENSION_DOOR_TRIGGERS_GUARDS, false);
+	startWithMap(makeDimensionDoorExplorationMap(true));
+	auto * hero = findHeroByOwner(PLAYER);
+	ASSERT_NE(hero, nullptr);
+	hero->setSecSkillLevel(SecondarySkill::WISDOM, 0, ChangeValueMode::ABSOLUTE);
+	ASSERT_TRUE(hero->spellbookContainsSpell(DIMENSION_DOOR));
+	ASSERT_FALSE(hero->canCastThisSpell(DIMENSION_DOOR.toSpell()));
+	ASSERT_TRUE(prepareForAdventureSpellPlanning(*hero));
+	setMapVisibility(PLAYER, false);
+	setTileVisible(PLAYER, hero->visitablePos(), true);
+	const auto gateway = makeGateway(PLAYER);
+	NK2AI::ExplorationHelper helper(hero, gateway->nullkiller.get());
 	EXPECT_FALSE(helper.canUseDimensionDoor());
 	EXPECT_FALSE(helper.considerDimensionDoorExplorationTargets());
 }

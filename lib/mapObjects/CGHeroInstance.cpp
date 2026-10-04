@@ -713,7 +713,7 @@ double CGHeroInstance::getMagicStrength() const
 	bool atLeastOneCombatSpell = false;
 	for (auto spell : spells)
 	{
-		if (spell.toSpell()->isCombat())
+		if (spell.toSpell()->isCombat() && canCastThisSpell(spell.toSpell()))
 		{
 			atLeastOneCombatSpell = true;
 			break;
@@ -955,9 +955,6 @@ bool CGHeroInstance::canCastThisSpell(const spells::Spell * spell) const
 bool CGHeroInstance::canLearnSpell(const spells::Spell * spell, bool allowBanned) const
 {
 	if(!hasSpellbook())
-		return false;
-
-	if(spell->getLevel() > maxSpellLevel()) //not enough wisdom
 		return false;
 
 	if(vstd::contains(spells, spell->getId()))//already known
@@ -1275,7 +1272,8 @@ std::vector<BonusSourceID> CGHeroInstance::getSourcesForSpell(const SpellID & sp
 {
 	std::vector<BonusSourceID> sources;
 
-	if(hasSpellbook() && spellbookContainsSpell(spellId))
+	if(hasSpellbook() && spellbookContainsSpell(spellId)
+		&& spellId.toSpell()->getLevel() <= maxCastableSpellLevel())
 		sources.emplace_back(getArt(ArtifactPosition::SPELLBOOK)->getId());
 
 	for(const auto & bonus : *getBonusesOfType(BonusType::SPELL, spellId))
@@ -1320,6 +1318,11 @@ const std::set<SpellID> & CGHeroInstance::getSpellsInSpellbook() const
 }
 
 int CGHeroInstance::maxSpellLevel() const
+{
+	return maxCastableSpellLevel();
+}
+
+int CGHeroInstance::maxCastableSpellLevel() const
 {
 	return std::min(GameConstants::SPELL_LEVELS, valOfBonuses(BonusType::MAX_LEARNABLE_SPELL_LEVEL));
 }

@@ -581,6 +581,22 @@
 
 		"combat":
 		{
+			"focus": {
+				// Enable the shared Focus resource and its battle bars. Mods may override this.
+				"enabled": false,
+				// Points needed for one complete Focus charge.
+				"pointsPerCharge": 6,
+				// Maximum charges stored per battle side; supported bar variants: 3, 4 or 5.
+				"maxCharges": 5,
+				// Points earned by the attacking side per effective melee hit, excluding retaliation.
+				"meleePoints": 2,
+				// Points earned by the attacking side per effective ranged hit, excluding retaliation.
+				"rangedPoints": 1,
+				// Points earned by the attacking side per effective long-reach hit, excluding retaliation.
+				"longReachPoints": 1,
+				// Points earned by the target's side per effective hit received, including retaliation.
+				"hitPoints": 1
+			},
 			// defines bias used for percentage-based ability rolls, such Death Blow of Dread Knight
 			// If bias is set to 0, then all rolls will be completely independent - it is possible to get lucky and roll ability with 10% chance
 			// multiple times in a row, or be unlucky and not roll 50% ability multiple times in a row
@@ -825,7 +841,7 @@
 				},
 				"wisdom" :
 				{
-					"type" : "MAX_LEARNABLE_SPELL_LEVEL", //Hero can always learn level 1 and 2 spells
+					"type" : "MAX_LEARNABLE_SPELL_LEVEL", //Hero can always cast level 1 and 2 spells from the book
 					"val" : 2,
 					"valueType" : "BASE_NUMBER"
 				},

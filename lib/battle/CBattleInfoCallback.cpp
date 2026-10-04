@@ -10,6 +10,9 @@
 #include "StdInc.h"
 #include "CBattleInfoCallback.h"
 
+#include "Activation.h"
+#include "Focus.h"
+
 #include <vcmi/scripting/Service.h>
 #include <vstd/RNG.h>
 
@@ -28,6 +31,7 @@
 #include "../spells/Problem.h"
 #include "../spells/CSpell.h"
 #include "../mapObjects/CGTownInstance.h"
+#include "../mapObjects/CGHeroInstance.h"
 #include "../networkPacks/PacksForClientBattle.h"
 #include "../BattleFieldHandler.h"
 #include "../Rect.h"
@@ -308,19 +312,35 @@ std::vector<PossiblePlayerBattleAction> CBattleInfoCallback::getClientActionsFor
 	}
 	else
 	{
-		if(stack->canCast()) //TODO: check for battlefield effects that prevent casting?
+		auto configureActivation = [&](PossiblePlayerBattleAction & action, EActionType type)
+		{
+			const auto resolution = battle::resolveActivation(*this, stack, type, action.spell(), action.ability());
+			if(!resolution.source || !resolution.source->activation)
+				return;
+			action.setActivation(resolution.focusCost, resolution.available(), !resolution.limitsAvailable,
+				!resolution.focusAvailable, !resolution.cooldownAvailable, resolution.cooldownRoundsRemaining);
+		};
+		if(stack->canCast() || stack->hasBonusOfType(BonusType::SPELLCASTER) || stack->hasBonusOfType(BonusType::RANDOM_SPELLCASTER)) // activated actions may replace CASTS
 		{
 			if(stack->hasBonusOfType(BonusType::SPELLCASTER))
 			{
 				for(const auto & spellID : data.creatureSpellsToCast)
 				{
+					const auto activationSource = battle::getActivationSource(stack, EActionType::MONSTER_SPELL, spellID);
+					if(!stack->canCast() && (!activationSource || !activationSource->activation))
+						continue;
 					const CSpell *spell = spellID.toSpell();
 					PossiblePlayerBattleAction act = getCasterAction(spell, stack, spells::Mode::CREATURE_ACTIVE);
+					configureActivation(act, EActionType::MONSTER_SPELL);
 					allowedActionList.push_back(act);
 				}
 			}
 			if(stack->hasBonusOfType(BonusType::RANDOM_SPELLCASTER))
-				allowedActionList.push_back(PossiblePlayerBattleAction::RANDOM_GENIE_SPELL);
+			{
+				PossiblePlayerBattleAction action = PossiblePlayerBattleAction::RANDOM_GENIE_SPELL;
+				configureActivation(action, EActionType::MONSTER_SPELL);
+				allowedActionList.push_back(action);
+			}
 		}
 		if(battleCanShoot(stack))
 			allowedActionList.push_back(PossiblePlayerBattleAction::SHOOT);
@@ -344,16 +364,53 @@ std::vector<PossiblePlayerBattleAction> CBattleInfoCallback::getClientActionsFor
 		if(stack->canMove() && stack->getMovementRange(0)) //probably no reason to try move war machines or bound stacks
 			allowedActionList.push_back(PossiblePlayerBattleAction::MOVE_STACK);
 
+		if(stack->isMeleeAttacker())
+		{
+			for(const auto & bonus : battle::getDeliberateActivationSources(stack, EActionType::WALK_AND_ATTACK))
+			{
+				PossiblePlayerBattleAction action(PossiblePlayerBattleAction::ATTACK_ABILITY, bonus->activation->id, bonus);
+				configureActivation(action, EActionType::WALK_AND_ATTACK);
+				allowedActionList.push_back(action);
+			}
+		}
+
+		for(const auto & bonus : battle::getDeliberateActivationSources(stack, EActionType::CREATURE_ABILITY))
+		{
+			if(bonus->type == BonusType::ENCHANTER && !bonus->activation->cooldown && battleGetEnchanterCounter(stack->unitSide()) != 0)
+				continue;
+			const auto * opponentHero = battleGetFightingHero(otherSide(stack->unitSide()));
+			if(bonus->type == BonusType::MANA_DRAIN && (!opponentHero || opponentHero->mana == 0))
+				continue;
+			PossiblePlayerBattleAction action(PossiblePlayerBattleAction::CREATURE_ABILITY, bonus->activation->id, bonus);
+			configureActivation(action, EActionType::CREATURE_ABILITY);
+			allowedActionList.push_back(action);
+		}
+
 		const auto * siegedTown = battleGetDefendedTown();
-		if(siegedTown && siegedTown->fortificationsLevel().wallsHealth > 0 && stack->hasBonusOfType(BonusType::CATAPULT)) //TODO: check shots
-			allowedActionList.push_back(PossiblePlayerBattleAction::CATAPULT);
+		const auto catapultActivation = battle::getActivationSource(stack, EActionType::CATAPULT, SpellID::NONE);
+		if(siegedTown && siegedTown->fortificationsLevel().wallsHealth > 0 && stack->hasBonusOfType(BonusType::CATAPULT) &&
+			!(stack->castSpellThisTurn && (!catapultActivation || !catapultActivation->activation) && battle::actionReturnsControl(stack, EActionType::CATAPULT, SpellID::NONE))) //TODO: check shots
+		{
+			PossiblePlayerBattleAction action = PossiblePlayerBattleAction::CATAPULT;
+			configureActivation(action, EActionType::CATAPULT);
+			allowedActionList.push_back(action);
+		}
 		if(stack->hasBonusOfType(BonusType::HEALER))
-			allowedActionList.push_back(PossiblePlayerBattleAction::HEAL);
+		{
+			PossiblePlayerBattleAction action = PossiblePlayerBattleAction::HEAL;
+			configureActivation(action, EActionType::STACK_HEAL);
+			allowedActionList.push_back(action);
+		}
 		if(stack->hasBonusOfType(BonusType::ADJACENT_SPELLCASTER))
 		{
 			SpellID spellID = stack->getBonus(Selector::type()(BonusType::ADJACENT_SPELLCASTER))->subtype.as<SpellID>();
-			if(stack->canCast()) //TODO: check for battlefield effects that prevent casting?
-				allowedActionList.push_back(PossiblePlayerBattleAction(PossiblePlayerBattleAction::WALK_AND_SPELLCAST, spellID));
+			const auto activationSource = battle::getActivationSource(stack, EActionType::WALK_AND_CAST, spellID);
+			if(stack->canCast() || (activationSource && activationSource->activation)) //TODO: check for battlefield effects that prevent casting?
+				{
+					PossiblePlayerBattleAction action(PossiblePlayerBattleAction::WALK_AND_SPELLCAST, spellID);
+					configureActivation(action, EActionType::WALK_AND_CAST);
+					allowedActionList.push_back(action);
+				}
 		}
 	}
 

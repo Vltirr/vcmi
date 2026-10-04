@@ -20,8 +20,9 @@
 #include "../../../lib/bonuses/Propagators.h"
 #include "../../../lib/bonuses/Updaters.h"
 #include "../../../lib/json/JsonBonus.h"
-#include "../../../lib/mapObjects/CGHeroInstance.h"
 #include "../../../lib/serializer/CMemorySerializer.h"
+#include "../../../lib/mapping/CMap.h"
+#include "../../../lib/mapObjects/CGHeroInstance.h"
 #include "../../../server/CGameHandler.h"
 #include "../../../server/battles/BattleProcessor.h"
 
@@ -94,7 +95,153 @@ public:
 		obstacle->nativeVisible = false;
 		battle()->obstacles.push_back(obstacle);
 	}
+
+	void configureFocus(bool enabled = true)
+	{
+		JsonNode focus;
+		focus["enabled"].Bool() = enabled;
+		focus["pointsPerCharge"].Integer() = 6;
+		focus["maxCharges"].Integer() = 3;
+		focus["rangedPoints"].Integer() = 2;
+		focus["hitPoints"].Integer() = 3;
+		map()->overrideGameSetting(EGameSettings::COMBAT_FOCUS, focus);
+	}
+
+	void expectFocus(int attacker, int defender)
+	{
+		EXPECT_EQ(battle()->getFocusPoints(BattleSide::ATTACKER), attacker);
+		EXPECT_EQ(battle()->getFocusPoints(BattleSide::DEFENDER), defender);
+	}
 };
+
+TEST_F(MobileShooterTest, MobileShotGeneratesConfiguredFocusOnce)
+{
+	configureFocus();
+	auto * shooter = addShooter(4);
+	auto * target = addTarget(targetAtRangeThreeHex);
+	beginCombat();
+	ASSERT_TRUE(moveAndShoot(shooter, target));
+	expectFocus(2, 3);
+}
+
+TEST_F(MobileShooterTest, StationaryShotGeneratesSameFocus)
+{
+	configureFocus();
+	auto * shooter = addShooter(4);
+	auto * target = addTarget(targetAtRangeThreeHex);
+	beginCombat();
+	battle()->activeStack = shooter->unitId();
+	ASSERT_TRUE(gameHandler->battles->makePlayerBattleAction(BattleID(0), PlayerColor(0),
+		BattleAction::makeShotAttack(shooter, target)));
+	expectFocus(2, 3);
+}
+
+TEST_F(MobileShooterTest, MoveWithoutShotGeneratesNoFocus)
+{
+	configureFocus();
+	auto * shooter = addShooter(4);
+	addTarget(targetAtRangeThreeHex);
+	beginCombat();
+	battle()->activeStack = shooter->unitId();
+	ASSERT_TRUE(gameHandler->battles->makePlayerBattleAction(BattleID(0), PlayerColor(0),
+		BattleAction::makeMove(shooter, BattleHex(destinationHex))));
+	expectFocus(0, 0);
+}
+
+TEST_F(MobileShooterTest, RejectedMobileShotGeneratesNoFocus)
+{
+	configureFocus();
+	auto * shooter = addShooter(2);
+	auto * target = addTarget(targetAtRangeThreeHex);
+	beginCombat();
+	const auto shots = shooter->shots.available();
+	ASSERT_FALSE(moveAndShoot(shooter, target));
+	EXPECT_EQ(shooter->getPosition(), BattleHex(shooterHex));
+	EXPECT_EQ(shooter->shots.available(), shots);
+	expectFocus(0, 0);
+}
+
+TEST_F(MobileShooterTest, AdditionalMobileShotGeneratesFocusPerAttack)
+{
+	configureFocus();
+	auto * shooter = addShooter(4);
+	grant(shooter, BonusType::ADDITIONAL_ATTACK, 1);
+	auto * target = addTarget(targetAtRangeThreeHex);
+	beginCombat();
+	ASSERT_TRUE(moveAndShoot(shooter, target));
+	expectFocus(4, 6);
+}
+
+TEST_F(MobileShooterTest, MobileShotRespectsFocusCapacity)
+{
+	configureFocus();
+	auto * shooter = addShooter(4);
+	auto * target = addTarget(targetAtRangeThreeHex);
+	beginCombat();
+	battle()->setFocusPoints(BattleSide::ATTACKER, 17);
+	battle()->setFocusPoints(BattleSide::DEFENDER, 18);
+	ASSERT_TRUE(moveAndShoot(shooter, target));
+	expectFocus(18, 18);
+}
+
+TEST_F(MobileShooterTest, MobileShotWithFocusDisabledGeneratesNoFocus)
+{
+	configureFocus(false);
+	auto * shooter = addShooter(4);
+	auto * target = addTarget(targetAtRangeThreeHex);
+	beginCombat();
+	ASSERT_TRUE(moveAndShoot(shooter, target));
+	expectFocus(0, 0);
+}
+
+TEST_F(MobileShooterTest, ReturningActivationCanBeFollowedByMobileShot)
+{
+	configureFocus();
+	defenderSideHero->mana = 20;
+	auto * shooter = addShooter(4);
+	auto ability = grant(shooter, BonusType::MANA_DRAIN, 5);
+	ability->activation = Activation{
+		.id = "vcmi-test:mobileManaDrain",
+		.costs = {.focus = 1},
+		.turn = ActivationTurn{.returnsControl = true}
+	};
+	auto * target = addTarget(targetAtRangeThreeHex);
+	beginCombat();
+	battle()->setFocusPoints(BattleSide::ATTACKER, 6);
+	battle()->activeStack = shooter->unitId();
+	ASSERT_TRUE(gameHandler->battles->makePlayerBattleAction(BattleID(0), PlayerColor(0),
+		BattleAction::makeCreatureAbility(shooter, ability->activation->id)));
+	EXPECT_EQ(defenderSideHero->mana, 15);
+	EXPECT_EQ(battle()->getActiveStackID(), shooter->unitId());
+	expectFocus(0, 0);
+	ASSERT_TRUE(moveAndShoot(shooter, target));
+	expectFocus(2, 3);
+}
+
+TEST_F(MobileShooterTest, HiddenTrapInterruptsMovementWithoutShotOrFocus)
+{
+	configureFocus();
+	auto * shooter = addShooter(4);
+	auto * target = addTarget(targetAtRangeThreeHex);
+	auto obstacle = std::make_shared<SpellCreatedObstacle>();
+	obstacle->uniqueID = 0;
+	obstacle->pos = BattleHex(destinationHex);
+	obstacle->customSize.insert(BattleHex(destinationHex));
+	obstacle->trigger = SpellID::NONE;
+	obstacle->casterSide = BattleSide::DEFENDER;
+	obstacle->hidden = true;
+	obstacle->nativeVisible = false;
+	obstacle->passable = true;
+	obstacle->trap = true;
+	battle()->obstacles.push_back(obstacle);
+	beginCombat();
+	const auto shots = shooter->shots.available();
+	const auto count = target->getCount();
+	ASSERT_TRUE(moveAndShoot(shooter, target));
+	EXPECT_EQ(shooter->shots.available(), shots);
+	EXPECT_EQ(target->getCount(), count);
+	expectFocus(0, 0);
+}
 
 TEST_F(MobileShooterTest, ExecutesMovementAndShotAsOneAction)
 {
@@ -355,7 +502,8 @@ TEST_F(MobileShooterTest, LegacyNumericAndMissingShooterSubtypesStayStationary)
 
 TEST_F(MobileShooterTest, SerializedShooterSubtypesRequireNewSaveVersion)
 {
-	for(const auto version : {ESerializationVersion::RECORD_TEXTS_METASTRING, ESerializationVersion::CURRENT})
+	for(const auto version : {ESerializationVersion::RECORD_TEXTS_METASTRING,
+		ESerializationVersion::FOCUS_MOBILE_SHOOTER_INTEGRATION, ESerializationVersion::CURRENT})
 	{
 		for(const auto subtype : {BonusSubtypeID(), BonusSubtypeID(BonusCustomSubtype(0)),
 			BonusSubtypeID(BonusCustomSubtype::mobileShooter)})

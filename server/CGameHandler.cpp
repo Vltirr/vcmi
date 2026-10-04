@@ -802,7 +802,7 @@ void CGameHandler::giveSpells(const CGTownInstance *t, const CGHeroInstance *h)
 	if (t->hasBuilt(BuildingSubID::AURORA_BOREALIS) && t->hasBuilt(BuildingID::MAGES_GUILD_1))
 	{
 		// Aurora Borealis give spells of all levels even if only level 1 mages guild built
-		for (int i = 0; i < h->maxSpellLevel(); i++)
+		for (int i = 0; i < GameConstants::SPELL_LEVELS; i++)
 		{
 			std::vector<SpellID> spells;
 			gameState().getAllowedSpells(spells, i+1);
@@ -812,7 +812,7 @@ void CGameHandler::giveSpells(const CGTownInstance *t, const CGHeroInstance *h)
 	}
 	else
 	{
-		for (int i = 0; i < std::min(t->mageGuildLevel(), h->maxSpellLevel()); i++)
+		for (int i = 0; i < t->mageGuildLevel(); i++)
 		{
 			for (int j = 0; j < t->spellsAtLevel(i+1, true) && j < t->spells.at(i).size(); j++)
 			{
@@ -1528,14 +1528,11 @@ void CGameHandler::useScholarSkill(ObjectInstanceID fromHero, ObjectInstanceID t
 	if (!ScholarSpellLevel || !h1->hasSpellbook() || !h2->hasSpellbook())
 		return;//no scholar skill or no spellbook
 
-	int h1Lvl = std::min(ScholarSpellLevel, h1->maxSpellLevel());//heroes can receive these levels
-	int h2Lvl = std::min(ScholarSpellLevel, h2->maxSpellLevel());
-
 	ChangeSpells cs1;
 	cs1.learn = true;
 	cs1.hid = toHero;//giving spells to first hero
 	for (auto it : h1->getSpellsInSpellbook())
-		if (h2Lvl >= it.toSpell()->getLevel() && !h2->spellbookContainsSpell(it))//hero can learn it and don't have it yet
+		if (ScholarSpellLevel >= it.toSpell()->getLevel() && h2->canLearnSpell(it.toSpell(), true))
 			cs1.spells.insert(it);//spell to learn
 
 	ChangeSpells cs2;
@@ -1543,7 +1540,7 @@ void CGameHandler::useScholarSkill(ObjectInstanceID fromHero, ObjectInstanceID t
 	cs2.hid = fromHero;
 
 	for (auto it : h2->getSpellsInSpellbook())
-		if (h1Lvl >= it.toSpell()->getLevel() && !h1->spellbookContainsSpell(it))
+		if (ScholarSpellLevel >= it.toSpell()->getLevel() && h1->canLearnSpell(it.toSpell(), true))
 			cs2.spells.insert(it);
 
 	if (!cs1.spells.empty() || !cs2.spells.empty())//create a message
@@ -4264,6 +4261,12 @@ void CGameHandler::castSpell(const spells::Caster * caster, SpellID spellID, con
 {
 	if (!spellID.hasValue())
 		return;
+
+	if(const auto * hero = dynamic_cast<const CGHeroInstance *>(caster))
+	{
+		if(!hero->canCastThisSpell(spellID.toSpell()))
+			return;
+	}
 
 	AdventureSpellCastParameters p;
 	p.caster = caster;

@@ -32,8 +32,10 @@
 #include "../../lib/CStack.h"
 #include "../../lib/battle/CUnitState.h"
 #include "../../lib/GameLibrary.h"
+#include "../../lib/battle/Activation.h"
 #include "../../lib/battle/BattleAction.h"
 #include "../../lib/battle/CPlayerBattleCallback.h"
+#include "../../lib/bonuses/Bonus.h"
 #include "../../lib/callback/CCallback.h"
 #include "../../lib/spells/ISpellMechanics.h"
 #include "../../lib/spells/effects/Effect.h"
@@ -247,8 +249,10 @@ bool BattleActionsController::isActiveStackSpellcaster() const
 	if (!casterStack)
 		return false;
 
-	bool spellcaster = casterStack->hasBonusOfType(BonusType::SPELLCASTER);
-	return (spellcaster && casterStack->canCast());
+	const bool spellcaster = casterStack->hasBonusOfType(BonusType::SPELLCASTER);
+	const bool activatedSpellcaster = std::ranges::any_of(*casterStack->getBonusesOfType(BonusType::SPELLCASTER),
+		[](const auto & bonus) { return bonus->activation.has_value(); });
+	return spellcaster && (casterStack->canCast() || activatedSpellcaster);
 }
 
 void BattleActionsController::enterCreatureCastingMode()
@@ -339,6 +343,9 @@ void BattleActionsController::reorderPossibleActionsPriority(const CStack * stac
 	auto assignPriority = [&](const PossiblePlayerBattleAction & item
 						  ) -> uint8_t //large lambda assigning priority which would have to be part of possibleActions without it
 	{
+		if(!item.isActivationAvailable())
+			return 100;
+
 		switch(item.get())
 		{
 			case PossiblePlayerBattleAction::AIMED_SPELL_CREATURE:
@@ -362,6 +369,10 @@ void BattleActionsController::reorderPossibleActionsPriority(const CStack * stac
 			case PossiblePlayerBattleAction::RANDOM_GENIE_SPELL:
 				return 2;
 				break;
+			case PossiblePlayerBattleAction::ATTACK_ABILITY:
+			case PossiblePlayerBattleAction::CREATURE_ABILITY:
+				// Deliberate abilities only gain priority after their action-panel button is selected.
+				return 100;
 			case PossiblePlayerBattleAction::SHOOT:
 				if(targetStack == nullptr || targetStack->unitSide() == stack->unitSide() || !targetStack->alive())
 					return 100; //bottom priority
@@ -550,6 +561,7 @@ void BattleActionsController::actionSetCursor(PossiblePlayerBattleAction action,
 		case PossiblePlayerBattleAction::ATTACK:
 		case PossiblePlayerBattleAction::LONG_WEAPON_ATTACK:
 		case PossiblePlayerBattleAction::WALK_AND_ATTACK:
+		case PossiblePlayerBattleAction::ATTACK_ABILITY:
 		case PossiblePlayerBattleAction::ATTACK_AND_RETURN:
 		{
 			static const std::map<BattleHex::EDir, Cursor::Combat> sectorCursor = {
@@ -591,6 +603,7 @@ void BattleActionsController::actionSetCursor(PossiblePlayerBattleAction action,
 			return;
 
 		case PossiblePlayerBattleAction::AIMED_SPELL_CREATURE:
+		case PossiblePlayerBattleAction::CREATURE_ABILITY:
 		case PossiblePlayerBattleAction::ANY_LOCATION:
 		case PossiblePlayerBattleAction::WALK_AND_SPELLCAST:
 		case PossiblePlayerBattleAction::RANDOM_GENIE_SPELL:
@@ -709,6 +722,7 @@ std::string BattleActionsController::actionGetStatusMessage(PossiblePlayerBattle
 		case PossiblePlayerBattleAction::ATTACK:
 		case PossiblePlayerBattleAction::LONG_WEAPON_ATTACK:
 		case PossiblePlayerBattleAction::WALK_AND_ATTACK:
+		case PossiblePlayerBattleAction::ATTACK_ABILITY:
 		case PossiblePlayerBattleAction::ATTACK_AND_RETURN: //TODO: allow to disable return
 			{
 				const auto * attacker = owner.stacksController->getActiveStack();
@@ -804,6 +818,9 @@ std::string BattleActionsController::actionGetStatusMessage(PossiblePlayerBattle
 			return prepareSpellEffectText(27, *spellEffectValue, spell->getNameTranslated(), targetStack->getName());
 		}
 
+		case PossiblePlayerBattleAction::CREATURE_ABILITY:
+			return action.source() ? action.source()->Description(GAME->interface()->cb.get()) : action.ability();
+
 		case PossiblePlayerBattleAction::RANDOM_GENIE_SPELL: //we assume that teleport / sacrifice will never be available as random spell
 			return formatWithStackName("core.genrltxt.301", targetStack); //Cast a spell on %s
 
@@ -871,6 +888,15 @@ std::string BattleActionsController::actionGetStatusMessageBlocked(PossiblePlaye
 {
 	switch (action.get())
 	{
+		case PossiblePlayerBattleAction::ATTACK_ABILITY:
+		{
+			const CStack * currentStack = owner.stacksController->getActiveStack();
+			const CStack * targetStack = getStackForHex(targetHex);
+			if(currentStack && targetStack &&
+				!battle::isActivationTargetAvailable(*owner.getBattle(), currentStack, EActionType::WALK_AND_ATTACK, action.spell(), action.ability(), targetStack))
+				return LIBRARY->generaltexth->translate("vcmi.battle.activation.invalidTarget");
+			return "";
+		}
 		case PossiblePlayerBattleAction::AIMED_SPELL_CREATURE:
 		case PossiblePlayerBattleAction::RANDOM_GENIE_SPELL:
 			return LIBRARY->generaltexth->allTexts[23];
@@ -901,6 +927,9 @@ std::string BattleActionsController::actionGetStatusMessageBlocked(PossiblePlaye
 bool BattleActionsController::actionIsLegal(PossiblePlayerBattleAction action, const BattleHex & targetHex,
 	const HexActionContext & context)
 {
+	if(!action.isActivationAvailable())
+		return false;
+
 	const CStack * targetStack = getStackForHex(targetHex);
 	bool targetStackOwned = targetStack && targetStack->unitOwner() == owner.curInt->playerID;
 
@@ -947,6 +976,7 @@ bool BattleActionsController::actionIsLegal(PossiblePlayerBattleAction action, c
 		case PossiblePlayerBattleAction::ATTACK:
 		case PossiblePlayerBattleAction::LONG_WEAPON_ATTACK:
 		case PossiblePlayerBattleAction::WALK_AND_ATTACK:
+		case PossiblePlayerBattleAction::ATTACK_ABILITY:
 		case PossiblePlayerBattleAction::ATTACK_AND_RETURN:
 			{
 				const CStack * currentStack = owner.stacksController->getActiveStack();
@@ -955,7 +985,9 @@ bool BattleActionsController::actionIsLegal(PossiblePlayerBattleAction action, c
 						owner.getBattle()->battleCanAttackUnit(currentStack, targetStack) &&
 						owner.getBattle()->isMeleeAttackPossible(currentStack, targetStack, *selectedMovementHex);
 				bool allowLongWeapon = action.get() == PossiblePlayerBattleAction::LONG_WEAPON_ATTACK;
-				return currentStack &&
+				const bool effectApplicable = action.get() != PossiblePlayerBattleAction::ATTACK_ABILITY ||
+					battle::isActivationTargetAvailable(*owner.getBattle(), currentStack, EActionType::WALK_AND_ATTACK, action.spell(), action.ability(), targetStack);
+				return currentStack && effectApplicable &&
 					owner.getBattle()->battleCanAttackUnit(currentStack, targetStack) &&
 					owner.getBattle()->battleCanAttackHex(currentStack, targetHex) &&
 					findAttackFromHex(owner, currentStack, targetHex, allowLongWeapon).isValid();
@@ -989,6 +1021,9 @@ bool BattleActionsController::actionIsLegal(PossiblePlayerBattleAction action, c
 
 		case PossiblePlayerBattleAction::NO_LOCATION:
 			return false;
+
+		case PossiblePlayerBattleAction::CREATURE_ABILITY:
+			return true;
 
 		case PossiblePlayerBattleAction::ANY_LOCATION:
 			return isCastingPossibleHere(action.spell().toSpell(), nullptr, targetHex);
@@ -1100,6 +1135,7 @@ void BattleActionsController::actionRealize(PossiblePlayerBattleAction action, c
 		case PossiblePlayerBattleAction::ATTACK:
 		case PossiblePlayerBattleAction::LONG_WEAPON_ATTACK:
 		case PossiblePlayerBattleAction::WALK_AND_ATTACK:
+		case PossiblePlayerBattleAction::ATTACK_ABILITY:
 		case PossiblePlayerBattleAction::ATTACK_AND_RETURN: //TODO: allow to disable return
 		{
 			bool returnAfterAttack = action.get() == PossiblePlayerBattleAction::ATTACK_AND_RETURN;
@@ -1116,7 +1152,15 @@ void BattleActionsController::actionRealize(PossiblePlayerBattleAction action, c
 				return;
 			BattleAction command = BattleAction::makeMeleeAttack(attacker, attackHex, attackFromHex, returnAfterAttack);
 			cancelMoveAndShootSelection();
+			command.activatedAbility = action.ability();
 			owner.sendCommand(command, attacker);
+			return;
+		}
+
+		case PossiblePlayerBattleAction::CREATURE_ABILITY:
+		{
+			auto stack = owner.stacksController->getActiveStack();
+			owner.sendCommand(BattleAction::makeCreatureAbility(stack, action.ability()), stack);
 			return;
 		}
 
@@ -1398,8 +1442,12 @@ void BattleActionsController::tryActivateStackSpellcasting(const CStack * caster
 {
 	creatureSpells.clear();
 	TConstBonusListPtr bl = casterStack->getBonusesOfType(BonusType::SPELLCASTER);
+	const bool hasActivatedSpells = std::ranges::any_of(*bl, [](const auto & bonus)
+	{
+		return bonus->activation && bonus->subtype.as<SpellID>().hasValue();
+	});
 
-	if(casterStack->canCast() && !bl->empty())
+	if(casterStack->canCast() && !hasActivatedSpells && !bl->empty())
 	{
 		// faerie dragon can cast only one, randomly selected spell until their next move
 		//TODO: faerie dragon type spell should be selected by server
@@ -1411,7 +1459,7 @@ void BattleActionsController::tryActivateStackSpellcasting(const CStack * caster
 
 	for(const auto & bonus : *bl)
 	{
-		if(!bonus->parameters && bonus->subtype.as<SpellID>().hasValue())
+		if((bonus->activation || !bonus->parameters) && bonus->subtype.as<SpellID>().hasValue())
 			creatureSpells.push_back(bonus->subtype.as<SpellID>().toSpell());
 	}
 }
@@ -1470,6 +1518,24 @@ void BattleActionsController::activateStack()
 	}
 }
 
+void BattleActionsController::updateActivationAvailability()
+{
+	const CStack * stack = owner.stacksController->getActiveStack();
+	if(!stack)
+		return;
+
+	const auto updatedActions = getPossibleActionsForStack(stack);
+	for(auto & action : possibleActions)
+	{
+		auto updated = std::ranges::find(updatedActions, action);
+		if(updated != updatedActions.end())
+			action = *updated;
+	}
+
+	owner.windowObject->updateActivationAvailability(updatedActions);
+	ENGINE->fakeMouseMove();
+}
+
 void BattleActionsController::onHexRightClicked(const BattleHex & clickedHex)
 {
 	if(moveAndShootSelectionActive())
@@ -1486,6 +1552,11 @@ void BattleActionsController::onHexRightClicked(const BattleHex & clickedHex)
 		CRClickPopup::createAndPush(LIBRARY->generaltexth->translate("core.genrltxt.731")); // spell cancelled
 		return;
 	}
+
+	if(owner.windowObject->cancelSelectedUnitAction())
+		return;
+	if(clickedHex == BattleHex::INVALID)
+		return;
 
 	auto selectedStack = owner.getBattle()->battleGetStackByPos(clickedHex, true);
 
@@ -1558,6 +1629,7 @@ const std::vector<PossiblePlayerBattleAction> & BattleActionsController::getPoss
 
 void BattleActionsController::setPriorityActions(const std::vector<PossiblePlayerBattleAction> & actions)
 {
+	cancelMoveAndShootSelection();
 	possibleActions = actions;
 }
 

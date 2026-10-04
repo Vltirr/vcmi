@@ -13,9 +13,12 @@
 #include "../../lib/CCreatureHandler.h"
 #include "../../lib/battle/BattleAction.h"
 #include "../../lib/battle/BattleAttackInfo.h"
+#include "../../lib/battle/Activation.h"
 #include "../../lib/battle/BattleInfo.h"
 #include "../../lib/battle/CPlayerBattleCallback.h"
 #include "../../lib/callback/CBattleCallback.h"
+#include "../../lib/mapObjects/CGHeroInstance.h"
+#include "../../lib/bonuses/Bonus.h"
 #include "../../lib/CRandomGenerator.h"
 
 CStupidAI::CStupidAI()
@@ -125,6 +128,44 @@ void CStupidAI::yourTacticPhase(const BattleID & battleID, int distance)
 	cb->battleMakeTacticAction(battleID, BattleAction::makeEndOFTacticPhase(cb->getBattle(battleID)->battleGetTacticsSide()));
 }
 
+static std::optional<BattleAction> findReturningCreatureAbility(const std::shared_ptr<CBattleInfoCallback> & battle, const CStack * stack)
+{
+	for(const auto & bonus : battle::getDeliberateActivationSources(stack, EActionType::CREATURE_ABILITY))
+	{
+		if(!battle::actionReturnsControl(stack, EActionType::CREATURE_ABILITY, SpellID::NONE, bonus->activation->id))
+			continue;
+		if(!battle::isActivationAvailable(*battle, stack, EActionType::CREATURE_ABILITY, SpellID::NONE, bonus->activation->id))
+			continue;
+		if(bonus->type == BonusType::ENCHANTER && !bonus->activation->cooldown && battle->battleGetEnchanterCounter(stack->unitSide()) != 0)
+			continue;
+		const auto * opponentHero = battle->battleGetFightingHero(battle->otherSide(stack->unitSide()));
+		if(bonus->type == BonusType::MANA_DRAIN && (!opponentHero || opponentHero->mana == 0))
+			continue;
+		return BattleAction::makeCreatureAbility(stack, bonus->activation->id);
+	}
+	return std::nullopt;
+}
+
+static std::string findAttackAbility(const std::shared_ptr<CBattleInfoCallback> & battle, const CStack * stack, const battle::Unit * target)
+{
+	std::string selected;
+	int32_t selectedCost = -1;
+	for(const auto & bonus : battle::getDeliberateActivationSources(stack, EActionType::WALK_AND_ATTACK))
+	{
+		if(!battle::isActivationAvailable(*battle, stack, EActionType::WALK_AND_ATTACK, SpellID::NONE, bonus->activation->id))
+			continue;
+		if(!battle::isActivationTargetAvailable(*battle, stack, EActionType::WALK_AND_ATTACK, SpellID::NONE, bonus->activation->id, target))
+			continue;
+		const int32_t cost = battle::getActivationFocusCost(stack, EActionType::WALK_AND_ATTACK, SpellID::NONE, bonus->activation->id);
+		if(cost > selectedCost)
+		{
+			selected = bonus->activation->id;
+			selectedCost = cost;
+		}
+	}
+	return selected;
+}
+
 void CStupidAI::activeStack(const BattleID & battleID, const CStack * stack)
 {
 	print("activeStack called for " + stack->nodeName());
@@ -138,6 +179,12 @@ void CStupidAI::activeStack(const BattleID & battleID, const CStack * stack)
 
 	if(stack->isCatapult())
 	{
+		if(!battle::isActivationAvailable(*cb->getBattle(battleID), stack, EActionType::CATAPULT, SpellID::NONE))
+		{
+			cb->battleMakeUnitAction(battleID, BattleAction::makeDefend(stack));
+			return;
+		}
+
 		BattleAction attack;
 		static const std::vector<int> wallHexes = {50, 183, 182, 130, 78, 29, 12, 95};
 		auto seletectedHex = *RandomGeneratorUtil::nextItem(wallHexes, CRandomGenerator::getDefault());
@@ -152,6 +199,12 @@ void CStupidAI::activeStack(const BattleID & battleID, const CStack * stack)
 	else if(stack->hasBonusOfType(BonusType::SIEGE_WEAPON))
 	{
 		cb->battleMakeUnitAction(battleID, BattleAction::makeDefend(stack));
+		return;
+	}
+
+	if(auto ability = findReturningCreatureAbility(cb->getBattle(battleID), stack))
+	{
+		cb->battleMakeUnitAction(battleID, *ability);
 		return;
 	}
 
@@ -229,7 +282,9 @@ void CStupidAI::activeStack(const BattleID & battleID, const CStack * stack)
 		const EnemyInfo &ei= *std::max_element(enemiesReachable.begin(), enemiesReachable.end(), &isMoreProfitable);
 		BattleHex targetHex = *std::max_element(ei.attackFrom.begin(), ei.attackFrom.end(), [&](auto a, auto b) { return willSecondHexBlockMoreEnemyShooters(cb, battleID, a, b);});
 
-		cb->battleMakeUnitAction(battleID, BattleAction::makeMeleeAttack(stack, ei.s->getPosition(), targetHex));
+		auto action = BattleAction::makeMeleeAttack(stack, ei.s->getPosition(), targetHex);
+		action.activatedAbility = findAttackAbility(cb->getBattle(battleID), stack, ei.s);
+		cb->battleMakeUnitAction(battleID, action);
 		return;
 	}
 	else if(enemiesUnreachable.size()) //due to #955 - a buggy battle may occur when there are no enemies

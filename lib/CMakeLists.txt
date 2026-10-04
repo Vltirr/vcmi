@@ -53,6 +53,8 @@ set(lib_MAIN_SRCS
 	battle/BattleHex.cpp
 	battle/BattleHexArray.cpp
 	battle/BattleInfo.cpp
+	battle/Activation.cpp
+	battle/Focus.cpp
 	battle/BattleLayout.cpp
 	battle/BattleProxy.cpp
 	battle/BattleStateInfoForRetreat.cpp

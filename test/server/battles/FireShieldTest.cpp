@@ -53,6 +53,7 @@ TEST_P(FireShieldTest, reflectsExpectedDamage)
 
 	giveArtifact(attackerSideHero, ArtifactID::SPELLBOOK, ArtifactPosition::SPELLBOOK);
 	attackerSideHero->addSpellToSpellbook(SpellID::FIRE_SHIELD);
+	attackerSideHero->setSecSkillLevel(SecondarySkill::WISDOM, MasteryLevel::EXPERT, ChangeValueMode::ABSOLUTE);
 	attackerSideHero->mana = 9999;
 
 	giveArtifact(defenderSideHero, ArtifactID::SPELLBOOK, ArtifactPosition::SPELLBOOK);
@@ -174,6 +175,7 @@ TEST_F(FireShieldRollTest, reflectsTheBlowThatLandedRatherThanTheBestPossibleRol
 
 	giveArtifact(attackerSideHero, ArtifactID::SPELLBOOK, ArtifactPosition::SPELLBOOK);
 	attackerSideHero->addSpellToSpellbook(SpellID::FIRE_SHIELD);
+	attackerSideHero->setSecSkillLevel(SecondarySkill::WISDOM, MasteryLevel::EXPERT, ChangeValueMode::ABSOLUTE);
 	attackerSideHero->mana = 9999;
 
 	startBattle();

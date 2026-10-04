@@ -550,6 +550,56 @@
 			"description" : "valueType"
 		},
 		"addInfo" : {}, // validated via allOf
+		"actionReturnsControl" : {
+			"type" : "boolean",
+			"description" : "Whether this concrete creature action returns control to the acting stack"
+		},
+		"activation" : {
+			"type" : "object",
+			"additionalProperties" : false,
+			"properties" : {
+				"id" : { "type" : "string", "minLength" : 1 },
+				"costs" : {
+					"type" : "object",
+					"additionalProperties" : false,
+					"properties" : {
+						"focus" : { "type" : "integer", "minimum" : 0 }
+					}
+				},
+				"consumeUses" : { "type" : "boolean", "description" : "Deprecated; activation always replaces native uses" },
+				"turn" : {
+					"type" : "object",
+					"additionalProperties" : false,
+					"properties" : { "returnsControl" : { "type" : "boolean" } }
+				},
+				"limits" : {
+					"type" : "array",
+					"items" : {
+						"type" : "object",
+						"additionalProperties" : false,
+						"required" : [ "scope", "period", "max" ],
+						"properties" : {
+							"key" : { "type" : "string", "minLength" : 1 },
+							"scope" : { "type" : "string", "enum" : [ "side", "stack" ] },
+							"period" : { "type" : "string", "enum" : [ "battle", "round", "turn" ] },
+							"max" : { "type" : "integer", "minimum" : 1 }
+						},
+						"not" : { "properties" : { "scope" : { "const" : "side" }, "period" : { "const" : "turn" } }, "required" : [ "scope", "period" ] }
+					}
+				},
+				"cooldown" : {
+					"type" : "object",
+					"additionalProperties" : false,
+					"properties" : {
+						"key" : { "type" : "string", "minLength" : 1 },
+						"scope" : { "type" : "string", "enum" : [ "side", "stack" ] },
+						"initial" : { "type" : "integer", "minimum" : 0 },
+						"afterUse" : { "type" : "integer", "minimum" : 0 }
+					},
+					"anyOf" : [ { "required" : [ "initial" ], "properties" : { "initial" : { "minimum" : 1 } } }, { "required" : [ "afterUse" ], "properties" : { "afterUse" : { "minimum" : 1 } } } ]
+				}
+			}
+		},
 		"duration" : {
 			"anyOf" : [
 				{

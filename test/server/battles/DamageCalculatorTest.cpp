@@ -116,6 +116,7 @@ public:
 			giveArtifact(caster, ArtifactID::SPELLBOOK, ArtifactPosition::SPELLBOOK);
 
 		caster->addSpellToSpellbook(spell);
+		caster->setSecSkillLevel(SecondarySkill::WISDOM, MasteryLevel::EXPERT, ChangeValueMode::ABSOLUTE);
 		caster->mana = 9999;
 
 		for(const auto & school : {"airMagic", "fireMagic", "waterMagic", "earthMagic"})

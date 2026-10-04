@@ -164,8 +164,6 @@ std::string CStackInstance::bonusToString(const std::shared_ptr<Bonus> & bonus) 
 
 ImagePath CStackInstance::bonusToGraphics(const std::shared_ptr<Bonus> & bonus) const
 {
-	if(!bonus->customIconPath.empty())
-		return bonus->customIconPath;
 	return LIBRARY->getBth()->bonusToGraphics(bonus);
 }
 

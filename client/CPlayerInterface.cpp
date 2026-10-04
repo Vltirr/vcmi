@@ -22,6 +22,7 @@
 #include "adventureMap/CList.h"
 
 #include "battle/BattleEffectsController.h"
+#include "battle/BattleActionsController.h"
 #include "battle/BattleFieldController.h"
 #include "battle/BattleInterface.h"
 #include "battle/BattleResultWindow.h"
@@ -696,6 +697,14 @@ void CPlayerInterface::battleStart(const BattleID & battleID, const CCreatureSet
 	BATTLE_EVENT_POSSIBLE_RETURN;
 }
 
+void CPlayerInterface::battleFocusChanged(const BattleID & battleID)
+{
+	EVENT_HANDLER_CALLED_BY_CLIENT;
+	BATTLE_EVENT_POSSIBLE_RETURN;
+	battleInt->windowObject->updateFocusBars();
+	battleInt->actionsController->updateActivationAvailability();
+}
+
 void CPlayerInterface::battleUnitsChanged(const BattleID & battleID, const std::vector<UnitChanges> & units)
 {
 	EVENT_HANDLER_CALLED_BY_CLIENT;
@@ -1083,7 +1092,9 @@ void CPlayerInterface::showInfoDialog(const std::string &text, const std::vector
 		return;
 	}
 
-	waitWhileDialog();
+	// Dialogs requested by UI input must not wait on their own GUI thread.
+	if(!ENGINE->amIGuiThread())
+		waitWhileDialog();
 
 	if ((makingTurn || (battleInt && battleInt->curInt && battleInt->curInt.get() == this)) && ENGINE->windows().count() > 0 && GAME->interface() == this)
 	{
