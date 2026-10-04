@@ -24,6 +24,7 @@
 #include "../constants/StringConstants.h"
 #include "../modding/IdentifierStorage.h"
 #include "../scripting/ScriptService.h"
+#include <vstd/StringUtils.h>
 
 
 template <typename T>
@@ -67,7 +68,8 @@ static void loadBonusSubtype(BonusSubtypeID & subtype, BonusType type, const Jso
 	if (node.isNumber()) // Compatibility code for 1.3 or older
 	{
 		logMod->warn("Bonus subtype must be string! (%s)", node.getModScope());
-		subtype = BonusCustomSubtype(node.Integer());
+		// Numeric SHOOTER subtypes predate mobile shooting and must not enable it.
+		subtype = type == BonusType::SHOOTER ? BonusSubtypeID() : BonusSubtypeID(BonusCustomSubtype(node.Integer()));
 		return;
 	}
 
@@ -76,6 +78,18 @@ static void loadBonusSubtype(BonusSubtypeID & subtype, BonusType type, const Jso
 		logMod->warn("Bonus subtype must be string! (%s)", node.getModScope());
 		subtype = BonusSubtypeID();
 		return;
+	}
+
+	if(type == BonusType::SHOOTER)
+	{
+		const auto scopeAndName = vstd::splitStringToPair(node.String(), ':');
+		const auto typeAndName = vstd::splitStringToPair(scopeAndName.second, '.');
+		if(typeAndName.second != "mobileShooter")
+		{
+			logMod->warn("Unsupported SHOOTER subtype: %s", node.String());
+			subtype = BonusSubtypeID();
+			return;
+		}
 	}
 
 	const auto entityType = bonusSubtypeEntityType(type);

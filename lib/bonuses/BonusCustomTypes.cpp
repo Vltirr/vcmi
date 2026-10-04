@@ -34,7 +34,7 @@ const BonusCustomSubtype BonusCustomSubtype::movementFlying(-1);
 const BonusCustomSubtype BonusCustomSubtype::movementTeleporting(1);
 const BonusCustomSubtype BonusCustomSubtype::freeShootingNoPenalty(0);
 const BonusCustomSubtype BonusCustomSubtype::freeShootingExceptAdjacent(1);
-const BonusCustomSubtype BonusCustomSubtype::mobileShooter(0);
+const BonusCustomSubtype BonusCustomSubtype::mobileShooter(1);
 
 const BonusCustomSource BonusCustomSource::undeadMoraleDebuff(-2);
 

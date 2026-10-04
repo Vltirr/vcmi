@@ -68,20 +68,21 @@ PotentialTargets::PotentialTargets(
 		else
 		{
 			const size_t attacksBefore = possibleAttacks.size();
-			if(state->battleCanShoot(attackerInfo, defender->getPosition()))
+			const bool hasStationaryShot = state->battleCanShoot(attackerInfo, defender->getPosition());
+			if(hasStationaryShot)
 				possibleAttacks.push_back(GenerateAttackInfo(true, BattleHex::INVALID));
 
 			if(state->battleGetMobileShooterRange(attackerInfo) > 0)
 			{
 				for(const BattleHex & hex : avHexes)
 				{
-					if(state->battleCanMoveAndShoot(attackerInfo, hex, defender->getPosition()))
+					if(state->battleCanMoveAndShoot(avHexes, attackerInfo, hex, defender->getPosition()))
 						possibleAttacks.push_back(GenerateAttackInfo(true, hex));
 				}
 			}
 
-			const bool hasRangedAttack = possibleAttacks.size() > attacksBefore;
-			if(!hasRangedAttack)
+			// Preserve the stationary shooter heuristic, but evaluate melee alongside mobile shots.
+			if(!hasStationaryShot)
 			{
 				for(const BattleHex & hex : avHexes)
 				{

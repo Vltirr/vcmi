@@ -12,6 +12,7 @@
 #include "../../lib/CStack.h"
 #include "../../lib/CCreatureHandler.h"
 #include "../../lib/battle/BattleAction.h"
+#include "../../lib/battle/BattleAttackInfo.h"
 #include "../../lib/battle/BattleInfo.h"
 #include "../../lib/battle/CPlayerBattleCallback.h"
 #include "../../lib/callback/CBattleCallback.h"
@@ -73,7 +74,12 @@ public:
 	{
 		// FIXME: provide distance info for Jousting bonus
 		DamageEstimation retal;
-		DamageEstimation dmg = cb->getBattle(battleID)->battleEstimateDamage(ourStack, s, 0, &retal);
+		BattleAttackInfo attack(ourStack, s, 0, mobileShootFrom.isValid()
+			|| cb->getBattle(battleID)->battleCanShoot(ourStack, s->getPosition()));
+		attack.mobileShooting = mobileShootFrom.isValid();
+		if(attack.mobileShooting)
+			attack.attackerPos = mobileShootFrom;
+		DamageEstimation dmg = cb->getBattle(battleID)->battleEstimateDamage(attack, &retal);
 		// Clip damage dealt to total stack health
 		auto totalHealth = s->getTotalHealth();
 		vstd::amin(dmg.damage.min, totalHealth);
@@ -123,6 +129,7 @@ void CStupidAI::activeStack(const BattleID & battleID, const CStack * stack)
 {
 	print("activeStack called for " + stack->nodeName());
 	ReachabilityInfo dists = cb->getBattle(battleID)->getReachability(stack);
+	const auto avHexes = cb->getBattle(battleID)->battleGetAvailableHexes(dists, stack, false);
 	std::vector<EnemyInfo> enemiesShootable;
 	std::vector<EnemyInfo> enemiesMobileShootable;
 	std::vector<EnemyInfo> enemiesReachable;
@@ -160,11 +167,10 @@ void CStupidAI::activeStack(const BattleID & battleID, const CStack * stack)
 		}
 		else
 		{
-			BattleHexArray avHexes = cb->getBattle(battleID)->battleGetAvailableHexes(stack, false);
 			BattleHex mobileShootFrom = BattleHex::INVALID;
 			for(const BattleHex & hex : avHexes)
 			{
-				if(!cb->getBattle(battleID)->battleCanMoveAndShoot(stack, hex, s->getPosition()))
+				if(!cb->getBattle(battleID)->battleCanMoveAndShoot(avHexes, stack, hex, s->getPosition()))
 					continue;
 				if(!mobileShootFrom.isValid() || dists.distances[hex.toInt()] < dists.distances[mobileShootFrom.toInt()] ||
 					(dists.distances[hex.toInt()] == dists.distances[mobileShootFrom.toInt()] && hex < mobileShootFrom))

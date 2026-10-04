@@ -322,6 +322,14 @@ bool BattleFlowProcessor::tryActivateBerserkPenalty(const CBattleInfoCallback & 
 
 bool BattleFlowProcessor::handleForcedCpuControlledUnit(const CBattleInfoCallback & battle, const CStack * next)
 {
+	if(next->hasBonusOfType(BonusType::CPU_CONTROLLED))
+	{
+		const auto * hero = battle.battleGetOwnerHero(next);
+		if(hero && gameHandler->randomizer->rollCombatAbility(hero->id,
+			hero->valOfBonuses(BonusType::MANUAL_CONTROL, BonusSubtypeID(next->creatureId()))))
+			return false;
+	}
+
 	if (tryMakeAutomaticActionOfRangedUnit(battle, next))
 		return true;
 
@@ -339,19 +347,15 @@ bool BattleFlowProcessor::handleForcedCpuControlledUnit(const CBattleInfoCallbac
 
 bool BattleFlowProcessor::tryMakeAutomaticActionOfRangedUnit(const CBattleInfoCallback & battle, const CStack * next) //TODO: optimize readability based on tryMakeAutomaticActionOfMeleeUnit
 {
-	const CGHeroInstance * curOwner = battle.battleGetOwnerHero(next);
-	const CreatureID stackCreatureId = next->unitType()->getId();
-	const bool manualControlGranted = curOwner
-		&& gameHandler->randomizer->rollCombatAbility(curOwner->id,
-			curOwner->valOfBonuses(BonusType::MANUAL_CONTROL, BonusSubtypeID(stackCreatureId)));
-	const bool automaticallyControlled = next->hasBonusOfType(BonusType::CPU_CONTROLLED) && !manualControlGranted;
+	if(!next->hasBonusOfType(BonusType::CPU_CONTROLLED))
+		return false;
 	const bool hasStationaryTarget = !battle.battleGetStacksIf([&next, &battle](const CStack * stack)
 	{
 		return stack->unitOwner() != next->unitOwner()
 			&& stack->isValidTarget() && battle.battleCanShoot(next, stack->getPosition());
 	}).empty();
 
-	if(automaticallyControlled && !hasStationaryTarget && battle.battleGetMobileShooterRange(next) > 0)
+	if(!hasStationaryTarget && battle.battleGetMobileShooterRange(next) > 0)
 	{
 		const auto reachability = battle.getReachability(next);
 		const auto availableHexes = battle.battleGetAvailableHexes(reachability, next, false);
@@ -366,7 +370,7 @@ bool BattleFlowProcessor::tryMakeAutomaticActionOfRangedUnit(const CBattleInfoCa
 		{
 			for(const BattleHex & position : availableHexes)
 			{
-				if(!battle.battleCanMoveAndShoot(next, position, target->getPosition()))
+				if(!battle.battleCanMoveAndShoot(availableHexes, next, position, target->getPosition()))
 					continue;
 				const int distance = reachability.distances[position.toInt()];
 				if(!selectedTarget || distance < selectedDistance || (distance == selectedDistance && position < selectedPosition))
@@ -386,7 +390,7 @@ bool BattleFlowProcessor::tryMakeAutomaticActionOfRangedUnit(const CBattleInfoCa
 		}
 	}
 
-	if(automaticallyControlled && (battle.battleCanShoot(next) || !next->isMeleeAttacker()))
+	if(hasStationaryTarget || !next->isMeleeAttacker())
 	{
 		BattleAction attack;
 		attack.actionType = EActionType::SHOOT;
@@ -505,13 +509,7 @@ bool BattleFlowProcessor::tryMakeAutomaticActionOfMeleeUnit(const CBattleInfoCal
 		}
 	};
 
-	const CGHeroInstance * curOwner = battle.battleGetOwnerHero(actingStack);
-	const CreatureID stackCreatureId = actingStack->unitType()->getId();
-
-	if (!actingStack->hasBonusOfType(BonusType::CPU_CONTROLLED) || battle.battleCanShoot(actingStack))
-		return false;
-
-	if (curOwner && gameHandler->randomizer->rollCombatAbility(curOwner->id, curOwner->valOfBonuses(BonusType::MANUAL_CONTROL, BonusSubtypeID(stackCreatureId))))
+	if(!actingStack->hasBonusOfType(BonusType::CPU_CONTROLLED))
 		return false;
 
 	ReachabilityInfo reachabilityCache = battle.getReachability(actingStack);

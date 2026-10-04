@@ -20,6 +20,7 @@
 #include "../CPlayerInterface.h"
 #include "../GameEngine.h"
 #include "../GameInstance.h"
+#include "../eventsSDL/InputHandler.h"
 #include "../gui/CIntObject.h"
 #include "../gui/CursorHandler.h"
 #include "../gui/WindowHandler.h"
@@ -500,7 +501,8 @@ const CStack * BattleActionsController::getStackForHex(const BattleHex & hovered
 	return owner.getBattle()->battleGetStackByPos(hoveredHex, false);
 }
 
-void BattleActionsController::actionSetCursor(PossiblePlayerBattleAction action, const BattleHex & targetHex)
+void BattleActionsController::actionSetCursor(PossiblePlayerBattleAction action, const BattleHex & targetHex,
+	const HexActionContext & context)
 {
 	switch (action.get())
 	{
@@ -517,7 +519,7 @@ void BattleActionsController::actionSetCursor(PossiblePlayerBattleAction action,
 				return;
 			}
 			if(action.get() == PossiblePlayerBattleAction::WALK_AND_SHOOT && selectedMovementHex &&
-				isSelectedMovementDestinationHex(targetHex))
+				context.movementSelection && context.movementDestination == *selectedMovementHex)
 			{
 				ENGINE->cursor().set(selectedMovementHexRequiresMouseExit
 					? Cursor::Combat::MOVE_AND_SHOOT
@@ -525,7 +527,7 @@ void BattleActionsController::actionSetCursor(PossiblePlayerBattleAction action,
 				return;
 			}
 			if(action.get() == PossiblePlayerBattleAction::WALK_AND_SHOOT && selectedMovementHex &&
-				isMovementDestinationHex(targetHex))
+				context.movementSelection)
 			{
 				ENGINE->cursor().set(Cursor::Combat::MOVE_AND_SHOOT);
 				return;
@@ -564,10 +566,14 @@ void BattleActionsController::actionSetCursor(PossiblePlayerBattleAction action,
 			auto direction = owner.fieldController->selectAttackDirection(targetHex);
 			if(selectedMovementHex)
 			{
-				direction = BattleHex::mutualPosition(targetHex, *selectedMovementHex);
-				if(direction == BattleHex::NONE && owner.stacksController->getActiveStack()->doubleWide())
-					direction = BattleHex::mutualPosition(targetHex,
-						owner.stacksController->getActiveStack()->occupiedHex(*selectedMovementHex));
+				const auto contactHex = getSelectedMeleeAttackHex(targetHex);
+				direction = BattleHex::NONE;
+				for(const auto & attackerHex : owner.stacksController->getActiveStack()->getHexes(*selectedMovementHex))
+				{
+					direction = BattleHex::mutualPosition(contactHex, attackerHex);
+					if(direction != BattleHex::NONE)
+						break;
+				}
 			}
 
 			assert(sectorCursor.count(direction) > 0);
@@ -646,7 +652,8 @@ void BattleActionsController::actionSetCursorBlocked(PossiblePlayerBattleAction 
 	assert(0);
 }
 
-std::string BattleActionsController::actionGetStatusMessage(PossiblePlayerBattleAction action, const BattleHex & targetHex)
+std::string BattleActionsController::actionGetStatusMessage(PossiblePlayerBattleAction action,
+	const BattleHex & targetHex, const HexActionContext & context)
 {
 	const CStack * targetStack = getStackForHex(targetHex);
 
@@ -663,12 +670,13 @@ std::string BattleActionsController::actionGetStatusMessage(PossiblePlayerBattle
 				return LIBRARY->generaltexth->translate("vcmi.battle.action.moveAndShoot.selectInitialPosition");
 
 			if(action.get() == PossiblePlayerBattleAction::WALK_AND_SHOOT
-				&& selectedMovementHex && isMovementDestinationHex(targetHex))
+				&& selectedMovementHex && context.movementSelection)
 			{
-				const CStack * activeStack = owner.stacksController->getActiveStack();
-				const BattleHex destination = owner.getBattle()->toWhichHexMove(activeStack, targetHex);
+				const BattleHex destination = context.movementDestination;
 				if(destination == *selectedMovementHex && selectedMovementHexRequiresMouseExit)
 					return getMoveAndShootSelectionPrompt();
+				if(context.shotFromSelectedPosition)
+					return LIBRARY->generaltexth->translate("vcmi.battle.action.moveAndShoot.chooseAreaAction");
 				const std::string textID = destination == *selectedMovementHex
 					? "vcmi.battle.action.moveAndShoot.moveOnly"
 					: "vcmi.battle.action.moveAndShoot.selectPosition";
@@ -676,7 +684,7 @@ std::string BattleActionsController::actionGetStatusMessage(PossiblePlayerBattle
 			}
 
 			if(action.get() == PossiblePlayerBattleAction::WALK_AND_SHOOT
-				&& selectedMovementHex && !isMovementDestinationHex(targetHex))
+				&& selectedMovementHex && !context.movementSelection)
 			{
 				const CStack * shooter = owner.stacksController->getActiveStack();
 				if(!targetStack)
@@ -719,10 +727,12 @@ std::string BattleActionsController::actionGetStatusMessage(PossiblePlayerBattle
 				estimation.kills.max = std::min<int64_t>(estimation.kills.max, targetStack->getCount());
 				estimation.kills.min = std::min<int64_t>(estimation.kills.min, targetStack->getCount());
 				bool enemyMayBeKilled = estimation.kills.max == targetStack->getCount();
+				const auto attackHex = selectedMovementHex ? getSelectedMeleeAttackHex(targetHex) : targetHex;
 
 				// breath and other multi-hex attacks also strike extra units - add their kills to the prediction
 				// (getAttackedBattleUnits excludes the directly-attacked hex, so the main target is handled above)
-				for(const auto * splashTarget : owner.getBattle()->getAttackedCreatures(attacker, targetHex, false, attackFromHex).first)
+				for(const auto * splashTarget : owner.getBattle()->getAttackedCreatures(
+					attacker, attackHex, false, attackFromHex).first)
 				{
 					if(splashTarget == targetStack || splashTarget == attacker)
 						continue;
@@ -888,7 +898,8 @@ std::string BattleActionsController::actionGetStatusMessageBlocked(PossiblePlaye
 	}
 }
 
-bool BattleActionsController::actionIsLegal(PossiblePlayerBattleAction action, const BattleHex & targetHex)
+bool BattleActionsController::actionIsLegal(PossiblePlayerBattleAction action, const BattleHex & targetHex,
+	const HexActionContext & context)
 {
 	const CStack * targetStack = getStackForHex(targetHex);
 	bool targetStackOwned = targetStack && targetStack->unitOwner() == owner.curInt->playerID;
@@ -914,8 +925,7 @@ bool BattleActionsController::actionIsLegal(PossiblePlayerBattleAction action, c
 		case PossiblePlayerBattleAction::MOVE_STACK:
 			if (!(targetStack && targetStack->alive())) //we can walk on dead stacks
 			{
-				const CStack * currentStack = owner.stacksController->getActiveStack();
-				return currentStack && owner.getBattle()->toWhichHexMove(currentStack, targetHex).isValid();
+				return context.movementDestination.isValid();
 			}
 			return false;
 
@@ -926,12 +936,12 @@ bool BattleActionsController::actionIsLegal(PossiblePlayerBattleAction action, c
 				return false;
 
 			if(!selectedMovementHex)
-				return isFiringPositionHex(targetHex);
+				return context.firingPosition;
 
-			if(!targetStack && isMovementDestinationHex(targetHex))
+			if(!targetStack && context.movementSelection)
 				return true;
 
-			return owner.getBattle()->battleCanMoveAndShoot(currentStack, *selectedMovementHex, targetHex);
+			return context.shotFromSelectedPosition;
 		}
 
 		case PossiblePlayerBattleAction::ATTACK:
@@ -1027,7 +1037,8 @@ bool BattleActionsController::actionIsLegal(PossiblePlayerBattleAction action, c
 	return false;
 }
 
-void BattleActionsController::actionRealize(PossiblePlayerBattleAction action, const BattleHex & targetHex)
+void BattleActionsController::actionRealize(PossiblePlayerBattleAction action, const BattleHex & targetHex,
+	const HexActionContext & context)
 {
 	const CStack * targetStack = getStackForHex(targetHex);
 
@@ -1042,8 +1053,7 @@ void BattleActionsController::actionRealize(PossiblePlayerBattleAction action, c
 		case PossiblePlayerBattleAction::MOVE_TACTICS:
 		case PossiblePlayerBattleAction::MOVE_STACK:
 		{
-			const auto * activeStack = owner.stacksController->getActiveStack();
-			auto toHex = owner.getBattle()->toWhichHexMove(activeStack, targetHex);
+			auto toHex = context.movementDestination;
 			assert(toHex.isValid());
 			cancelMoveAndShootSelection();
 			owner.giveCommand(EActionType::WALK, toHex);
@@ -1055,21 +1065,25 @@ void BattleActionsController::actionRealize(PossiblePlayerBattleAction action, c
 			const CStack * activeStack = owner.stacksController->getActiveStack();
 			if(!selectedMovementHex)
 			{
-				selectMovementDestination(targetHex);
+				selectMovementDestination(context.movementDestination);
 				return;
 			}
 
-			if(!targetStack && isMovementDestinationHex(targetHex))
+			if(!targetStack && context.movementSelection)
 			{
-				const BattleHex newDestination = owner.getBattle()->toWhichHexMove(activeStack, targetHex);
+				const BattleHex newDestination = context.movementDestination;
+				if(newDestination == *selectedMovementHex && selectedMovementHexRequiresMouseExit)
+					return;
+				if(context.shotFromSelectedPosition)
+				{
+					chooseAreaShotOrMovement(targetHex, context);
+					return;
+				}
 				if(newDestination != *selectedMovementHex)
 				{
 					selectMovementDestination(newDestination);
 					return;
 				}
-				if(selectedMovementHexRequiresMouseExit)
-					return;
-
 				const BattleHex movementDestination = *selectedMovementHex;
 				cancelMoveAndShootSelection();
 				owner.giveCommand(EActionType::WALK, movementDestination);
@@ -1097,7 +1111,10 @@ void BattleActionsController::actionRealize(PossiblePlayerBattleAction action, c
 			assert(attackFromHex.isValid());
 			if(!attackFromHex.isValid())
 				return;
-			BattleAction command = BattleAction::makeMeleeAttack(attacker, targetHex, attackFromHex, returnAfterAttack);
+			const BattleHex attackHex = selectedMovementHex ? getSelectedMeleeAttackHex(targetHex) : targetHex;
+			if(!attackHex.isValid())
+				return;
+			BattleAction command = BattleAction::makeMeleeAttack(attacker, attackHex, attackFromHex, returnAfterAttack);
 			cancelMoveAndShootSelection();
 			owner.sendCommand(command, attacker);
 			return;
@@ -1234,6 +1251,12 @@ void BattleActionsController::actionRealize(PossiblePlayerBattleAction action, c
 
 PossiblePlayerBattleAction BattleActionsController::selectAction(const BattleHex & targetHex)
 {
+	return selectAction(targetHex, evaluateHex(targetHex));
+}
+
+PossiblePlayerBattleAction BattleActionsController::selectAction(const BattleHex & targetHex,
+	const HexActionContext & context)
+{
 	auto currentStack = monsterCaster ? monsterCaster : owner.stacksController->getActiveStack();
 	assert(currentStack != nullptr);
 	assert(!possibleActions.empty());
@@ -1248,14 +1271,15 @@ PossiblePlayerBattleAction BattleActionsController::selectAction(const BattleHex
 	const CStack * targetStack = getStackForHex(targetHex);
 	if(selectedMovementHex)
 	{
-		if(!targetStack && isMovementDestinationHex(targetHex))
-			return isSelectedMovementDestinationHex(targetHex) || isFiringPositionHex(targetHex)
+		if(!targetStack && context.movementSelection)
+			return context.movementDestination == *selectedMovementHex || context.firingPosition
+				|| context.shotFromSelectedPosition
 				? PossiblePlayerBattleAction::WALK_AND_SHOOT
 				: PossiblePlayerBattleAction::MOVE_STACK;
-		if(owner.getBattle()->battleCanMoveAndShoot(currentStack, *selectedMovementHex, targetHex))
+		if(context.shotFromSelectedPosition)
 			return PossiblePlayerBattleAction::WALK_AND_SHOOT;
 		if(targetStack && owner.getBattle()->battleCanAttackUnit(currentStack, targetStack) &&
-			owner.getBattle()->isMeleeAttackPossible(currentStack, targetStack, *selectedMovementHex))
+			getSelectedMeleeAttackHex(targetHex).isValid())
 			return PossiblePlayerBattleAction::WALK_AND_ATTACK;
 		return PossiblePlayerBattleAction::WALK_AND_SHOOT;
 	}
@@ -1264,10 +1288,10 @@ PossiblePlayerBattleAction BattleActionsController::selectAction(const BattleHex
 
 	for (PossiblePlayerBattleAction action : possibleActions)
 	{
-		if (actionIsLegal(action, targetHex))
+		if (actionIsLegal(action, targetHex, context))
 			return action;
 	}
-	if(owner.getBattle()->battleGetMobileShooterRange(currentStack) > 0 && isMovementDestinationHex(targetHex))
+	if(owner.getBattle()->battleGetMobileShooterRange(currentStack) > 0 && context.movementSelection)
 		return PossiblePlayerBattleAction::MOVE_STACK;
 	return possibleActions.front();
 }
@@ -1297,17 +1321,18 @@ void BattleActionsController::onHexHovered(const BattleHex & hoveredHex)
 		return;
 	}
 
-	if(selectedMovementHex && !isSelectedMovementDestinationHex(hoveredHex))
+	const auto context = evaluateHex(hoveredHex);
+	if(selectedMovementHex && context.movementDestination != *selectedMovementHex)
 		selectedMovementHexRequiresMouseExit = false;
 
-	auto action = selectAction(hoveredHex);
+	auto action = selectAction(hoveredHex, context);
 
 	std::string newConsoleMsg;
 
-	if (actionIsLegal(action, hoveredHex))
+	if (actionIsLegal(action, hoveredHex, context))
 	{
-		actionSetCursor(action, hoveredHex);
-		newConsoleMsg = actionGetStatusMessage(action, hoveredHex);
+		actionSetCursor(action, hoveredHex, context);
+		newConsoleMsg = actionGetStatusMessage(action, hoveredHex, context);
 	}
 	else
 	{
@@ -1348,14 +1373,15 @@ void BattleActionsController::onHexLeftClicked(const BattleHex & clickedHex)
 	if (owner.stacksController->getActiveStack() == nullptr && monsterCaster == nullptr)
 		return;
 
-	auto action = selectAction(clickedHex);
+	const auto context = evaluateHex(clickedHex);
+	auto action = selectAction(clickedHex, context);
 
 	std::string newConsoleMsg;
 
-	if (!actionIsLegal(action, clickedHex))
+	if (!actionIsLegal(action, clickedHex, context))
 		return;
 	
-	actionRealize(action, clickedHex);
+	actionRealize(action, clickedHex, context);
 	if(moveAndShootSelectionActive())
 	{
 		currentConsoleMsg = getMoveAndShootSelectionPrompt();
@@ -1540,44 +1566,63 @@ void BattleActionsController::resetCurrentStackPossibleActions()
 	possibleActions = getPossibleActionsForStack(owner.stacksController->getActiveStack());
 }
 
-bool BattleActionsController::isMovementDestinationHex(const BattleHex & hex) const
+BattleActionsController::HexActionContext BattleActionsController::evaluateHex(const BattleHex & hex) const
 {
+	HexActionContext context;
 	const CStack * stack = owner.stacksController->getActiveStack();
-	if(!stack || owner.getBattle()->battleGetStackByPos(hex, true))
-		return false;
-	const BattleHex destination = owner.getBattle()->toWhichHexMove(stack, hex);
-	return destination.isValid() && destination != stack->getPosition();
-}
-
-bool BattleActionsController::isFiringPositionHex(const BattleHex & hex) const
-{
-	if(!isMovementDestinationHex(hex))
-		return false;
-	const auto * stack = owner.stacksController->getActiveStack();
+	if(!stack || !hex.isValid())
+		return context;
+	if(!selectedMovementHex && owner.getBattle()->battleGetStackByPos(hex, true))
+		return context;
+	context.availableHexes = owner.getBattle()->battleGetAvailableHexes(stack, false);
+	if(!owner.getBattle()->battleGetStackByPos(hex, true))
+		context.movementDestination = owner.getBattle()->toWhichHexMove(context.availableHexes, stack, hex);
+	context.movementSelection = context.movementDestination.isValid()
+		&& context.movementDestination != stack->getPosition();
+	if(selectedMovementHex)
+	{
+		context.shotFromSelectedPosition = owner.getBattle()->battleCanMoveAndShoot(
+			context.availableHexes, stack, *selectedMovementHex, hex);
+		if(context.shotFromSelectedPosition && ENGINE->input().isKeyboardShiftDown()
+			&& owner.getBattle()->battleCanTargetEmptyHex(stack))
+			context.movementSelection = false;
+	}
+	if(!context.movementSelection || owner.getBattle()->battleGetMobileShooterRange(stack) <= 0)
+		return context;
+	if(selectedMovementHex && context.movementDestination == *selectedMovementHex)
+		return context;
 	const bool canTargetEmptyHex = owner.getBattle()->battleCanTargetEmptyHex(stack);
 	for(int target = 0; target < GameConstants::BFIELD_SIZE; ++target)
 	{
 		if(!canTargetEmptyHex && !owner.getBattle()->battleGetUnitByPos(BattleHex(target)))
 			continue;
-		if(BattleHex(target).isAvailable() && owner.getBattle()->battleCanMoveAndShoot(stack, hex, BattleHex(target)))
-			return true;
+		if(BattleHex(target).isAvailable()
+			&& owner.getBattle()->battleCanMoveAndShoot(
+				context.availableHexes, stack, context.movementDestination, BattleHex(target)))
+		{
+			context.firingPosition = true;
+			break;
+		}
 	}
-	return false;
+	return context;
 }
 
-bool BattleActionsController::isSelectedMovementDestinationHex(const BattleHex & hex) const
+BattleHex BattleActionsController::getSelectedMeleeAttackHex(const BattleHex & targetHex) const
 {
-	if(!selectedMovementHex || !isMovementDestinationHex(hex))
-		return false;
 	const CStack * stack = owner.stacksController->getActiveStack();
-	return owner.getBattle()->toWhichHexMove(stack, hex) == *selectedMovementHex;
+	const CStack * target = owner.getBattle()->battleGetStackByPos(targetHex, true);
+	if(!selectedMovementHex || !stack || !target || target->isInvincible())
+		return BattleHex::INVALID;
+	const auto contactHexes = owner.getBattle()->meleeAttackHexes(stack, target, *selectedMovementHex);
+	if(contactHexes.contains(targetHex))
+		return targetHex;
+	return contactHexes.empty() ? BattleHex::INVALID : contactHexes.front();
 }
 
-void BattleActionsController::selectMovementDestination(const BattleHex & hex)
+void BattleActionsController::selectMovementDestination(const BattleHex & destination)
 {
 	const CStack * stack = owner.stacksController->getActiveStack();
-	const BattleHex destination = owner.getBattle()->toWhichHexMove(stack, hex);
-	if(!destination.isValid() || destination == stack->getPosition())
+	if(!stack || !destination.isValid() || destination == stack->getPosition())
 		return;
 
 	selectedMovementHex = destination;
@@ -1588,8 +1633,59 @@ void BattleActionsController::selectMovementDestination(const BattleHex & hex)
 	ENGINE->fakeMouseMove();
 }
 
+void BattleActionsController::chooseAreaShotOrMovement(const BattleHex & targetHex, const HexActionContext & context)
+{
+	const auto * stack = owner.stacksController->getActiveStack();
+	const auto stackID = stack->unitId();
+	const auto firingPosition = *selectedMovementHex;
+	const std::weak_ptr<BattleWindow> window = owner.windowObject;
+	const std::weak_ptr<CPlayerInterface> playerInterface = owner.curInt;
+	auto selectionStillActive = [this, window, playerInterface, battleInterface = &owner, stackID, firingPosition]()
+	{
+		const auto player = playerInterface.lock();
+		if(window.expired() || !player || player->battleInt.get() != battleInterface)
+			return false;
+		const auto * activeStack = owner.stacksController->getActiveStack();
+		return activeStack && activeStack->unitId() == stackID && selectedMovementHex == firingPosition;
+	};
+	auto shoot = [this, selectionStillActive, targetHex, firingPosition]()
+	{
+		if(!selectionStillActive())
+			return;
+		const auto * activeStack = owner.stacksController->getActiveStack();
+		if(!owner.getBattle()->battleCanMoveAndShoot(activeStack, firingPosition, targetHex))
+			return;
+		const auto command = BattleAction::makeWalkAndShoot(
+			activeStack, firingPosition, battle::Destination(targetHex));
+		cancelMoveAndShootSelection();
+		owner.sendCommand(command, activeStack);
+	};
+	auto move = [this, selectionStillActive, movementDestination = context.movementDestination,
+		firingPosition, canPreview = context.firingPosition]()
+	{
+		if(!selectionStillActive())
+			return;
+		const auto available = owner.getBattle()->battleGetAvailableHexes(
+			owner.stacksController->getActiveStack(), false);
+		if(!available.contains(movementDestination))
+			return;
+		if(movementDestination != firingPosition && canPreview)
+			selectMovementDestination(movementDestination);
+		else
+		{
+			cancelMoveAndShootSelection();
+			owner.giveCommand(EActionType::WALK, movementDestination);
+		}
+	};
+	owner.curInt->showYesNoDialog(
+		LIBRARY->generaltexth->translate("vcmi.battle.action.moveAndShoot.areaActionQuestion"), shoot, move);
+}
+
 std::string BattleActionsController::getMoveAndShootSelectionPrompt() const
 {
+	const auto * stack = owner.stacksController->getActiveStack();
+	if(stack && owner.getBattle()->battleCanTargetEmptyHex(stack))
+		return LIBRARY->generaltexth->translate("vcmi.battle.action.moveAndShoot.selectAreaTarget");
 	return LIBRARY->generaltexth->translate("vcmi.battle.action.moveAndShoot.selectTarget");
 }
 
@@ -1610,8 +1706,12 @@ void BattleActionsController::cancelMoveAndShootSelection()
 
 	selectedMovementHex.reset();
 	selectedMovementHexRequiresMouseExit = false;
+	if(!currentConsoleMsg.empty())
+		ENGINE->statusbar()->clearIfMatching(currentConsoleMsg);
+	currentConsoleMsg.clear();
 	owner.stacksController->clearMoveAndShootGhost();
 	owner.windowObject->setMoveAndShootSelectionMode(false);
+	ENGINE->cursor().set(owner.makingTurn() ? Cursor::Combat::POINTER : Cursor::Combat::BLOCKED);
 	owner.fieldController->redrawBackgroundWithHexes();
 	ENGINE->fakeMouseMove();
 }

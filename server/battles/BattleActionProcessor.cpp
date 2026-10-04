@@ -443,7 +443,7 @@ bool BattleActionProcessor::doWalkAndShootAction(const CBattleInfoCallback & bat
 		return false;
 	}
 
-	if(movementResult.obstacleHit)
+	if(movementResult.obstacleHit || !stack->alive() || stack->hasBonusOfType(BonusType::NOT_ACTIVE))
 		return true;
 
 	return executeShot(battle, stack, shootingDestination, ba.side, true);

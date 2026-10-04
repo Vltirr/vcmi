@@ -76,6 +76,11 @@ struct DLL_LINKAGE Bonus : public std::enable_shared_from_this<Bonus>, public Se
 		h & duration;
 		h & type;
 		h & subtype;
+		if(!h.saving && !h.hasFeature(Handler::Version::MOBILE_SHOOTER_SUBTYPE) && type == BonusType::SHOOTER)
+		{
+			// Old saves cannot distinguish legacy subtypes from the experimental mobile subtype.
+			subtype = BonusSubtypeID();
+		}
 		h & source;
 		h & val;
 		h & sid;

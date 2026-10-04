@@ -971,7 +971,8 @@ bool CBattleInfoCallback::battleCanShootFrom(const battle::Unit * attacker, cons
 	if(battleTacticDist()) //no shooting during tactics
 		return false;
 
-	if(!attacker || !attackerPosition.isValid())
+	if(!attacker || (!attackerPosition.isValid()
+		&& !(attacker->isTurret() && attackerPosition == attacker->getPosition())))
 		return false;
 	if(attacker->isCatapult()) //catapult cannot attack creatures
 		return false;
@@ -1101,7 +1102,7 @@ bool CBattleInfoCallback::battleCanShootAtRange(const battle::Unit * attacker, c
 {
 	RETURN_IF_NOT_BATTLE(false);
 
-	if(!attacker || !attackerPosition.isValid() || !dest.isAvailable())
+	if(!attacker || !dest.isAvailable())
 		return false;
 
 	const battle::Unit * defender = battleGetUnitByPos(dest);
@@ -1122,6 +1123,9 @@ bool CBattleInfoCallback::battleCanShootAtRange(const battle::Unit * attacker, c
 	{
 		if(battleCanShootFrom(attacker, attackerPosition))
 		{
+			if(attacker->isTurret())
+				return true;
+
 			// e.g. Steel Elves - unit shoots freely while blocked, but adjacent units can only be attacked in melee
 			if(defender && !canShootAdjacentUnits(attacker) && isMeleeAttackPossible(attacker, defender, attackerPosition))
 				return false;
@@ -1191,12 +1195,20 @@ bool CBattleInfoCallback::battleCanMoveAndShoot(const battle::Unit * attacker, c
 	const BattleHex & dest) const
 {
 	RETURN_IF_NOT_BATTLE(false);
+	if(!attacker)
+		return false;
+	return battleCanMoveAndShoot(battleGetAvailableHexes(attacker, false), attacker, movementDestination, dest);
+}
+
+bool CBattleInfoCallback::battleCanMoveAndShoot(const BattleHexArray & availableHexes, const battle::Unit * attacker,
+	const BattleHex & movementDestination, const BattleHex & dest) const
+{
+	RETURN_IF_NOT_BATTLE(false);
 
 	const int shootingRange = battleGetMobileShooterRange(attacker);
 	if(shootingRange <= 0 || !attacker || battleTacticDist())
 		return false;
 
-	const auto availableHexes = battleGetAvailableHexes(attacker, false);
 	const BattleHex normalizedDestination = toWhichHexMove(availableHexes, attacker, movementDestination);
 	if(!normalizedDestination.isValid() || normalizedDestination == attacker->getPosition())
 		return false;
@@ -1209,7 +1221,7 @@ bool CBattleInfoCallback::battleCanMoveAndShoot(const battle::Unit * attacker, c
 
 bool CBattleInfoCallback::battleCanShootAfterMoving(const battle::Unit * attacker, const BattleHex & dest) const
 {
-	if(!attacker)
+	if(!attacker || attacker->hasBonusOfType(BonusType::NOT_ACTIVE))
 		return false;
 
 	const int shootingRange = battleGetMobileShooterRange(attacker);
@@ -1764,12 +1776,15 @@ ForcedAction CBattleInfoCallback::getBerserkForcedAction(const battle::Unit * be
 	});
 	auto cache = getReachability(berserker);
 
-	if (battleCanShoot(berserker))
+	const auto closestRangedTarget = std::ranges::min_element(targets,
+		[&berserker](const battle::Unit * lhs, const battle::Unit * rhs)
 	{
-		const auto target = std::ranges::min_element(targets, [&berserker](const battle::Unit * lhs, const battle::Unit * rhs)
-		{
-			return BattleHex::getDistance(berserker->getPosition(), lhs->getPosition()) < BattleHex::getDistance(berserker->getPosition(), rhs->getPosition());
-		})[0];
+		return BattleHex::getDistance(berserker->getPosition(), lhs->getPosition())
+			< BattleHex::getDistance(berserker->getPosition(), rhs->getPosition());
+	});
+	if(closestRangedTarget != targets.end() && battleCanShoot(berserker, (*closestRangedTarget)->getPosition()))
+	{
+		const auto target = *closestRangedTarget;
 		ForcedAction result = {
 			EActionType::SHOOT,
 			berserker->getPosition(),
@@ -1779,39 +1794,6 @@ ForcedAction CBattleInfoCallback::getBerserkForcedAction(const battle::Unit * be
 	}
 	else
 	{
-		if(battleGetMobileShooterRange(berserker) > 0)
-		{
-			const auto availableHexes = battleGetAvailableHexes(cache, berserker, false);
-			const battle::Unit * selectedTarget = nullptr;
-			BattleHex selectedPosition = BattleHex::INVALID;
-			int selectedTargetDistance = std::numeric_limits<int>::max();
-			int selectedMovementDistance = std::numeric_limits<int>::max();
-
-			for(const battle::Unit * target : targets)
-			{
-				const int targetDistance = BattleHex::getDistance(berserker->getPosition(), target->getPosition());
-				for(const BattleHex & position : availableHexes)
-				{
-					if(!battleCanMoveAndShoot(berserker, position, target->getPosition()))
-						continue;
-					const int movementDistance = cache.distances[position.toInt()];
-					if(targetDistance < selectedTargetDistance ||
-						(targetDistance == selectedTargetDistance && movementDistance < selectedMovementDistance) ||
-						(targetDistance == selectedTargetDistance
-							&& movementDistance == selectedMovementDistance && position < selectedPosition))
-					{
-						selectedTarget = target;
-						selectedPosition = position;
-						selectedTargetDistance = targetDistance;
-						selectedMovementDistance = movementDistance;
-					}
-				}
-			}
-
-			if(selectedTarget)
-				return {EActionType::WALK_AND_SHOOT, selectedPosition, selectedTarget};
-		}
-
 		struct TargetData
 		{
 			const battle::Unit * target;
@@ -1821,6 +1803,8 @@ ForcedAction CBattleInfoCallback::getBerserkForcedAction(const battle::Unit * be
 
 		std::vector<TargetData> targetData;
 		targetData.reserve(targets.size());
+		if(targets.empty())
+			return {EActionType::NO_ACTION, berserker->getPosition(), nullptr};
 		for (const battle::Unit * uTarget : targets)
 		{
 			BattleHexArray attackableHexes = uTarget->getAttackableHexes(berserker);
@@ -1837,6 +1821,27 @@ ForcedAction CBattleInfoCallback::getBerserkForcedAction(const battle::Unit * be
 		{
 			return lhs.distance < rhs.distance;
 		})[0];
+
+		// Select the nearest target using the existing Berserk rule before choosing an attack modality.
+		if(battleGetMobileShooterRange(berserker) > 0)
+		{
+			const auto availableHexes = battleGetAvailableHexes(cache, berserker, false);
+			BattleHex selectedPosition = BattleHex::INVALID;
+			uint32_t selectedDistance = ReachabilityInfo::INFINITE_DIST;
+			for(const BattleHex & position : availableHexes)
+			{
+				if(!battleCanMoveAndShoot(availableHexes, berserker, position, closestUnit.target->getPosition()))
+					continue;
+				const auto distance = cache.distances[position.toInt()];
+				if(distance < selectedDistance || (distance == selectedDistance && position < selectedPosition))
+				{
+					selectedPosition = position;
+					selectedDistance = distance;
+				}
+			}
+			if(selectedPosition.isValid())
+				return {EActionType::WALK_AND_SHOOT, selectedPosition, closestUnit.target};
+		}
 
 		if (closestUnit.distance <= berserker->getMovementRange())
 		{
@@ -2422,18 +2427,7 @@ bool CBattleInfoCallback::battleIsUnitBlocked(const battle::Unit * unit, const B
 		return false;
 
 	bool isBerserk = unit->hasBonusOfType(BonusType::ATTACKS_NEAREST_CREATURE);
-	const auto surroundingHexes = unit->getSurroundingHexes(assumedPosition);
-	const auto adjacentUnits = battleGetUnitsIf([&](const battle::Unit * testedUnit)
-	{
-		if(!testedUnit->alive() || testedUnit->unitId() == unit->unitId())
-			return false;
-		for(const auto & hex : testedUnit->getHexes())
-			if(surroundingHexes.contains(hex))
-				return true;
-		return false;
-	});
-
-	for(const auto * adjacent : adjacentUnits)
+	for(const auto * adjacent : battleAdjacentUnits(unit, assumedPosition))
 	{
 		if(adjacent->unitOwner() != unit->unitOwner() || isBerserk)
 			return true;
@@ -2443,13 +2437,21 @@ bool CBattleInfoCallback::battleIsUnitBlocked(const battle::Unit * unit, const B
 
 battle::Units CBattleInfoCallback::battleAdjacentUnits(const battle::Unit * unit) const
 {
+	return unit ? battleAdjacentUnits(unit, unit->getPosition()) : battle::Units{};
+}
+
+battle::Units CBattleInfoCallback::battleAdjacentUnits(const battle::Unit * unit,
+	const BattleHex & assumedPosition) const
+{
 	RETURN_IF_NOT_BATTLE({});
+	if(!unit || !assumedPosition.isValid())
+		return {};
 
-	const auto & hexes = unit->getSurroundingHexes();
+	const auto & hexes = unit->getSurroundingHexes(assumedPosition);
 
-	const auto & units = battleGetUnitsIf([&hexes](const battle::Unit * testedUnit)
+	const auto & units = battleGetUnitsIf([&hexes, unit](const battle::Unit * testedUnit)
 	{
-		if (!testedUnit->alive())
+		if(!testedUnit->alive() || testedUnit->unitId() == unit->unitId())
 			return false;
 		const auto & unitHexes = testedUnit->getHexes();
 		for (const auto & hex : unitHexes)

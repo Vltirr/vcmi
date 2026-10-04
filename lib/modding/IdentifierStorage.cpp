@@ -14,6 +14,7 @@
 #include "ModScope.h"
 
 #include "../GameLibrary.h"
+#include "../bonuses/BonusCustomTypes.h"
 #include "../constants/StringConstants.h"
 #include "../json/JsonNode.h"
 
@@ -55,7 +56,8 @@ CIdentifierStorage::CIdentifierStorage()
 	registerObject(ModScope::scopeBuiltin(), "bonusSubtype", "movementTeleporting", 1);
 	registerObject(ModScope::scopeBuiltin(), "bonusSubtype", "freeShootingNoPenalty", 0);
 	registerObject(ModScope::scopeBuiltin(), "bonusSubtype", "freeShootingExceptAdjacent", 1);
-	registerObject(ModScope::scopeBuiltin(), "bonusSubtype", "mobileShooter", 0);
+	registerObject(ModScope::scopeBuiltin(), "bonusSubtype", "mobileShooter",
+		BonusCustomSubtype::mobileShooter.getNum());
 	registerObject(ModScope::scopeBuiltin(), "bonusSubtype", "spellLevel1", 1);
 	registerObject(ModScope::scopeBuiltin(), "bonusSubtype", "spellLevel2", 2);
 	registerObject(ModScope::scopeBuiltin(), "bonusSubtype", "spellLevel3", 3);

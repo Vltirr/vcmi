@@ -39,6 +39,8 @@ float BattleExchangeVariant::trackAttack(
 	}
 
 	auto attacker = hb->getForUpdate(ap.attack.attacker->unitId());
+	if(ap.attack.mobileShooting)
+		attacker->setPosition(ap.attackerState->getPosition());
 
 	float attackValue = ap.attackValue();
 	auto affectedUnits = ap.affectedUnits;
@@ -515,24 +517,37 @@ ReachabilityData BattleExchangeEvaluator::getExchangeUnits(
 	const battle::Units & additionalUnits) const
 {
 	ReachabilityData result;
+	ReachabilityMapCache mobileReachability;
+	if(ap.attack.mobileShooting)
+	{
+		hb = std::make_shared<HypotheticBattle>(env.get(), hb);
+		hb->getForUpdate(ap.attack.attacker->unitId())->setPosition(ap.from);
+		mobileReachability.update(turnOrder, hb);
+	}
+	const auto reachableUnits = [&](const BattleHex & hex) -> const battle::Units &
+	{
+		if(ap.attack.mobileShooting)
+			return mobileReachability.getOneTurnReachableUnits(hb, env, turnOrder, turn, hex);
+		return getOneTurnReachableUnits(turn, hex);
+	};
 
 	auto hexes = ap.attack.defender->getSurroundingHexes();
 
-	if(!ap.attack.shooting) 
+	if(!ap.attack.shooting || ap.attack.mobileShooting)
 		hexes.insert(ap.from);
 
 	battle::Units allReachableUnits = additionalUnits;
 	
 	for(const auto & hex : hexes)
 	{
-		vstd::concatenate(allReachableUnits, getOneTurnReachableUnits(turn, hex));
+		vstd::concatenate(allReachableUnits, reachableUnits(hex));
 	}
 
 	if(!ap.attack.attacker->isTurret())
 	{
-		for(const auto & hex : ap.attack.attacker->getHexes())
+		for(const auto & hex : hb->battleGetUnitByID(ap.attack.attacker->unitId())->getHexes())
 		{
-			auto unitsReachingAttacker = getOneTurnReachableUnits(turn, hex);
+			auto unitsReachingAttacker = reachableUnits(hex);
 			for(auto unit : unitsReachingAttacker)
 			{
 				if(unit->unitSide() != ap.attack.attacker->unitSide())
@@ -725,6 +740,9 @@ BattleScore BattleExchangeEvaluator::calculateExchange(
 			auto attacker = exchangeBattle->getForUpdate(activeUnit->unitId());
 			auto shooting = exchangeBattle->battleCanShoot(attacker.get())
 				&& !vstd::contains(blockedShooters, attacker->unitId());
+			if(canUseAp && activeUnit->unitId() == ap.attack.attacker->unitId()
+				&& exchangeBattle->battleGetUnitByID(ap.attack.defender->unitId())->alive())
+				shooting = ap.attack.shooting;
 
 			if(!attacker->alive())
 			{
@@ -915,7 +933,7 @@ void ReachabilityMapCache::update(const std::vector<battle::Units> & turnOrder, 
 		{
 			if(!vstd::contains(unitReachabilityMap, u->unitId()))
 			{
-				unitReachabilityMap[u->unitId()] = hb->getReachability(u);
+				unitReachabilityMap[u->unitId()] = hb->getReachability(hb->battleGetUnitByID(u->unitId()));
 			}
 		}
 	}
@@ -960,7 +978,7 @@ battle::Units ReachabilityMapCache::computeOneTurnReachableUnits(std::shared_ptr
 			if(unit->isTurret())
 				continue;
 
-			if(turnBattle.battleCanShoot(unit))
+			if(turnBattle.battleCanShoot(turnBattle.battleGetUnitByID(unit->unitId())))
 			{
 				result.push_back(unit);
 

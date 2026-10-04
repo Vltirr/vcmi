@@ -123,6 +123,8 @@ public:
 	bool battleCanShootFrom(const battle::Unit * attacker, const BattleHex & attackerPosition) const;
 	bool battleCanMoveAndShoot(const battle::Unit * attacker, const BattleHex & movementDestination,
 		const BattleHex & dest) const;
+	bool battleCanMoveAndShoot(const BattleHexArray & availableHexes, const battle::Unit * attacker,
+		const BattleHex & movementDestination, const BattleHex & dest) const;
 	bool battleCanShootAfterMoving(const battle::Unit * attacker, const BattleHex & dest) const;
 	int battleGetMobileShooterRange(const battle::Unit * attacker) const;
 	int battleGetMobileShooterFullDamageRange(const IBonusBearer * attacker) const;
@@ -133,6 +135,7 @@ public:
 	bool battleIsUnitBlocked(const battle::Unit * unit) const; //returns true if there is neighboring enemy stack
 	bool battleIsUnitBlocked(const battle::Unit * unit, const BattleHex & assumedPosition) const;
 	battle::Units battleAdjacentUnits(const battle::Unit * unit) const;
+	battle::Units battleAdjacentUnits(const battle::Unit * unit, const BattleHex & assumedPosition) const;
 
 	DamageEstimation calculateDmgRange(const BattleAttackInfo & info) const;
 

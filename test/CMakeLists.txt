@@ -172,10 +172,15 @@ if(ENABLE_BATTLE_AI)
 	list(APPEND test_SRCS
 		${BATTLE_AI_TEST_SRCS}
 		battleAI/SpellTargetsEvaluatorTest.cpp
+		battleAI/MobileShooterAITest.cpp
 	)
 endif()
 
 if(ENABLE_NULLKILLER2_AI)
+	if(ENABLE_STUPID_AI)
+		list(APPEND test_SRCS battleAI/StupidAITest.cpp)
+	endif()
+
 	list(APPEND test_SRCS
 		nullkiller2/AIUtilityTest.cpp
 		nullkiller2/Analyzers/HeroManagerTest.cpp

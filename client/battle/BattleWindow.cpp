@@ -925,7 +925,7 @@ void BattleWindow::setMoveAndShootSelectionMode(bool on)
 {
 	if(!on)
 	{
-		blockUI(false);
+		blockUI(!owner.makingTurn() || owner.actionsController->heroSpellcastingModeActive());
 		return;
 	}
 

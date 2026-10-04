@@ -362,9 +362,6 @@ AttackPossibility AttackPossibility::evaluate(
 			defenderUnits = state->getAttackedBattleUnits(attacker, defender, defHex, false, hex, defender->getPosition());
 			retaliatedUnits = state->getAttackedBattleUnits(defender, attacker, hex, false, defender->getPosition(), hex);
 
-			// attacker can not melle-attack itself but still can hit that place where it was before moving
-			vstd::erase_if(defenderUnits, [attacker](const battle::Unit * u) -> bool { return u->unitId() == attacker->unitId(); });
-
 			if(!vstd::contains_if(retaliatedUnits, [attacker](const battle::Unit * u) -> bool { return u->unitId() == attacker->unitId(); }))
 			{
 				retaliatedUnits.push_back(attacker);
@@ -372,7 +369,7 @@ AttackPossibility AttackPossibility::evaluate(
 
 		}
 
-		if(hex.isValid() && hex != attacker->getPosition())
+		if(!attackInfo.shooting || (attackInfo.mobileShooting && hex.isValid() && hex != attacker->getPosition()))
 		{
 			auto obstacleDamage = damageCache.getObstacleDamage(hex, attacker);
 			if(obstacleDamage > 0)
@@ -380,6 +377,15 @@ AttackPossibility AttackPossibility::evaluate(
 				ap.attackerDamageReduce += calculateDamageReduce(nullptr, attacker, obstacleDamage, damageCache, state);
 				ap.attackerState->damage(obstacleDamage);
 			}
+		}
+
+		// The moving attacker no longer occupies the old hex included by an area attack.
+		if(!attackInfo.shooting || attackInfo.mobileShooting)
+		{
+			vstd::erase_if(defenderUnits, [attacker](const battle::Unit * unit)
+			{
+				return unit->unitId() == attacker->unitId();
+			});
 		}
 
 		// ensure the defender is also affected

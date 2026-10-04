@@ -641,6 +641,7 @@ Affected unit can shoot
 
 - subtype: `bonusSubtype.mobileShooter` - unit can move and then perform a ranged attack. The unit remains a regular
   shooter and can still shoot without moving using its normal range.
+  - Enable this subtype by its name. Legacy numeric `SHOOTER` subtypes and bonuses without a subtype remain stationary.
   - `val`: optional maximum shooting range after moving.
   - `addInfo`: optional full-damage range after moving.
   - If either value is omitted, the corresponding value from `LIMITED_SHOOTING_RANGE` is used. If that bonus is not

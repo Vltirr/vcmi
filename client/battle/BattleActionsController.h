@@ -50,21 +50,37 @@ class BattleActionsController
 	std::optional<BattleHex> selectedMovementHex;
 	bool selectedMovementHexRequiresMouseExit = false;
 
+	/// Transient evaluation shared by selection, legality, cursor and message for one hex.
+	struct HexActionContext
+	{
+		BattleHexArray availableHexes;
+		BattleHex movementDestination = BattleHex::INVALID;
+		bool movementSelection = false;
+		bool firingPosition = false;
+		bool shotFromSelectedPosition = false;
+	};
+	HexActionContext evaluateHex(const BattleHex & hex) const;
+
 	bool isCastingPossibleHere (const CSpell * spell, const CStack *shere, const BattleHex & myNumber);
 	std::vector<PossiblePlayerBattleAction> getPossibleActionsForStack (const CStack *stack) const; //called when stack gets its turn
 	void reorderPossibleActionsPriority(const CStack * stack, const CStack * targetStack);
 
-	bool actionIsLegal(PossiblePlayerBattleAction action, const BattleHex & hoveredHex);
+	bool actionIsLegal(PossiblePlayerBattleAction action, const BattleHex & hoveredHex,
+		const HexActionContext & context);
 
-	void actionSetCursor(PossiblePlayerBattleAction action, const BattleHex & hoveredHex);
+	void actionSetCursor(PossiblePlayerBattleAction action, const BattleHex & hoveredHex,
+		const HexActionContext & context);
 	void actionSetCursorBlocked(PossiblePlayerBattleAction action, const BattleHex & hoveredHex);
 
-	std::string actionGetStatusMessage(PossiblePlayerBattleAction action, const BattleHex & hoveredHex);
+	std::string actionGetStatusMessage(PossiblePlayerBattleAction action, const BattleHex & hoveredHex,
+		const HexActionContext & context);
 	std::string actionGetStatusMessageBlocked(PossiblePlayerBattleAction action, const BattleHex & hoveredHex);
 
-	void actionRealize(PossiblePlayerBattleAction action, const BattleHex & hoveredHex);
+	void actionRealize(PossiblePlayerBattleAction action, const BattleHex & hoveredHex,
+		const HexActionContext & context);
 
 	PossiblePlayerBattleAction selectAction(const BattleHex & myNumber);
+	PossiblePlayerBattleAction selectAction(const BattleHex & hex, const HexActionContext & context);
 
 	const CStack * getStackForHex(const BattleHex & myNumber) ;
 
@@ -80,10 +96,9 @@ class BattleActionsController
 
 	/// returns true if current stack is a spellcaster
 	bool isActiveStackSpellcaster() const;
-	bool isMovementDestinationHex(const BattleHex & hex) const;
-	bool isFiringPositionHex(const BattleHex & hex) const;
-	bool isSelectedMovementDestinationHex(const BattleHex & hex) const;
+	BattleHex getSelectedMeleeAttackHex(const BattleHex & targetHex) const;
 	void selectMovementDestination(const BattleHex & hex);
+	void chooseAreaShotOrMovement(const BattleHex & targetHex, const HexActionContext & context);
 	std::string getMoveAndShootSelectionPrompt() const;
 
 public:
