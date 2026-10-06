@@ -524,23 +524,27 @@ void BattleActionsController::actionSetCursor(PossiblePlayerBattleAction action,
 		case PossiblePlayerBattleAction::MOVE_TACTICS:
 		case PossiblePlayerBattleAction::MOVE_STACK:
 		case PossiblePlayerBattleAction::WALK_AND_SHOOT:
+		{
+			const bool flying = owner.stacksController->getActiveStack()->hasBonusOfType(BonusType::FLYING);
+			const auto movementCursor = flying ? Cursor::Combat::FLY : Cursor::Combat::MOVE;
+			const auto movementShootingCursor = flying ? Cursor::Combat::FLY_AND_SHOOT : Cursor::Combat::MOVE_AND_SHOOT;
 			if(action.get() == PossiblePlayerBattleAction::WALK_AND_SHOOT && !selectedMovementHex)
 			{
-				ENGINE->cursor().set(Cursor::Combat::MOVE_AND_SHOOT);
+				ENGINE->cursor().set(movementShootingCursor);
 				return;
 			}
 			if(action.get() == PossiblePlayerBattleAction::WALK_AND_SHOOT && selectedMovementHex &&
 				context.movementSelection && context.movementDestination == *selectedMovementHex)
 			{
 				ENGINE->cursor().set(selectedMovementHexRequiresMouseExit
-					? Cursor::Combat::MOVE_AND_SHOOT
-					: Cursor::Combat::MOVE);
+					? movementShootingCursor
+					: movementCursor);
 				return;
 			}
 			if(action.get() == PossiblePlayerBattleAction::WALK_AND_SHOOT && selectedMovementHex &&
 				context.movementSelection)
 			{
-				ENGINE->cursor().set(Cursor::Combat::MOVE_AND_SHOOT);
+				ENGINE->cursor().set(movementShootingCursor);
 				return;
 			}
 			if(action.get() == PossiblePlayerBattleAction::WALK_AND_SHOOT && selectedMovementHex)
@@ -552,11 +556,9 @@ void BattleActionsController::actionSetCursor(PossiblePlayerBattleAction action,
 					ENGINE->cursor().set(Cursor::Combat::SHOOT);
 				return;
 			}
-			if (owner.stacksController->getActiveStack()->hasBonusOfType(BonusType::FLYING))
-				ENGINE->cursor().set(Cursor::Combat::FLY);
-			else
-				ENGINE->cursor().set(Cursor::Combat::MOVE);
+			ENGINE->cursor().set(movementCursor);
 			return;
+		}
 
 		case PossiblePlayerBattleAction::ATTACK:
 		case PossiblePlayerBattleAction::LONG_WEAPON_ATTACK:

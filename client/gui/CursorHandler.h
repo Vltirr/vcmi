@@ -51,6 +51,7 @@ namespace Cursor
 		SACRIFICE      = 18,
 		TELEPORT       = 19,
 		MOVE_AND_SHOOT = 20,
+		FLY_AND_SHOOT  = 21,
 
 		COUNT
 	};
