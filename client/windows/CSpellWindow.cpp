@@ -360,6 +360,13 @@ bool CSpellWindow::isSpellUnavailable(const CSpell * spell) const
 	return !myHero->canCastThisSpell(spell) || myInt->cb->getSpellCost(spell, myHero) > myHero->mana;
 }
 
+bool CSpellWindow::isSpellBlockedByWisdom(const CSpell * spell) const
+{
+	return myHero->spellbookContainsSpell(spell->getId())
+		&& spell->getLevel() > myHero->maxCastableSpellLevel()
+		&& !myHero->canCastThisSpell(spell);
+}
+
 void CSpellWindow::updateAvailabilityBookmark()
 {
 	availabilityBookmarkIcons[0]->setEnabled(!showOnlyCastableSpells);
@@ -406,7 +413,7 @@ void CSpellWindow::processSpells()
 
 		if(!spell->isCreatureAbility()
 			&& ((!spell->isSpecial() && myHero->spellbookContainsSpell(spell->getId())) || myHero->canCastThisSpell(spell.get()))
-			&& (!showOnlyCastableSpells || !isSpellUnavailable(spell.get()))
+			&& (!showOnlyCastableSpells || !isSpellBlockedByWisdom(spell.get()))
 			&& searchTextFound)
 			mySpells.push_back(spell.get());
 	}
@@ -777,9 +784,7 @@ CSpellWindow::SpellArea::~SpellArea() = default;
 
 std::string CSpellWindow::SpellArea::learnedSpellRequirement() const
 {
-	if(owner->onSpellSelect || !mySpell || !owner->myHero->spellbookContainsSpell(mySpell->getId())
-		|| mySpell->getLevel() <= owner->myHero->maxCastableSpellLevel()
-		|| owner->myHero->canCastThisSpell(mySpell))
+	if(owner->onSpellSelect || !mySpell || !owner->isSpellBlockedByWisdom(mySpell))
 		return {};
 
 	MetaString message = MetaString::createFromTextID("vcmi.spellBook.wisdomRequired");
@@ -944,7 +949,7 @@ void CSpellWindow::SpellArea::setSpell(const CSpell * spell)
 
 		{
 			OBJECT_CONSTRUCTION;
-			const uint8_t brightness = !owner->onSpellSelect && owner->isSpellUnavailable(mySpell) ? 120 : 255;
+			const uint8_t brightness = !owner->onSpellSelect && owner->isSpellBlockedByWisdom(mySpell) ? 120 : 255;
 			// A private image reference keeps brightness changes local to this spell slot.
 			auto sprite = ENGINE->renderHandler().loadImage(AnimationPath::builtin("Spells"), mySpell->id.getNum(), 0, EImageBlitMode::COLORKEY);
 			sprite->setBrightness(brightness);

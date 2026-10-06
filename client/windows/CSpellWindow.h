@@ -126,6 +126,7 @@ class CSpellWindow : public CWindowObject, public IVideoHolder
 
 	void processSpells();
 	bool isSpellUnavailable(const CSpell * spell) const;
+	bool isSpellBlockedByWisdom(const CSpell * spell) const;
 	void toggleSpellAvailability();
 	void updateAvailabilityBookmark();
 	void searchInput();
