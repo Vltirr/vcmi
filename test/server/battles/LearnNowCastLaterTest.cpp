@@ -251,10 +251,10 @@ TEST_F(LearnNowCastLaterTest, RewardGrantLearnsAboveWisdomWithoutDuplicatingKnow
 	RewardSource source(gameState().get());
 	Rewardable::VisitInfo reward;
 	reward.reward.spells = {SpellID::IMPLOSION};
-	source.grantRewardAfterLevelup(*gameHandler, reward, attackerSideHero, attackerSideHero);
+	source.grantRewardAfterLevelup(*gameHandler, reward, attackerSideHero, {});
 	EXPECT_TRUE(attackerSideHero->spellbookContainsSpell(SpellID::IMPLOSION));
 	EXPECT_FALSE(attackerSideHero->canCastThisSpell(SpellID(SpellID::IMPLOSION).toSpell()));
-	source.grantRewardAfterLevelup(*gameHandler, reward, attackerSideHero, attackerSideHero);
+	source.grantRewardAfterLevelup(*gameHandler, reward, attackerSideHero, {});
 	EXPECT_EQ(attackerSideHero->getSpellsInSpellbook().size(), 1u);
 }
 
