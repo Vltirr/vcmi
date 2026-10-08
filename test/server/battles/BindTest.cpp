@@ -106,6 +106,8 @@ public:
 	{
 		giveArtifact(hero, ArtifactID::SPELLBOOK, ArtifactPosition::SPELLBOOK);
 
+		hero->setSecSkillLevel(SecondarySkill::WISDOM, MasteryLevel::EXPERT, ChangeValueMode::ABSOLUTE);
+
 		ChangeSpells learn;
 		learn.hid = hero->id;
 		learn.learn = true;

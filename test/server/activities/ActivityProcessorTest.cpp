@@ -2605,7 +2605,7 @@ TEST_F(TownPortalTest, castingPausesToAskWhichTownAndFinishesAtTheChosenOne)
 		.heroSpells({SpellID(SpellID::decode("core:townPortal"))})
 		.heroEquipped({{ArtifactPosition::SPELLBOOK, ArtifactID(ArtifactID::SPELLBOOK)}})
 		.heroPrimary(0, 0, 20, 20) // enough spell power and knowledge for the mana
-		.heroSecondarySkills({{SecondarySkill(SecondarySkill::EARTH_MAGIC), 3}})
+		.heroSecondarySkills({{SecondarySkill(SecondarySkill::EARTH_MAGIC), 3}, {SecondarySkill(SecondarySkill::WISDOM), 3}})
 		.town(int3(20, 20, 0), FactionID(0), player);
 	startWithMap(std::move(builder));
 
@@ -2644,7 +2644,7 @@ TEST_F(TownPortalTest, closingTheTownWindowAbandonsTheCast)
 		.heroSpells({SpellID(SpellID::decode("core:townPortal"))})
 		.heroEquipped({{ArtifactPosition::SPELLBOOK, ArtifactID(ArtifactID::SPELLBOOK)}})
 		.heroPrimary(0, 0, 20, 20)
-		.heroSecondarySkills({{SecondarySkill(SecondarySkill::EARTH_MAGIC), 3}})
+		.heroSecondarySkills({{SecondarySkill(SecondarySkill::EARTH_MAGIC), 3}, {SecondarySkill(SecondarySkill::WISDOM), 3}})
 		.town(int3(20, 20, 0), FactionID(0), player);
 	startWithMap(std::move(builder));
 

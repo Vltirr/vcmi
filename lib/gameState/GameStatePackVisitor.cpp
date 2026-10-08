@@ -1461,7 +1461,8 @@ void GameStatePackVisitor::visitStartAction(StartAction & pack)
 				// An activation owns its repetition policy through its resolved limits.  It
 				// must not acquire the native per-turn spell marker as a hidden second cap.
 				const auto source = battle::getActivationSource(st, pack.ba.actionType, pack.ba.spell, pack.ba.activatedAbility);
-				if(!source || !source->activation)
+				if((!source || !source->activation) &&
+					(pack.ba.actionType != EActionType::CATAPULT || battle::actionReturnsControl(st, pack.ba.actionType, pack.ba.spell, pack.ba.activatedAbility)))
 					st->castSpellThisTurn = true;
 				break;
 			}

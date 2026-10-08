@@ -12,6 +12,7 @@
 #include "BattleTestFixture.h"
 
 #include "../../../lib/bonuses/BonusCustomTypes.h"
+#include "../../../lib/callback/GameRandomizer.h"
 
 namespace
 {
@@ -427,6 +428,7 @@ TEST_F(HeatStrokeTest, LuckIsTakenCappedRatherThanAsTheSumOfItsBonuses)
 
 	const int64_t healthBefore = victim->getAvailableHealth();
 
+	gameHandler->randomizer->setSeed(1);
 	ASSERT_TRUE(castAsUnit(juggernaut, spellByName("vcmi-test:heatStroke"), aim));
 
 	const int64_t plainStrike = bigStack * juggernaut->getMinDamage(false);

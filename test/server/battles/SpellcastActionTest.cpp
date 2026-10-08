@@ -272,6 +272,7 @@ TEST_F(SpellcastActionTest, heroTeleportsUnit)
 
 	CStack * ally = addStack(BattleSide::ATTACKER, CreatureID(pikeman), allyHex, stackCount);
 	teachSpell(attackerSideHero, SpellID::TELEPORT);
+	attackerSideHero->setSecSkillLevel(SecondarySkill::WISDOM, MasteryLevel::EXPERT, ChangeValueMode::ABSOLUTE);
 	battle()->activeStack = ally->unitId();
 
 	// the unit to move, then where to
@@ -297,6 +298,7 @@ TEST_F(SpellcastActionTest, heroSacrificesUnitToRaiseDeadOne)
 	ASSERT_FALSE(fallen->alive());
 
 	teachSpell(attackerSideHero, SpellID::SACRIFICE);
+	attackerSideHero->setSecSkillLevel(SecondarySkill::WISDOM, MasteryLevel::EXPERT, ChangeValueMode::ABSOLUTE);
 	battle()->activeStack = active->unitId();
 
 	// the dead unit to raise, then the living one to give up for it
