@@ -27,7 +27,7 @@ namespace
 {
 
 /// One unit taking its turn, with everything that decides its place in the queue.
-struct Activation
+struct TurnActivation
 {
 	int32_t round;
 	BattleSide side;
@@ -36,7 +36,7 @@ struct Activation
 	std::string creature;
 };
 
-std::ostream & operator<<(std::ostream & out, const Activation & activation)
+std::ostream & operator<<(std::ostream & out, const TurnActivation & activation)
 {
 	return out << "round " << activation.round << ": side " << static_cast<int>(activation.side) << " slot " << activation.slot.getNum()
 		<< " " << activation.creature << " initiative " << activation.initiative;
@@ -105,9 +105,9 @@ public:
 	}
 
 	/// Plays given number of rounds with every unit defending, and records who acted when
-	std::vector<Activation> playRounds(int rounds)
+	std::vector<TurnActivation> playRounds(int rounds)
 	{
-		std::vector<Activation> result;
+		std::vector<TurnActivation> result;
 		const int32_t lastRound = battle()->getRound() + rounds - 1;
 
 		while(battle()->getRound() <= lastRound)
@@ -140,7 +140,7 @@ public:
 	}
 
 	/// Checks that within each round units of the same side act from fastest to slowest, and in slot order on ties
-	static void checkOrder(const std::vector<Activation> & activations)
+	static void checkOrder(const std::vector<TurnActivation> & activations)
 	{
 		for(const auto & activation : activations)
 			std::cout << activation << "\n";
