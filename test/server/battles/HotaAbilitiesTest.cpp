@@ -13,6 +13,7 @@
 
 #include "../../../lib/bonuses/BonusCustomTypes.h"
 #include "../../../lib/callback/GameRandomizer.h"
+#include "../../../server/CGameHandler.h"
 
 namespace
 {
