@@ -145,7 +145,7 @@ class DLL_LINKAGE ZoneOptions
 public:
 	static const TRmgTemplateZoneId NO_ZONE;
 
-	class DLL_LINKAGE CTownInfo
+	class CTownInfo
 	{
 #ifdef ENABLE_TEMPLATE_EDITOR
 		friend class ::TemplateEditor;
@@ -350,6 +350,8 @@ public:
 	const std::string & getId() const;
 	const std::string & getName() const;
 	const std::string & getDescription() const;
+	std::string getDescriptionTextID() const;
+	std::string getDescriptionTranslated() const;
 
 	const CPlayerCountRange & getPlayers() const;
 	const CPlayerCountRange & getHumanPlayers() const;

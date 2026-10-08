@@ -156,6 +156,11 @@ bool CSkill::isOnlyOnWaterMap() const
 	return hasTag("onlyOnWaterMap");
 }
 
+bool CSkill::grantsLevelUp() const
+{
+	return hasTag("grantsLevelUp");
+}
+
 bool CSkill::hasTag(const std::string & tag) const
 {
 	return vstd::contains(tags, tag);
@@ -239,6 +244,7 @@ std::shared_ptr<CSkill> CSkillHandler::loadFromJson(const std::string & scope, c
 		skill->tags.emplace_back("spellSchool");
 
 	LIBRARY->generaltexth->registerString(scope, skill->getNameTextID(), json["name"]);
+	skill->offerCooldown = static_cast<int>(json["offerCooldown"].Integer());
 
 	for(auto skillPair : json["gainChance"].Struct())
 	{
@@ -277,7 +283,7 @@ std::shared_ptr<CSkill> CSkillHandler::loadFromJson(const std::string & scope, c
 	}
 	for(int level = 1; level < NSecondarySkill::levels.size(); level++)
 	{
-		const std::string & levelName = NSecondarySkill::levels[level]; // basic, advanced, expert
+		const char * levelName = NSecondarySkill::levels[level]; // basic, advanced, expert
 		const JsonNode & levelNode = json[levelName];
 		// parse bonus effects
 		for(const auto & b : levelNode["effects"].Struct())
@@ -310,6 +316,7 @@ std::shared_ptr<CSkill> CSkillHandler::loadFromJson(const std::string & scope, c
 				bonus->addUpdater(std::make_shared<TimesHeroLevelUpdater>());
 			bonus->valType = BonusValueType::PERCENT_TO_TARGET_TYPE;
 			bonus->targetSourceType = BonusSource::SECONDARY_SKILL;
+			bonus->targetSourceID = skill->id; //only amplify bonuses granted by this skill
 			skill->specialtyTargetBonuses.push_back(bonus);
 		}
 		else

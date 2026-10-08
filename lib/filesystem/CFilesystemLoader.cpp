@@ -24,7 +24,7 @@ CFilesystemLoader::CFilesystemLoader(std::string _mountPoint, boost::filesystem:
 		fileList = listFiles(mountPoint, depth, initial);
 	}
 	catch (const boost::filesystem::filesystem_error & e) {
-		throw DataLoadingException("Failed to load content of '" + baseDirectory.string() + "'. Reason: " + e.what());
+		throw DataLoadingException("Failed to load content of '" + TextOperations::filesystemPathToUtf8(baseDirectory) + "'. Reason: " + e.what());
 	}
 
 	logGlobal->trace("File system loaded, %d files found", fileList.size());
@@ -36,7 +36,7 @@ std::unique_ptr<CInputStream> CFilesystemLoader::load(const ResourcePath & resou
 
 	assert(fileList.contains(resourceName));
 	boost::filesystem::path file = baseDirectory / fileList.at(resourceName);
-	logGlobal->trace("loading %s", file.string());
+	logGlobal->trace("loading %s", TextOperations::filesystemPathToUtf8(file));
 	return std::make_unique<CFileInputStream>(file);
 }
 
@@ -59,13 +59,16 @@ std::optional<boost::filesystem::path> CFilesystemLoader::getResourceName(const 
 	return baseDirectory / fileList.at(resourceName);
 }
 
-void CFilesystemLoader::updateFilteredFiles(std::function<bool(const std::string &)> filter)
+bool CFilesystemLoader::updateFilteredFiles(std::function<bool(const std::string &)> filter)
 {
-	if (filter(mountPoint))
-	{
-		std::lock_guard lock(fileListGuard);
-		fileList = listFiles(mountPoint, recursiveDepth, false);
-	}
+	if (!filter(mountPoint))
+		return false;
+
+	std::lock_guard lock(fileListGuard);
+	auto newFileList = listFiles(mountPoint, recursiveDepth, false);
+	bool changed = newFileList != fileList;
+	fileList = std::move(newFileList);
+	return changed;
 }
 
 std::unordered_set<ResourcePath> CFilesystemLoader::getFilteredFiles(std::function<bool(const ResourcePath &)> filter) const
@@ -184,7 +187,7 @@ std::unordered_map<ResourcePath, boost::filesystem::path> CFilesystemLoader::lis
 			type = EResType::DIRECTORY;
 		}
 		else
-			type = EResTypeHelper::getTypeFromExtension(it->path().extension().string());
+			type = EResTypeHelper::getTypeFromExtension(TextOperations::filesystemPathToUtf8(it->path().extension()));
 
 		if (!initial || vstd::contains(initialTypes, type))
 		{

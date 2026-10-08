@@ -10,7 +10,7 @@
 #include "StdInc.h"
 #include "CTutorialWindow.h"
 
-#include "../eventsSDL/InputHandler.h"
+#include "events/InputHandler.h"
 #include "../../lib/CConfigHandler.h"
 #include "../../lib/ConditionalWait.h"
 #include "../../lib/texts/CGeneralTextHandler.h"
@@ -25,7 +25,7 @@
 #include "../widgets/Buttons.h"
 #include "../widgets/TextControls.h"
 #include "../widgets/VideoWidget.h"
-#include "../render/Canvas.h"
+#include "render/Canvas.h"
 
 CTutorialWindow::CTutorialWindow(const TutorialMode & m)
 	: CWindowObject(BORDERED, ImagePath::builtin("DIBOXBCK")), mode { m }, page { 0 }
@@ -33,7 +33,7 @@ CTutorialWindow::CTutorialWindow(const TutorialMode & m)
 	OBJECT_CONSTRUCTION;
 
 	pos = Rect(pos.x, pos.y, 380, 400); //video: 320x240
-	background = std::make_shared<CFilledTexture>(ImagePath::builtin("DIBOXBCK"), Rect(0, 0, pos.w, pos.h));
+	backgroundTexture = std::make_shared<CFilledTexture>(ImagePath::builtin("DIBOXBCK"), Rect(0, 0, pos.w, pos.h));
 
 	updateShadow();
 
@@ -68,7 +68,7 @@ void CTutorialWindow::setContent()
 
 void CTutorialWindow::openWindowFirstTime(const TutorialMode & m)
 {
-	if(ENGINE->input().getCurrentInputMode() == InputMode::TOUCH && !persistentStorage["gui"]["tutorialCompleted" + std::to_string(m)].Bool())
+	if(ENGINE->input().inputModeUsesGestures() && !persistentStorage["gui"]["tutorialCompleted" + std::to_string(m)].Bool())
 	{
 		if(GAME->interface())
 			GAME->interface()->showingDialog->setBusy();

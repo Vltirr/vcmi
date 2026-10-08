@@ -51,14 +51,14 @@ public:
 		h & message;
 		h & resources;
 		h & players;
-		if(h.version >= Handler::Version::HOTA_MAP_FORMAT_EXTENSIONS)
+		if(h.hasFeature(Handler::Version::HOTA_MAP_FORMAT_EXTENSIONS))
 			h & affectedDifficulties;
 		h & humanAffected;
 		h & computerAffected;
 		h & firstOccurrence;
 		h & nextOccurrence;
 		h & deletedObjectsInstances;
-		if(h.version >= Handler::Version::SCRIPT_VARIABLES)
+		if(h.hasFeature(Handler::Version::SCRIPT_VARIABLES))
 			h & scriptHandler;
 	}
 

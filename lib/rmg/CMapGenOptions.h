@@ -128,6 +128,8 @@ public:
 	/// All standard players are by default of type EPlayerType::AI.
 	const std::map<PlayerColor, CPlayerSettings> & getPlayersSettings() const;
 	const std::map<PlayerColor, CPlayerSettings> & getSavedPlayersMap() const;
+	/// Returns the number of players currently configured to be controlled by the computer.
+	int getComputerPlayerCount() const;
 	void setStartingTownForPlayer(const PlayerColor & color, FactionID town);
 	void setStartingHeroForPlayer(const PlayerColor & color, HeroTypeID hero);
 	/// Sets a player type for a standard player. A standard player is the opposite of a computer only player. The
@@ -228,7 +230,7 @@ public:
 
 		h & enabledRoads;
 
-		if (h.version >= Handler::Version::MAP_GEN_LEVEL_MAP_LAYERS)
+		if (h.hasFeature(Handler::Version::MAP_GEN_LEVEL_MAP_LAYERS))
 			h & levelMapLayers;
 		else if (!h.saving)
 			resetLevelMapLayers(); // Old settings without levelMapLayers - derive defaults from level count

@@ -132,7 +132,7 @@ struct DLL_LINKAGE Limiter final : public Serializeable
 		h & heroLevel;
 		h & manaPoints;
 		h & manaPercentage;
-		if (h.version >= Handler::Version::REWARDABLE_EXTENSIONS_2)
+		if (h.hasFeature(Handler::Version::REWARDABLE_EXTENSIONS_2))
 		{
 			h & movePoints;
 			h & movePercentage;
@@ -156,7 +156,7 @@ struct DLL_LINKAGE Limiter final : public Serializeable
 		h & allOf;
 		h & anyOf;
 		h & noneOf;
-		if (h.version >= Handler::Version::QUEST_REWORK)
+		if (h.hasFeature(Handler::Version::QUEST_REWORK))
 		{
 			// requiredKeys are keymaster-colour subIDs; serialize as identifiers (with the
 			// KEYMASTER primary-ID context) so they survive mod identifier renumbering.

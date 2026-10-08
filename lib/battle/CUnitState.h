@@ -63,13 +63,13 @@ private:
 	BonusValueCache shooter;
 };
 
-class DLL_LINKAGE CCasts : public CAmmo
+class CCasts : public CAmmo
 {
 public:
 	explicit CCasts(const battle::Unit * Owner);
 };
 
-class DLL_LINKAGE CRetaliations : public CAmmo
+class CRetaliations : public CAmmo
 {
 public:
 	explicit CRetaliations(const battle::Unit * Owner);
@@ -205,9 +205,12 @@ public:
 
 	int32_t getKilled() const override;
 	int32_t getCount() const override;
+	int32_t getResurrected() const override;
 	int32_t getFirstHPleft() const override;
 	int64_t getAvailableHealth() const override;
 	int64_t getTotalHealth() const override;
+	uint64_t estimateCombatValue() const override;
+	uint64_t estimateCombatValue(const CombatValueContext & context) const override;
 	uint32_t getMaxHealth() const override;
 
 	BattleHex getPosition() const override;
@@ -265,14 +268,15 @@ private:
 	BonusCachePerTurn immobilizedPerTurn;
 	BonusCachePerTurn stackSpeedPerTurn;
 	UnitBonusValuesProxy bonusCache;
+	BonusDerivedValueCache combatValue;
 
 	void reset();
 };
 
-class DLL_LINKAGE CUnitStateDetached final : public CUnitState
+class CUnitStateDetached final : public CUnitState
 {
 public:
-	explicit CUnitStateDetached(const IUnitInfo * unit_, const IBonusBearer * bonus_);
+	explicit CUnitStateDetached(const IUnitInfo * unit_, const IBonusBearer * bonus_, bool snapshotBonuses = false);
 
 	CUnitStateDetached & operator= (const CUnitState & other);
 
@@ -295,6 +299,8 @@ public:
 private:
 	const IUnitInfo * unit;
 	const IBonusBearer * bonus;
+	TConstBonusListPtr bonusSnapshot;
+	int32_t bonusTreeVersion;
 };
 
 }

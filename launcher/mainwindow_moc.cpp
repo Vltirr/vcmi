@@ -392,6 +392,11 @@ CModListView * MainWindow::getModView()
 	return ui->modlistView;
 }
 
+CSettingsView * MainWindow::getSettingsView()
+{
+	return ui->settingsView;
+}
+
 void MainWindow::on_modslistButton_clicked()
 {
 	switchToModsTab();
@@ -453,7 +458,7 @@ void MainWindow::manualInstallFile(QString filePath)
 	}
 	else if(realFilePath.endsWith(".json", Qt::CaseInsensitive))
 	{
-		QDir configDir(QString::fromStdString(VCMIDirs::get().userConfigPath().string()));
+		QDir configDir(pathToQString(VCMIDirs::get().userConfigPath()));
 		QStringList configFile = configDir.entryList({fileName}, QDir::Filter::Files); // case insensitive check
 		if(!configFile.empty())
 		{

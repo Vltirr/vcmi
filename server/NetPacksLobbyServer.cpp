@@ -82,7 +82,7 @@ void ClientPermissionsCheckerNetPackVisitor::visitLobbyQuickLoadGame(LobbyQuickL
 
 void ClientPermissionsCheckerNetPackVisitor::visitLobbyClientConnected(LobbyClientConnected & pack)
 {
-	result = srv.getState() == EServerState::LOBBY;
+	result = srv.getState() == EServerState::LOBBY && pack.version == ESerializationVersion::CURRENT;
 }
 
 void ApplyOnServerNetPackVisitor::visitLobbyClientConnected(LobbyClientConnected & pack)

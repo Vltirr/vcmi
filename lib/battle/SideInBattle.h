@@ -17,6 +17,21 @@ class CGHeroInstance;
 class CGTownInstance;
 class CArmedInstance;
 
+/// Charges of an artifact worn by hero at start of battle, used to undo charges spent in a cancelled battle
+struct DLL_LINKAGE InitialArtifactCharges
+{
+	ArtifactInstanceID artifactID;
+	ArtifactPosition position;
+	uint16_t charges = 0;
+
+	template <typename Handler> void serialize(Handler &h)
+	{
+		h & artifactID;
+		h & position;
+		h & charges;
+	}
+};
+
 struct DLL_LINKAGE SideInBattle : public GameCallbackHolder
 {
 	using GameCallbackHolder::GameCallbackHolder;
@@ -33,6 +48,7 @@ struct DLL_LINKAGE SideInBattle : public GameCallbackHolder
 	int32_t focusPoints = 0;
 	std::map<ActivationStateKey, int32_t> activationUsage;
 	std::map<ActivationStateKey, int32_t> activationCooldownReadyRound;
+	std::vector<InitialArtifactCharges> initialArtifactCharges;
 
 	void init(const CGHeroInstance * Hero, const CArmedInstance * Army, const CGTownInstance * town);
 	const CArmedInstance * getArmy() const;
@@ -48,6 +64,8 @@ struct DLL_LINKAGE SideInBattle : public GameCallbackHolder
 		h & enchanterCounter;
 		h & initialMana;
 		h & additionalMana;
+		if (h.hasFeature(Handler::Version::BATTLE_RESTORE_ARTIFACT_CHARGES))
+			h & initialArtifactCharges;
 		if(h.hasFeature(Handler::Version::BATTLE_FOCUS))
 			h & focusPoints;
 		else

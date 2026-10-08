@@ -22,9 +22,9 @@
 #include "../CPlayerInterface.h"
 #include "../GameEngine.h"
 #include "../gui/CursorHandler.h"
-#include "../media/ISoundPlayer.h"
-#include "../render/CAnimation.h"
-#include "../render/IRenderHandler.h"
+#include "media/ISoundPlayer.h"
+#include "render/CAnimation.h"
+#include "render/IRenderHandler.h"
 
 #include "../../lib/battle/CPlayerBattleCallback.h"
 #include "../../lib/spells/CSpell.h"
@@ -1000,6 +1000,15 @@ bool EffectAnimation::init()
 	be.currentFrame = 0;
 	be.transparencyFactor = transparencyFactor;
 	be.type = reversed ? BattleEffect::AnimType::REVERSE : BattleEffect::AnimType::DEFAULT;
+
+	if (battlehexes.empty() && positions.empty())
+	{
+		// nothing to display - e.g. effect was created for stack without valid battlefield position.
+		// Without any entry in battleEffects this animation can never finish, so finish it immediately
+		logGlobal->error("EffectAnimation::init: animation %d has no tiles and no positions to display, finishing immediately", static_cast<int>(ID));
+		effectFinished = true;
+		return true;
+	}
 
 	for (size_t i = 0; i < std::max(battlehexes.size(), positions.size()); ++i)
 	{

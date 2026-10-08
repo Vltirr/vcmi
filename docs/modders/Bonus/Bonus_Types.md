@@ -87,15 +87,15 @@ Example:
 
 ### COMBAT_EVENT_TRIGGER
 
-Runs a [combat script](../Lua/Combat_Event_Scripts.md) when an event happens with affected unit.
+Assigns a [combat event script](../Lua/Combat_Event_Scripts.md) to affected units.
 
-Unlike the deprecated [ON_COMBAT_EVENT](#on_combat_event) the subtype does not select an event - the script is called on every combat event it implements a handler for, including the start of the battle and of each round, which that bonus can not react to at all.
+The subtype selects a script, not an event. Matching handlers execute for all supported events, including battle and round starts unsupported by [ON_COMBAT_EVENT](#on_combat_event).
 
-- subtype: combat script to run
-- val: magnitude of the ability, whatever that means for this script
-- addInfo: optional, arbitrary json used to initialize the script on every call, the same way spell effect parameters initialize a spell effect script. Read-only - a script that needs to remember something between events must store it itself, for example in a bonus of its own.
+- subtype: combat event script identifier
+- val: script-defined ability value
+- addInfo: optional json object used to initialize the script. Values are read-only; persistent state requires a separate bonus.
 
-Several scripts may react to the same event on the same unit. The order they run in is the `priority` declared by each script, not the order the bonuses appear in.
+When several scripts handle the same event, their `priority` fields determine execution order.
 
 Example:
 
@@ -448,6 +448,7 @@ Allows creature being upgraded to another creature (Gelu, Dracon)
 
 - subtype: identifier of creature that can being upgraded
 - addInfo: identifier of creature to which perform an upgrade
+- val: modifies the upgrade cost relative to the default 100% cost. If omitted or set to `0`, the cost is unchanged; negative values provide a discount, while positive values increase the upgrade cost.
 
 ## Artifact bonuses
 
@@ -460,20 +461,21 @@ Changes duration of timed spells cast by affected hero
 
 ### SPELL
 
-Allows affected heroes to cast specified spell, even if this spell is banned in map options or set to "special".
+Allows affected heroes to cast specified spell, even if this spell is banned in map options or set to "special". Hero must have a spellbook, unless addInfo is set to true.
 
 - subtype: spell identifier
 - val: skill level mastery (0 - 3)
+- addInfo: optional, if true, spell can be cast without spellbook
 
 ### SPELLS_OF_LEVEL
 
-Allows affected heroes to cast any spell of specified level. Does not grant spells banned in map options.
+Allows affected heroes to cast any spell of specified level. Does not grant spells banned in map options. Hero must have a spellbook.
 
 - subtype: spell level, in form "spellLevelX" where X is desired level (1-5)
 
 ### SPELLS_OF_SCHOOL
 
-Allows affected heroes to cast any spell of specified school. Does not grant spells banned in map options.
+Allows affected heroes to cast any spell of specified school. Does not grant spells banned in map options. Hero must have a spellbook.
 
 - subtype: spell school
 
@@ -1203,12 +1205,18 @@ Determines how many times per combat affected creature can cast its targeted spe
 
 ### REBIRTH
 
-Affected stack will resurrect after death
+DEPRECATED. Configs and saves convert this bonus to the [rebirth](../Lua/Combat_Event_Scripts.md#rebirth) combat script during loading. Use the combat script in new content.
 
-- val - percent of total stack HP restored, not rounded. For instance, when 4 Phoenixes with Rebirth chance of 20% die, there is 80% chance than one Phoenix will rise.
-- subtype:
-  - rebirthRegular: Phoenix, as described above.
-  - rebirthSpecial: At least one unit will always rise (Sacred Phoenix)
+```json
+{
+	"type" : "COMBAT_EVENT_TRIGGER",
+	"subtype" : "rebirth",
+	"val" : 20,
+	"addInfo" : { "guaranteed" : true }
+}
+```
+
+- `guaranteed`: true for the old `rebirthSpecial` subtype; false for `rebirthRegular`
 
 ### ENCHANTED
 
@@ -1347,6 +1355,14 @@ Blocks casting spells of the level above specified one in battles affected by th
 
 Blocks casting of all spells in battles affected by this bonus
 
+### BLOCK_CREATURE_MAGIC
+
+Blocks casting of all magical spells and abilities by creatures in battles affected by this bonus. Non-magical abilities, such as Death Stare, are not affected
+
+### BLOCK_NATIVE_TERRAIN_BONUS
+
+Prevents creatures from receiving bonuses of their native terrain in battles affected by this bonus, eg. Cursed Ground
+
 ### GENERAL_DAMAGE_PREMY
 
 Affected unit will deal more damage in all attacks (Adela specialty)
@@ -1431,3 +1447,7 @@ Enforce the "week of" to a special creature. If this bonus is existing multiple 
 
 - val: how many additional creatures should generated
 - subtype - id of creature
+
+### GRANTS_SPELLBOOK
+
+When this bonus is present on a worn artifact, the artifact grants a Spell Book to its hero if the hero does not already have one. Has no effect while the artifact is in the backpack.

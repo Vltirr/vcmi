@@ -12,6 +12,7 @@
 #include "../CPlayerState.h"
 #include "../constants/StringConstants.h"
 #include "../VCMIDirs.h"
+#include "../texts/TextOperations.h"
 #include "CGameState.h"
 #include "TerrainHandler.h"
 #include "StartInfo.h"
@@ -290,7 +291,7 @@ std::string StatisticDataSet::writeCsv(const ITranslator * translator) const
 	std::string csv = toCsv(";", translator);
 	file << csv;
 
-	return filePath.string();
+	return TextOperations::filesystemPathToUtf8(filePath);
 }
 
 //calculates total number of artifacts that belong to given player
@@ -377,11 +378,11 @@ const CGHeroInstance * Statistic::findBestHero(const CGameState * gs, const Play
 	const auto &h = gs->players.at(color).getHeroes();
 	if(h.empty())
 		return nullptr;
-	//best hero will be that with highest exp
+	//best hero will be that with highest level
 	int best = 0;
 	for(int b=1; b<h.size(); ++b)
 	{
-		if(h[b]->exp > h[best]->exp)
+		if(std::tie(h[b]->level, h[b]->exp) > std::tie(h[best]->level, h[best]->exp))
 		{
 			best = b;
 		}

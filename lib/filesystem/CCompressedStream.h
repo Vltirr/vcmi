@@ -13,7 +13,7 @@
 
 struct z_stream_s;
 
-class DLL_LINKAGE DecompressionException : public std::runtime_error
+class DecompressionException : public std::runtime_error
 {
 public:
 	using runtime_error::runtime_error;
@@ -69,6 +69,8 @@ public:
 	 * @return the length in bytes of the stream.
 	 */
 	si64 getSize() override;
+
+	std::pair<std::unique_ptr<ui8[]>, si64> readAll() override;
 
 protected:
 	/**

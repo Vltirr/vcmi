@@ -401,14 +401,22 @@ std::unique_ptr<BattleInfo> BattleInfo::setupBattle(IGameInfoCallback *cb, const
 		currentBattle->addNewBonus(bonus);
 	}
 
-	//native terrain bonuses
-	auto nativeTerrain = std::make_shared<AllOfLimiter>();
-	nativeTerrain->add(std::make_shared<TerrainLimiter>());
-	nativeTerrain->add(std::make_shared<CreatureLevelLimiter>()); // creature only limiter - exclude hero
+	//native terrain bonuses - some battlefields, such as Cursed Ground, block them
+	bool blocksNativeTerrainBonus = std::any_of(bgInfo->bonuses.begin(), bgInfo->bonuses.end(), [](const std::shared_ptr<Bonus> & bonus)
+	{
+		return bonus->type == BonusType::BLOCK_NATIVE_TERRAIN_BONUS;
+	});
 
-	currentBattle->addNewBonus(std::make_shared<Bonus>(BonusDuration::ONE_BATTLE, BonusType::STACKS_SPEED, BonusSource::TERRAIN_NATIVE, 1,  BonusSourceID())->addLimiter(nativeTerrain));
-	currentBattle->addNewBonus(std::make_shared<Bonus>(BonusDuration::ONE_BATTLE, BonusType::PRIMARY_SKILL, BonusSource::TERRAIN_NATIVE, 1, BonusSourceID(), BonusSubtypeID(PrimarySkill::ATTACK))->addLimiter(nativeTerrain));
-	currentBattle->addNewBonus(std::make_shared<Bonus>(BonusDuration::ONE_BATTLE, BonusType::PRIMARY_SKILL, BonusSource::TERRAIN_NATIVE, 1, BonusSourceID(), BonusSubtypeID(PrimarySkill::DEFENSE))->addLimiter(nativeTerrain));
+	if(!blocksNativeTerrainBonus)
+	{
+		auto nativeTerrain = std::make_shared<AllOfLimiter>();
+		nativeTerrain->add(std::make_shared<TerrainLimiter>());
+		nativeTerrain->add(std::make_shared<CreatureLevelLimiter>()); // creature only limiter - exclude hero
+
+		currentBattle->addNewBonus(std::make_shared<Bonus>(BonusDuration::ONE_BATTLE, BonusType::STACKS_SPEED, BonusSource::TERRAIN_NATIVE, 1,  BonusSourceID())->addLimiter(nativeTerrain));
+		currentBattle->addNewBonus(std::make_shared<Bonus>(BonusDuration::ONE_BATTLE, BonusType::PRIMARY_SKILL, BonusSource::TERRAIN_NATIVE, 1, BonusSourceID(), BonusSubtypeID(PrimarySkill::ATTACK))->addLimiter(nativeTerrain));
+		currentBattle->addNewBonus(std::make_shared<Bonus>(BonusDuration::ONE_BATTLE, BonusType::PRIMARY_SKILL, BonusSource::TERRAIN_NATIVE, 1, BonusSourceID(), BonusSubtypeID(PrimarySkill::DEFENSE))->addLimiter(nativeTerrain));
+	}
 	//////////////////////////////////////////////////////////////////////////
 
 	//tactics
@@ -813,25 +821,20 @@ void BattleInfo::updateUnit(uint32_t id, const JsonNode & data, int64_t healthDe
 		}
 	}
 
-	bool killed = (-healthDelta) >= changedStack->getAvailableHealth();//todo: check using alive state once rebirth will be handled separately
-
-	bool resurrected = !changedStack->alive() && healthDelta > 0;
+	const bool wasAlive = changedStack->alive();
 
 	//applying changes
 	changedStack->load(data);
 
+	// Use the alive-state transition because a zero-health-change pack may update an existing corpse.
+	const bool killed = wasAlive && !changedStack->alive();
+	const bool resurrected = !wasAlive && changedStack->alive();
 
 	if(healthDelta < 0)
 	{
 		changedStack->removeBonusesRecursive(Bonus::UntilBeingAttacked);
-	}
-
-	if(healthDelta < 0)
-	{
 		changedStack->nodeHasChanged();	//bonuses with TIMES_STACK_SIZE updater may change
 	}
-
-	resurrected = resurrected || (killed && changedStack->alive());
 
 	if(killed)
 	{

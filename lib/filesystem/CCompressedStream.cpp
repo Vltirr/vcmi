@@ -48,7 +48,8 @@ si64 CBufferedStream::tell()
 
 si64 CBufferedStream::skip(si64 delta)
 {
-	return seek(position + delta) - delta;
+	si64 origin = position;
+	return seek(origin + delta) - origin;
 }
 
 si64 CBufferedStream::getSize()
@@ -81,6 +82,31 @@ void CBufferedStream::ensureSize(si64 size)
 			return;
 		}
 	}
+}
+
+std::pair<std::unique_ptr<ui8[]>, si64> CBufferedStream::readAll()
+{
+	si64 size = getSize();
+	si64 initialSize = buffer.size();
+
+	// unlike ensureSize(), total size of the stream is known here, so remaining data
+	// can be read in a single step instead of growing the buffer in geometric steps
+	if(initialSize < size)
+	{
+		buffer.resize(size);
+		si64 readSize = readMore(buffer.data() + initialSize, size - initialSize);
+		if(readSize != size - initialSize)
+		{
+			endOfFileReached = true;
+			buffer.resize(initialSize + readSize);
+		}
+	}
+
+	std::unique_ptr<ui8[]> data(new ui8[buffer.size()]);
+	std::copy(buffer.begin(), buffer.end(), data.get());
+	position = buffer.size();
+
+	return { std::move(data), static_cast<si64>(buffer.size()) };
 }
 
 void CBufferedStream::reset()

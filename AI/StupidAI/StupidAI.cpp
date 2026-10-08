@@ -23,7 +23,6 @@
 
 CStupidAI::CStupidAI()
 	: side(BattleSide::NONE)
-	, wasWaitingForRealize(false)
 {
 	print("created");
 }
@@ -31,11 +30,6 @@ CStupidAI::CStupidAI()
 CStupidAI::~CStupidAI()
 {
 	print("destroyed");
-	if(cb)
-	{
-		//Restore previous state of CB - it may be shared with the main AI (like VCAI)
-		cb->waitTillRealize = wasWaitingForRealize;
-	}
 }
 
 void CStupidAI::initBattleInterface(std::shared_ptr<Environment> ENV, std::shared_ptr<CBattleCallback> CB)
@@ -43,9 +37,6 @@ void CStupidAI::initBattleInterface(std::shared_ptr<Environment> ENV, std::share
 	print("init called, saving ptr to IBattleCallback");
 	env = ENV;
 	cb = CB;
-
-	wasWaitingForRealize = CB->waitTillRealize;
-	CB->waitTillRealize = false;
 }
 
 void CStupidAI::initBattleInterface(std::shared_ptr<Environment> ENV, std::shared_ptr<CBattleCallback> CB, AutocombatPreferences autocombatPreferences)
@@ -185,10 +176,8 @@ void CStupidAI::activeStack(const BattleID & battleID, const CStack * stack)
 			return;
 		}
 
+		// Action has no target - catapult will pick one on its own, according to its targeting rules
 		BattleAction attack;
-		static const std::vector<int> wallHexes = {50, 183, 182, 130, 78, 29, 12, 95};
-		auto seletectedHex = *RandomGeneratorUtil::nextItem(wallHexes, CRandomGenerator::getDefault());
-		attack.aimToHex(seletectedHex);
 		attack.actionType = EActionType::CATAPULT;
 		attack.side = side;
 		attack.stackNumber = stack->unitId();
@@ -328,7 +317,7 @@ void CStupidAI::battleStacksAttacked(const BattleID & battleID, const std::vecto
 	print("battleStacksAttacked called");
 }
 
-void CStupidAI::battleEnd(const BattleID & battleID, const BattleResult *br, QueryID queryID)
+void CStupidAI::battleEnd(const BattleID & battleID, const BattleResult *br, QuestionID questionID)
 {
 	print("battleEnd called");
 }

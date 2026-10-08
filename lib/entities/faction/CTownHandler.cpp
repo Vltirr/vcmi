@@ -51,7 +51,7 @@ JsonNode readBuilding(CLegacyConfigParser & parser)
 	JsonNode ret;
 	JsonNode & cost = ret["cost"];
 
-	for(const std::string & resID : GameConstants::RESOURCE_NAMES)
+	for(const char * resID : GameConstants::RESOURCE_NAMES)
 		cost[resID].Float() = parser.readNumber();
 	
 	parser.endLine();
@@ -235,11 +235,11 @@ void CTownHandler::loadBuildingRequirements(CBuilding * building, const JsonNode
 
 void CTownHandler::loadBuildingBonuses(const JsonNode & source, BonusList & bonusList, CBuilding * building) const
 {
-	for(const auto & b : source.Vector())
+	for(size_t i = 0; i < source.Vector().size(); ++i)
 	{
 		auto bonus = std::make_shared<Bonus>(BonusDuration::PERMANENT, BonusType::NONE, BonusSource::TOWN_STRUCTURE, 0, BonusSourceID(building->getUniqueTypeID()));
 
-		if(!JsonUtils::parseBonus(b, bonus.get()))
+		if(!JsonUtils::parseBonus(source.Vector()[i], bonus.get(), TextIdentifier(building->getBaseTextID(), "bonus", i)))
 			continue;
 
 		if (bonus->description.empty() && (bonus->type == BonusType::MORALE || bonus->type == BonusType::LUCK))
@@ -630,11 +630,8 @@ void CTownHandler::loadClientData(CTown &town, const JsonNode & source) const
 
 void CTownHandler::loadTown(CTown * town, const JsonNode & source)
 {
-	const auto * resIter = std::ranges::find(GameConstants::RESOURCE_NAMES, source["primaryResource"].String());
-	if(resIter == std::end(GameConstants::RESOURCE_NAMES))
-		town->primaryRes = GameResID(EGameResID::WOOD_AND_ORE); //Wood + Ore
-	else
-		town->primaryRes = GameResID(resIter - std::begin(GameConstants::RESOURCE_NAMES));
+	int primaryResIndex = vstd::find_pos(GameConstants::RESOURCE_NAMES, source["primaryResource"].String());
+	town->primaryRes = primaryResIndex < 0 ? GameResID(EGameResID::WOOD_AND_ORE) : GameResID(primaryResIndex);
 
 	if (!source["warMachine"].isNull())
 	{

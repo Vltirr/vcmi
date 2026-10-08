@@ -64,20 +64,7 @@ public:
 	{
 		h & side;
 		h & stackNumber;
-		// The pre-Focus mobile-shooter branch used 15 for WALK_AND_SHOOT.
-		// Focus already used 15 for CREATURE_ABILITY; keep that identity stable.
-		auto serializedAction = actionType;
-		if(h.saving && !h.hasFeature(Handler::Version::BATTLE_FOCUS)
-			&& actionType == EActionType::WALK_AND_SHOOT)
-			serializedAction = EActionType::CREATURE_ABILITY;
-		h & serializedAction;
-		if(!h.saving)
-		{
-			actionType = serializedAction;
-			if(!h.hasFeature(Handler::Version::BATTLE_FOCUS)
-				&& serializedAction == EActionType::CREATURE_ABILITY)
-				actionType = EActionType::WALK_AND_SHOOT;
-		}
+		h & actionType;
 		h & spell;
 		if(h.hasFeature(Handler::Version::ACTIVATED_CREATURE_ABILITIES))
 			h & activatedAbility;

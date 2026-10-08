@@ -11,10 +11,12 @@
 #include "TurnOrderProcessor.h"
 #include "PlayerMessageProcessor.h"
 
-#include "../queries/QueriesProcessor.h"
-#include "../queries/MapQueries.h"
+#include "../activities/ActivityProcessor.h"
+#include "../activities/MapActivities.h"
+#include "../activities/VisitActivities.h"
 #include "../CGameHandler.h"
 #include "../CVCMIServer.h"
+#include "../TurnTimerHandler.h"
 
 #include "../../lib/CPlayerState.h"
 #include "../../lib/mapping/CMap.h"
@@ -43,6 +45,13 @@ int TurnOrderProcessor::simturnsTurnsMinLimit() const
 	if (simturnsMinDurationDays)
 		return *simturnsMinDurationDays;
 	return gameHandler->gameInfo().getStartInfo()->simturnsInfo.requiredTurns;
+}
+
+bool TurnOrderProcessor::isSimturnsActive() const
+{
+	// same day limits that computeCanActSimultaneously() applies
+	int currentDay = gameHandler->gameInfo().getCalendar().getCurrentDay();
+	return currentDay < simturnsTurnsMinLimit() || currentDay <= simturnsTurnsMaxLimit();
 }
 
 std::vector<TurnOrderProcessor::PlayerPair> TurnOrderProcessor::computeContactStatus() const
@@ -94,6 +103,23 @@ void TurnOrderProcessor::updateAndNotifyContactStatus()
 	}
 
 	blockedContacts = newBlockedContacts;
+
+	sendContactStatus();
+}
+
+void TurnOrderProcessor::sendContactStatus()
+{
+	SimturnsContactStatus pack;
+
+	for (const auto & contact : blockedContacts)
+	{
+		if (contact.a < contact.b)
+			pack.blockedContacts.insert({contact.a, contact.b});
+		else
+			pack.blockedContacts.insert({contact.b, contact.a});
+	}
+
+	gameHandler->sendAndApply(pack);
 }
 
 bool TurnOrderProcessor::playersInContact(PlayerColor left, PlayerColor right) const
@@ -286,30 +312,44 @@ void TurnOrderProcessor::doStartPlayerTurn(PlayerColor which)
 	bool timersActive = gameHandler->gameInfo().getStartInfo()->turnTimerInfo.isEnabled();
 	bool isHuman = gameHandler->gameInfo().getPlayerState(which)->isHuman();
 
+	ActivityPtr turnPause;
+
 	if(timersActive && isHuman)
 	{
-		auto turnQuery = std::make_shared<TimerPauseQuery>(gameHandler, which);
-		gameHandler->queries->addQuery(turnQuery);
-		pst.queryID = turnQuery->queryID;
+		// Added by the routine below and not here, so that the turn-start visits queue up
+		// behind it instead of reaching the player before they accepted their turn
+		auto pause = std::make_shared<TimerPauseActivity>(gameHandler, which);
+		pst.questionID = pause->askQuestion();
+		turnPause = pause;
 	}
+
+	auto startTurn = [&]()
+	{
+		// Loading from a save resumes a turn instead of starting one, so only the pause
+		// is restored
+		if(wasAlreadyActing)
+		{
+			if(turnPause)
+				gameHandler->activities->addActivity(turnPause);
+			return;
+		}
+
+		gameHandler->turnTimerHandler->onPlayerGetTurn(which);
+		gameHandler->activities->addActivity(std::make_shared<TurnStartRoutine>(gameHandler, which, turnPause));
+	};
 
 	if(isHuman)
 	{
+		// Send PlayerStartsTurn first so the client enters the new-turn flow before the
+		// turn-start visits (e.g. Battle Scholar Academy) start producing dialogs.
 		gameHandler->sendAndApply(pst);
-
-		// Only if player is actually starting his turn (and not loading from save).
-		// Send PlayerStartsTurn first so the client enters the new-turn flow before
-		// deferred turn-start visits (e.g. Battle Scholar Academy) start producing dialogs.
-		if (!wasAlreadyActing)
-			gameHandler->onPlayerTurnStarted(which);
+		startTurn();
 	}
 	else
 	{
 		// AI starts acting immediately from PlayerStartsTurn/yourTurn, so keep the
-		// original ordering and prepare deferred turn-start visits first.
-		if (!wasAlreadyActing)
-			gameHandler->onPlayerTurnStarted(which);
-
+		// original ordering and run the turn-start visits first.
+		startTurn();
 		gameHandler->sendAndApply(pst);
 	}
 
@@ -368,9 +408,9 @@ bool TurnOrderProcessor::onPlayerEndsTurn(PlayerColor which)
 		return false;
 	}
 
-	if(gameHandler->queries->topQuery(which) != nullptr)
+	if(gameHandler->activities->topActivity(which) != nullptr)
 	{
-		gameHandler->complain("Cannot end turn before resolving queries!");
+		gameHandler->complain("Cannot end turn before resolving activities!");
 		return false;
 	}
 
@@ -403,6 +443,8 @@ void TurnOrderProcessor::onGameStarted()
 
 	if (actingPlayers.empty())
 		blockedContacts = computeContactStatus();
+
+	sendContactStatus();
 
 	// this may be game load - send notification to players that they can act
 	auto actingPlayersCopy = actingPlayers;

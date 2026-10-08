@@ -20,6 +20,12 @@ namespace vstd
 namespace battle
 {
 	class Unit;
+	class CUnitState;
+}
+
+namespace spells
+{
+	class Spell;
 }
 
 class IBattleInfoCallback;
@@ -28,6 +34,7 @@ enum class EActivationLimitPeriod : int8_t;
 struct ActivationStateKey;
 struct BattleFocusChanged;
 struct BattleActivationUsageChanged;
+class CBattleInfoCallback;
 
 struct CPackForClient;
 struct BattleLogMessage;
@@ -67,4 +74,7 @@ public:
 	virtual void apply(StacksInjured & pack) = 0;
 	virtual void apply(BattleObstaclesChanged & pack) = 0;
 	virtual void apply(CatapultAttack & pack) = 0;
+
+	/// Reports a completed deliberate spell cast and the pre-cast state of affected units
+	virtual void spellHasHit(const CBattleInfoCallback & battle, const spells::Spell & spell, const battle::Unit * casterUnit, const std::vector<std::shared_ptr<const battle::CUnitState>> & unitsBefore) {}
 };

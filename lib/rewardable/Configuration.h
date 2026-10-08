@@ -54,7 +54,7 @@ enum class EEventType : uint8_t
 constexpr std::array<std::string_view, 4> SelectModeString{"selectFirst", "selectPlayer", "selectRandom", "selectAll"};
 constexpr std::array<std::string_view, 7> VisitModeString{"unlimited", "once", "hero", "bonus", "limiter", "player", "playerGlobal" };
 
-struct DLL_LINKAGE ResetInfo
+struct ResetInfo
 {
 	/// raw day count between resets
 	ui32 days = 0;
@@ -76,7 +76,7 @@ struct DLL_LINKAGE ResetInfo
 	template <typename Handler> void serialize(Handler &h)
 	{
 		h & days;
-		if (h.version >= Handler::Version::REWARDABLE_RESET_CALENDAR)
+		if (h.hasFeature(Handler::Version::REWARDABLE_RESET_CALENDAR))
 		{
 			h & weeks;
 			h & months;
@@ -86,7 +86,7 @@ struct DLL_LINKAGE ResetInfo
 	}
 };
 
-struct DLL_LINKAGE VisitInfo
+struct VisitInfo
 {
 	Limiter limiter;
 	Reward reward;
@@ -113,7 +113,7 @@ struct DLL_LINKAGE VisitInfo
 	}
 };
 
-struct DLL_LINKAGE Variables
+struct Variables
 {
 	/// List of variables used by this object in their current values
 	std::map<std::string, int> values;

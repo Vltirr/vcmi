@@ -68,6 +68,7 @@ private:
 class Inspector
 {
 	QList<std::pair<QString, QVariant>> characterIdentifiers;
+	QList<std::pair<QString, QVariant>> upgradedStackIdentifiers;
 
 protected:
 	struct PropertyEditorPlaceholder {};
@@ -89,7 +90,7 @@ protected:
 	DECLARE_OBJ_PROPERTY_METHODS(CRewardableObject);
 	DECLARE_OBJ_PROPERTY_METHODS(CGPandoraBox);
 	DECLARE_OBJ_PROPERTY_METHODS(CGEvent);
-	DECLARE_OBJ_PROPERTY_METHODS(SeerHut);
+	DECLARE_OBJ_PROPERTY_METHODS(QuestSource);
 	DECLARE_OBJ_PROPERTY_METHODS(QuestGuard);
 
 //===============DECLARE PROPERTY VALUE TYPE==============================
@@ -105,6 +106,7 @@ protected:
 	QTableWidgetItem * addProperty(bool value);
 	QTableWidgetItem * addProperty(CGObjectInstance * value);
 	QTableWidgetItem * addProperty(CGCreature::Character value);
+	QTableWidgetItem * addProperty(CGCreature::UpgradedStackPresence value);
 	QTableWidgetItem * addProperty(const std::optional<CGDwellingRandomizationInfo> & value);
 	QTableWidgetItem * addProperty(PropertyEditorPlaceholder value);
 	QTableWidgetItem * addProperty(const std::set<PlayerColor> & value);

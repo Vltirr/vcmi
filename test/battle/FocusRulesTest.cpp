@@ -201,11 +201,11 @@ TEST(FocusRulesTest, focusSideUsesEffectiveControllerForHypnotizedUnit)
 
 	EXPECT_EQ(battle::focusSide(battle, &unit), BattleSide::DEFENDER);
 }
-TEST(FocusRulesTest, serializesFocusPointsForCurrentAndPreviousSaves)
+TEST(FocusRulesTest, serializesFocusFieldsAccordingToForkRevision)
 {
-	// Raw version numbers from saves produced before the shooter subtype migration.
-	constexpr auto firstFocusSaveVersion = static_cast<ESerializationVersion>(918);
-	constexpr auto integratedSaveVersion = static_cast<ESerializationVersion>(923);
+	// Component versions exercise defaults for fork fields introduced later.
+	constexpr auto firstFocusSaveVersion = ESerializationVersion::BATTLE_FOCUS;
+	constexpr auto integratedSaveVersion = ESerializationVersion::FOCUS_MOBILE_SHOOTER_INTEGRATION;
 	for(const auto version : {firstFocusSaveVersion, integratedSaveVersion, ESerializationVersion::CURRENT})
 	{
 		SCOPED_TRACE(static_cast<int>(version));
@@ -396,11 +396,10 @@ TEST(FocusRulesTest, integratedActionsRemainDistinctAndClassified)
 	EXPECT_FALSE(heroSpell.isUnitAction());
 }
 
-TEST(FocusRulesTest, readsMobileShooterActionFromPreFocusVersion)
+TEST(FocusRulesTest, preservesOfficialActionWithoutSelectedAbility)
 {
 	BattleAction legacy;
-	// Produce the wire value directly, rather than round-tripping the migration.
-	legacy.actionType = static_cast<EActionType>(15);
+	legacy.actionType = EActionType::WALK_AND_ATTACK;
 	legacy.aimToHex(BattleHex(90));
 	legacy.aimToHex(BattleHex(93));
 	CMemorySerializer memory;
@@ -409,7 +408,7 @@ TEST(FocusRulesTest, readsMobileShooterActionFromPreFocusVersion)
 	memory.oser & legacy;
 	BattleAction restored;
 	memory.iser & restored;
-	EXPECT_EQ(restored.actionType, EActionType::WALK_AND_SHOOT);
+	EXPECT_EQ(restored.actionType, EActionType::WALK_AND_ATTACK);
 	EXPECT_TRUE(restored.activatedAbility.empty());
 	ASSERT_EQ(restored.target.size(), 2);
 	EXPECT_EQ(restored.target.back().hexValue, BattleHex(93));

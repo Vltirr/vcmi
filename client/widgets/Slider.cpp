@@ -16,10 +16,10 @@
 #include "../gui/MouseButton.h"
 #include "../gui/Shortcut.h"
 #include "../GameEngine.h"
-#include "../render/AssetGenerator.h"
-#include "../render/Canvas.h"
-#include "../render/Colors.h"
-#include "../render/IRenderHandler.h"
+#include "render/AssetGenerator.h"
+#include "render/Canvas.h"
+#include "render/Colors.h"
+#include "render/IRenderHandler.h"
 
 #include "../../lib/CConfigHandler.h"
 
@@ -108,6 +108,11 @@ void CSlider::setScrollBounds(const Rect & bounds )
 void CSlider::clearScrollBounds()
 {
 	scrollBounds = std::nullopt;
+}
+
+void CSlider::setRestrictGestureToOwnBounds(bool on)
+{
+	restrictGestureToOwnBounds = on;
 }
 
 int CSlider::getAmount() const
@@ -252,6 +257,9 @@ bool CSlider::receiveEvent(const Point &position, int eventType) const
 		return true; //capture "clickReleased" also outside of control
 
 	if(eventType != WHEEL && eventType != GESTURE)
+		return CIntObject::receiveEvent(position, eventType);
+
+	if (eventType == GESTURE && restrictGestureToOwnBounds)
 		return CIntObject::receiveEvent(position, eventType);
 
 	if (!scrollBounds)

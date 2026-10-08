@@ -11,7 +11,7 @@
 #include "BattleFocusBar.h"
 
 #include "../GameEngine.h"
-#include "../render/Canvas.h"
+#include "render/Canvas.h"
 #include "../render/IRenderHandler.h"
 
 #include "../../lib/filesystem/ResourcePath.h"

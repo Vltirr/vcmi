@@ -13,8 +13,10 @@
 #include "CPlayerInterface.h"
 #include "PlayerLocalState.h"
 #include "adventureMap/AdventureMapInterface.h"
-#include "eventsSDL/InputHandler.h"
+#include "events/InputHandler.h"
 #include "GameEngine.h"
+#include "Client.h"
+#include "CServerHandler.h"
 #include "GameInstance.h"
 #include "gui/CursorHandler.h"
 #include "mapView/mapHandler.h"
@@ -66,7 +68,7 @@ void HeroMovementController::onBattleStarted()
 	requestMovementAbort();
 }
 
-void HeroMovementController::showTeleportDialog(const CGHeroInstance * hero, TeleportChannelID channel, TTeleportExitsList exits, bool impassable, QueryID askID)
+void HeroMovementController::showTeleportDialog(const CGHeroInstance * hero, TeleportChannelID channel, TTeleportExitsList exits, bool impassable, QuestionID questionID)
 {
 	// let any dialog describing this teleportation (e.g. Whirlpool's stack-loss message) be
 	// acknowledged by the player first, so the camera still centers on the adventure map
@@ -75,7 +77,7 @@ void HeroMovementController::showTeleportDialog(const CGHeroInstance * hero, Tel
 
 	if (impassable || exits.empty()) //FIXME: why we even have this dialog in such case?
 	{
-		GAME->interface()->cb->selectionMade(-1, askID);
+		GAME->interface()->cb->selectionMade(-1, questionID);
 		return;
 	}
 
@@ -88,7 +90,7 @@ void HeroMovementController::showTeleportDialog(const CGHeroInstance * hero, Tel
 	if(!GAME->interface()->localState->hasPath(hero))
 	{
 		// Hero enters teleporter without specifying exit - select it randomly
-		GAME->interface()->cb->selectionMade(-1, askID);
+		GAME->interface()->cb->selectionMade(-1, questionID);
 		return;
 	}
 
@@ -101,14 +103,14 @@ void HeroMovementController::showTeleportDialog(const CGHeroInstance * hero, Tel
 		{
 			// Remove this node from path - it will be covered by teleportation
 			//GAME->interface()->localState->removeLastNode(hero);
-			GAME->interface()->cb->selectionMade(i, askID);
+			GAME->interface()->cb->selectionMade(i, questionID);
 			return;
 		}
 	}
 
 	// may happen when hero has path but does not moves alongside it
 	// for example, while standing on teleporter set path that does not leads throught teleporter and press space
-	GAME->interface()->cb->selectionMade(-1, askID);
+	GAME->interface()->cb->selectionMade(-1, questionID);
 	return;
 }
 
@@ -123,7 +125,7 @@ void HeroMovementController::updatePath(const CGHeroInstance * hero, const TryMo
 	if(!GAME->interface()->localState->hasPath(hero))
 		return; // may happen when hero teleports
 
-	assert(GAME->interface()->makingTurn);
+	assert(GAME->interface()->makingTurn || (GAME->server().client && GAME->server().client->observerMode.load()));
 
 	bool directlyAttackingCreature = details.attackedFrom.isValid() && GAME->interface()->localState->getPath(hero).lastNode().coord == details.attackedFrom;
 
@@ -207,19 +209,22 @@ void HeroMovementController::onTryMoveHero(const CGHeroInstance * hero, const Tr
 			{ 7, 6, 5 }
 		};
 
+		assert(posOffset.x >= 0 && posOffset.x < 3 && posOffset.y >= 0 && posOffset.y < 3);
+		if(posOffset.x < 0 || posOffset.x >= 3 || posOffset.y < 0 || posOffset.y >= 3)
+			return;
 		//FIXME: better handling of this case without const_cast
 		const_cast<CGHeroInstance *>(hero)->moveDir = dirLookup[posOffset.y][posOffset.x];
 	}
 }
 
-void HeroMovementController::onQueryReplyApplied()
+void HeroMovementController::onQuestionAnswerApplied()
 {
 	if (!waitingForQueryApplyReply)
 		return;
 
 	waitingForQueryApplyReply = false;
 
-	// Server accepted our TeleportDialog query reply and moved hero
+	// Server accepted our TeleportDialog question reply and moved hero
 	// Continue moving alongside our path, if any
 	if(duringMovement)
 		onMoveHeroApplied();
@@ -235,7 +240,7 @@ void HeroMovementController::onMoveHeroApplied()
 		return;
 
 	// hero has moved onto teleporter and activated it
-	// in this case next movement should be done only after query reply has been acknowledged
+	// in this case next movement should be done only after question reply has been acknowledged
 	// and hero has been moved to teleport destination
 	if(waitingForQueryApplyReply)
 		return;

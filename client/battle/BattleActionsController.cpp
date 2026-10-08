@@ -20,7 +20,7 @@
 #include "../CPlayerInterface.h"
 #include "../GameEngine.h"
 #include "../GameInstance.h"
-#include "../eventsSDL/InputHandler.h"
+#include "events/InputHandler.h"
 #include "../gui/CIntObject.h"
 #include "../gui/CursorHandler.h"
 #include "../gui/WindowHandler.h"
@@ -848,10 +848,14 @@ std::string BattleActionsController::actionGetStatusMessage(PossiblePlayerBattle
 			if(!spell)
 				return {};
 
+			spells::Target aim;
+			if(selectedStack)
+				aim.emplace_back(selectedStack);
+			aim.emplace_back(targetHex);
 			auto spellEffectValue =
-					owner.getBattle()->getSpellEffectValue(spell, getCurrentSpellcaster(), getCurrentCastMode(), targetHex);
+					owner.getBattle()->getSpellEffectValue(spell, getCurrentSpellcaster(), getCurrentCastMode(), aim);
 
-			if(!selectedStack) // Phase 1: hovering over dead unit to resurrect
+			if(!selectedStack) // Phase 1: hovering over unit to heal or resurrect
 				return prepareSpellEffectText(27, *spellEffectValue, spell->getNameTranslated(), targetStack ? targetStack->getName() : "");
 
 			//sacrifice the %s
@@ -1042,22 +1046,10 @@ bool BattleActionsController::actionIsLegal(PossiblePlayerBattleAction action, c
 			return false;
 
 		case PossiblePlayerBattleAction::TELEPORT:
+		case PossiblePlayerBattleAction::SACRIFICE:
 			if(!selectedStack)
 				return targetStack && isCastingPossibleHere(action.spell().toSpell(), nullptr, targetHex);
 			return isCastingPossibleHere(action.spell().toSpell(), selectedStack, targetHex);
-
-		case PossiblePlayerBattleAction::SACRIFICE: //choose our living stack to sacrifice
-		{
-			if(!selectedStack)
-				return targetStack && isCastingPossibleHere(action.spell().toSpell(), nullptr, targetHex);
-
-			if(!targetStack)
-				return false;
-
-			auto unit = targetStack->acquire();
-			return targetStack != selectedStack && targetStackOwned && targetStack->alive()
-					&& unit->isLiving() && !unit->hasBonusOfType(BonusType::MECHANICAL);
-		}
 
 		case PossiblePlayerBattleAction::OBSTACLE:
 		case PossiblePlayerBattleAction::FREE_LOCATION:

@@ -7,6 +7,7 @@ set(lib_SRCS
 	filesystem/CCompressedStream.cpp
 	filesystem/CFileInputStream.cpp
 	filesystem/CFilesystemLoader.cpp
+	filesystem/CInputStream.cpp
 	filesystem/CMemoryBuffer.cpp
 	filesystem/CMemoryStream.cpp
 	filesystem/CZipLoader.cpp
@@ -14,6 +15,7 @@ set(lib_SRCS
 	filesystem/FileInfo.cpp
 	filesystem/Filesystem.cpp
 	filesystem/MinizipExtensions.cpp
+	filesystem/PngStripWriter.cpp
 	filesystem/ResourcePath.cpp
 
 	json/JsonFormatException.cpp
@@ -27,6 +29,7 @@ set(lib_SRCS
 	logging/CLogger.cpp
 	logging/VisualLogger.cpp
 
+	network/HttpDownloader.cpp
 	network/NetworkConnection.cpp
 	network/NetworkDiscovery.cpp
 	network/NetworkHandler.cpp
@@ -61,6 +64,7 @@ set(lib_MAIN_SRCS
 	battle/CBattleInfoCallback.cpp
 	battle/CBattleInfoEssentials.cpp
 	battle/CObstacleInstance.cpp
+	battle/CombatValue.cpp
 	battle/CPlayerBattleCallback.cpp
 	battle/CUnitState.cpp
 	battle/Destination.cpp
@@ -104,6 +108,7 @@ set(lib_MAIN_SRCS
 	campaign/CampaignRegionsHandler.cpp
 
 	constants/EntityIdentifiers.cpp
+	constants/StringConstants.cpp
 	constants/IdentifierBase.cpp
 
 	entities/artifact/ArtifactUtils.cpp
@@ -170,6 +175,7 @@ set(lib_MAIN_SRCS
 	mapObjects/FlaggableMapObject.cpp
 	mapObjects/IMarket.cpp
 	mapObjects/IObjectInterface.cpp
+	mapObjects/MapObjectDrawOrder.cpp
 	mapObjects/MiscObjects.cpp
 	mapObjects/ObjectTemplate.cpp
 	mapObjects/ObstacleSetHandler.cpp
@@ -373,6 +379,7 @@ set(lib_HEADERS
 	filesystem/Filesystem.h
 	filesystem/ISimpleResourceLoader.h
 	filesystem/MinizipExtensions.h
+	filesystem/PngStripWriter.h
 	filesystem/ResourcePath.h
 
 	json/JsonFormatException.h
@@ -386,6 +393,7 @@ set(lib_HEADERS
 	logging/CLogger.h
 	logging/VisualLogger.h
 
+	network/HttpDownloader.h
 	network/NetworkConnection.h
 	network/NetworkDefines.h
 	network/NetworkDiscovery.h
@@ -465,6 +473,7 @@ set(lib_MAIN_HEADERS
 	battle/CBattleInfoCallback.h
 	battle/CBattleInfoEssentials.h
 	battle/CObstacleInstance.h
+	battle/CombatValue.h
 	battle/CPlayerBattleCallback.h
 	battle/CUnitState.h
 	battle/Destination.h
@@ -599,6 +608,7 @@ set(lib_MAIN_HEADERS
 	mapObjects/CGHeroInstance.h
 	mapObjects/CGMarket.h
 	mapObjects/CGObjectInstance.h
+	mapObjects/MapObjectDrawOrder.h
 	mapObjects/CGPandoraBox.h
 	mapObjects/TownBuildingInstance.h
 	mapObjects/CGResource.h
@@ -863,6 +873,10 @@ if(IOS)
 	target_link_libraries(vcmiMain PUBLIC iOS_utils)
 endif()
 
+if(ENABLE_LIBCURL)
+	target_link_libraries(vcmiMain PUBLIC CURL::libcurl)
+endif()
+
 target_include_directories(vcmiMain
 	PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
 	PUBLIC ${CMAKE_SOURCE_DIR}
@@ -893,4 +907,8 @@ endif()
 
 if(VCMI_PORTMASTER)
 	target_compile_definitions(vcmiMain PRIVATE VCMI_PORTMASTER)
+endif()
+
+if(VCMI_FLATPAK)
+	target_compile_definitions(vcmiMain PRIVATE VCMI_FLATPAK)
 endif()

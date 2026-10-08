@@ -10,6 +10,8 @@
 #include "StdInc.h"
 #include "CLoadFile.h"
 
+#include "../texts/TextOperations.h"
+
 template <typename From, typename To>
 struct static_caster
 {
@@ -28,34 +30,23 @@ CLoadFile::CLoadFile(const boost::filesystem::path & fname, IGameInfoCallback * 
 	sfile.exceptions(std::ifstream::failbit | std::ifstream::badbit); //we throw a lot anyway
 
 	if(!sfile)
-		throw std::runtime_error("Error: cannot open file '" + fname.string() + "' for reading!");
+		throw std::runtime_error("Error: cannot open file '" + TextOperations::filesystemPathToUtf8(fname) + "' for reading!");
 
 	static const std::string MAGIC = "VCMI";
 	std::string readMagic = MAGIC;
 	sfile.read(readMagic.data(), 4);
 	if(readMagic != MAGIC)
-		throw std::runtime_error("Error: '" + fname.string() + "' is not a VCMI file!");
+		throw std::runtime_error("Error: '" + TextOperations::filesystemPathToUtf8(fname) + "' is not a VCMI file!");
 
 	sfile.read(reinterpret_cast<char*>(&serializer.version), sizeof(serializer.version));
 
-	if(serializer.version < ESerializationVersion::MINIMAL)
-		throw std::runtime_error("Error: too old file format detected in '" + fname.string() + "'!");
-
-	if(serializer.version > ESerializationVersion::CURRENT)
+	if(!isSupportedSerializationVersion(serializer.version))
 	{
-		logGlobal->warn("Warning format version mismatch: found %d when current is %d! (file %s)\n", vstd::to_underlying(serializer.version), vstd::to_underlying(ESerializationVersion::CURRENT), fname.string());
-
 		auto * versionptr = reinterpret_cast<char *>(&serializer.version);
-		std::reverse(versionptr, versionptr + 4);
-		logGlobal->warn("Version number reversed is %x, checking...", vstd::to_underlying(serializer.version));
-
-		if(serializer.version == ESerializationVersion::CURRENT)
-		{
-			logGlobal->warn("%s seems to have different endianness! Entering reversing mode.", fname.string());
-			serializer.reverseEndianness = true;
-		}
-		else
-			throw std::runtime_error("Error: too new file format detected in '" + fname.string() + "'!");
+		std::reverse(versionptr, versionptr + sizeof(serializer.version));
+		if(!isSupportedSerializationVersion(serializer.version))
+			throw std::runtime_error("Unsupported save format in '" + TextOperations::filesystemPathToUtf8(fname) + "'!");
+		serializer.reverseEndianness = true;
 	}
 
 	std::string loaded = SAVEGAME_MAGIC;

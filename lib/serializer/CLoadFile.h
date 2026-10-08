@@ -29,6 +29,6 @@ public:
 
 	bool hasFeature(BinaryDeserializer::Version v) const
 	{
-		return serializer.version >= v;
+		return serializer.hasFeature(v);
 	}
 };

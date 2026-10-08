@@ -47,7 +47,7 @@ public:
 
 	bool hasFeature(Version v) const
 	{
-		return version >= v;
+		return serializationHasFeature(version, v);
 	}
 
 private:

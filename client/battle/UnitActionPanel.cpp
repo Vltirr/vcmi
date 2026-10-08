@@ -16,7 +16,7 @@
 
 #include "../CPlayerInterface.h"
 #include "../GameEngine.h"
-#include "../eventsSDL/InputHandler.h"
+#include "events/InputHandler.h"
 #include "../gui/WindowHandler.h"
 #include "../render/CAnimation.h"
 #include "../render/IRenderHandler.h"

@@ -135,7 +135,7 @@ bool HeroPtr::operator==(const HeroPtr & rhs) const
 
 bool isSafeToVisit(const CGHeroInstance * h, const CCreatureSet * heroArmy, uint64_t dangerStrength, float safeAttackRatio)
 {
-	const ui64 heroStrength = getNormalizedHeroStrength(h) * heroArmy->getArmyStrength();
+	const ui64 heroStrength = getNormalizedHeroStrength(h) * heroArmy->estimateCombatValue();
 
 	if(dangerStrength)
 	{
@@ -198,6 +198,20 @@ bool isObjectPassable(const Nullkiller * aiNk, const CGObjectInstance * obj)
 	return isObjectPassable(obj, aiNk->playerID, aiNk->cc->getPlayerRelations(obj->tempOwner, aiNk->playerID));
 }
 
+bool canInteractWithObject(const Nullkiller * aiNk, const CGObjectInstance * obj)
+{
+	const PlayerColor targetOwner = obj->getOwner();
+
+	if (!targetOwner.isValidPlayer())
+		return true;
+
+	if (aiNk->cc->getPlayerRelations(targetOwner, aiNk->playerID) != PlayerRelations::ENEMIES)
+		return true;
+
+	// server will reject interaction with objects of players that are still playing simultaneous turns
+	return aiNk->cc->isContactAllowed(targetOwner, aiNk->playerID);
+}
+
 // Pathfinder internal helper
 bool isObjectPassable(const CGObjectInstance * obj, PlayerColor playerColor, PlayerRelations objectRelations)
 {
@@ -237,12 +251,12 @@ creInfo infoFromDC(const dwellingContent & dc)
 
 bool compareHeroStrength(const CGHeroInstance * h1, const CGHeroInstance * h2)
 {
-	return h1->getTotalStrength() < h2->getTotalStrength();
+	return h1->estimateHeroCombatValue() < h2->estimateHeroCombatValue();
 }
 
 bool compareArmyStrength(const CArmedInstance * a1, const CArmedInstance * a2)
 {
-	return a1->getArmyStrength() < a2->getArmyStrength();
+	return a1->estimateCombatValue() < a2->estimateCombatValue();
 }
 
 double getArtifactBonusRelevance(const CGHeroInstance * hero, const std::shared_ptr<Bonus> & bonus)
@@ -269,7 +283,7 @@ double getArtifactBonusRelevance(const CGHeroInstance * hero, const std::shared_
 			const auto allBonuses = slot.second->getAllBonuses(Selector::all);
 			BonusLimitationContext context = {*bonus, *slot.second, *allBonuses, stillUndecided};
 
-			uint64_t unitStrength = slot.second->getPower();
+			uint64_t unitStrength = slot.second->estimateCombatValue();
 
 			if (bonus->limiter->limit(context) == ILimiter::EDecision::ACCEPT)
 				affectedStrength += unitStrength;
@@ -289,7 +303,7 @@ double getArtifactBonusRelevance(const CGHeroInstance * hero, const std::shared_
 
 		for (const auto & slot : hero->Slots())
 		{
-			uint64_t unitStrength = slot.second->getPower();
+			uint64_t unitStrength = slot.second->estimateCombatValue();
 			if (slot.second->hasBonusOfType(type))
 				affectedStrength += unitStrength;
 			totalStrength += unitStrength;
@@ -379,7 +393,7 @@ double getArtifactBonusRelevance(const CGHeroInstance * hero, const std::shared_
 			return hero->hasBonusOfType(BonusType::IMPROVED_NECROMANCY) ? veryRelevant : notRelevant;
 		case BonusType::SPELL_DAMAGE:
 		case BonusType::SPELL_DURATION:
-			return hero->hasSpellbook() ? relevant : notRelevant;
+			return hero->canCastSpells() ? relevant : notRelevant;
 		case BonusType::PERCENTAGE_DAMAGE_BOOST:
 			if (bonus->subtype == BonusCustomSubtype::damageTypeRanged)
 				return veryRelevant * getArmyPercentageWithBonus(BonusType::SHOOTER);
@@ -388,7 +402,7 @@ double getArtifactBonusRelevance(const CGHeroInstance * hero, const std::shared_
 			return 0;
 		case BonusType::MANA_PERCENTAGE_REGENERATION:
 		case BonusType::MANA_REGENERATION:
-			return hero->hasSpellbook() ? relevant : notRelevant;
+			return hero->canCastSpells() ? relevant : notRelevant;
 		case BonusType::LEARN_BATTLE_SPELL_CHANCE:
 			return hero->hasBonusOfType(BonusType::LEARN_BATTLE_SPELL_LEVEL_LIMIT) ? relevant : notRelevant;
 		case BonusType::LEARN_BATTLE_SPELL_CHANCE_PRE_BATTLE:
@@ -633,6 +647,9 @@ int getDuplicatingSlots(const CArmedInstance * army)
 // todo: move to obj manager
 bool shouldVisit(const Nullkiller * aiNk, const CGHeroInstance * hero, const CGObjectInstance * obj)
 {
+	if (!canInteractWithObject(aiNk, obj))
+		return false;
+
 	auto relations = aiNk->cc->getPlayerRelations(obj->tempOwner, hero->tempOwner);
 
 	switch(obj->ID)
@@ -768,7 +785,7 @@ bool townHasFreeTavern(const CGTownInstance * town)
 
 uint64_t getHeroArmyStrengthWithCommander(const CGHeroInstance * hero, const CCreatureSet * heroArmy, int fortLevel)
 {
-	auto armyStrength = heroArmy->getArmyStrength(fortLevel);
+	auto armyStrength = heroArmy->estimateCombatValue(fortLevel);
 
 	if(hero && hero->getCommander() && hero->getCommander()->alive)
 	{

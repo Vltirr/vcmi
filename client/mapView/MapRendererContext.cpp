@@ -152,8 +152,15 @@ int MapRendererBaseContext::attackedMonsterDirection(const CGObjectInstance * wa
 		return -1;
 
 	for(const auto & battle : GAME->interface()->cb->getActiveBattles())
-		if(wanderingMonster->pos == battle.second->getBattle()->getLocation())
-			return battle.second->getBattle()->getSideHero(BattleSide::ATTACKER)->moveDir;
+	{
+		if(wanderingMonster->pos != battle.second->getBattle()->getLocation())
+			continue;
+
+		// hero is gone once the battle is being torn down, while the map is still drawn
+		const auto * attacker = battle.second->getBattle()->getSideHero(BattleSide::ATTACKER);
+		if(attacker)
+			return attacker->moveDir;
+	}
 
 	return -1;
 }
@@ -325,7 +332,11 @@ size_t MapRendererAdventureContext::objectImageIndex(ObjectInstanceID objectID, 
 	// usign objectID for frameCounter to add pseudo-random element per-object.
 	// Without it, animation of multiple visible objects of the same type will always be in sync
 	size_t baseFrameTime = 180;
-	size_t frameCounter = animationTime / baseFrameTime + objectID.getNum();
+
+	// Offsetting the clock as well as the frame staggers *when* each object advances - with only
+	// the frame offset the whole visible map goes dirty at once every 180 ms.
+	size_t timeOffset = objectID.getNum() * 97 % baseFrameTime;
+	size_t frameCounter = (animationTime + timeOffset) / baseFrameTime + objectID.getNum();
 	size_t frameIndex = frameCounter % groupSize;
 	return frameIndex;
 }

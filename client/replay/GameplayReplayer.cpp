@@ -215,13 +215,14 @@ void GameplayReplayer::run(ReplaySequence sequence, PlayerColor observer, Option
 		// fast-forwarding through earlier turns costs nothing but CPU time.
 		replayState = std::make_shared<CGameState>();
 		replayState->preInit(LIBRARY);
-		replayState->loadFromMemory(std::move(sequence.snapshot));
+		replayState->loadFromMemory(std::move(sequence.snapshot), sequence.snapshotVersion);
 
-		for(const auto & data : sequence.fastForwardPacks)
-		{
-			auto pack = ReplayPackSerializer::read(data, replayState.get());
-			replayState->apply(asClientPack(*pack));
-		}
+		for(const auto & day : sequence.fastForwardDays)
+			for(const auto & data : day.packs)
+			{
+				auto pack = ReplayPackSerializer::read(data, replayState.get(), day.version);
+				replayState->apply(asClientPack(*pack));
+			}
 
 		// a recording of an earlier game may not know the color we are playing right now
 		if(!replayState->players.count(observer))
@@ -293,13 +294,13 @@ void GameplayReplayer::run(ReplaySequence sequence, PlayerColor observer, Option
 
 					std::scoped_lock interfaceLock(ENGINE->interfaceMutex);
 
-					auto pack = ReplayPackSerializer::read(day.packs[packIndex], replayState.get());
+					auto pack = ReplayPackSerializer::read(day.packs[packIndex], replayState.get(), day.version);
 					CPackForClient & clientPack = asClientPack(*pack);
 
 					switch(ReplayPackFilter::classify(clientPack))
 					{
 						case EReplayPackKind::INTERACTIVE:
-							// dialogs, queries and session bookkeeping are applied, but never shown
+							// dialogs, questions and session bookkeeping are applied, but never shown
 							client.applyPackSilently(clientPack);
 							break;
 						case EReplayPackKind::BATTLE:
@@ -438,14 +439,19 @@ ReplaySequence ReplayPlanner::prepareTurn(const ReplayLog & log, const ReplayTur
 	result.replayedPlayer = turn.player;
 	result.day = chapter.day;
 	result.snapshot = chapters[anchor].gamestateSnapshot;
+	result.snapshotVersion = chapters[anchor].version;
 
 	// everything between the anchor and the replayed turn is applied without any visuals
 	for(size_t i = anchor; i < option.chapter; ++i)
-		result.fastForwardPacks.insert(result.fastForwardPacks.end(), chapters[i].packs.begin(), chapters[i].packs.end());
+		result.fastForwardDays.push_back({chapters[i].version, chapters[i].packs, {}});
 
-	result.fastForwardPacks.insert(result.fastForwardPacks.end(), chapter.packs.begin(), chapter.packs.begin() + firstPack);
+	ReplayDay prefix;
+	prefix.version = chapter.version;
+	prefix.packs.assign(chapter.packs.begin(), chapter.packs.begin() + firstPack);
+	result.fastForwardDays.push_back(std::move(prefix));
 
 	ReplayDay day;
+	day.version = chapter.version;
 	day.packs.assign(chapter.packs.begin() + firstPack, chapter.packs.begin() + lastPack);
 	day.passes.push_back({simultaneous ? std::make_optional(turn.player) : std::nullopt, day.packs.size()});
 	result.days.push_back(std::move(day));
@@ -462,6 +468,7 @@ ReplaySequence ReplayPlanner::prepareEntireGame(const ReplayLog & log)
 
 	ReplaySequence result;
 	result.snapshot = chapters.front().gamestateSnapshot;
+	result.snapshotVersion = chapters.front().version;
 
 	// the first chapter holds the packs sent before any turn was announced, so it may carry no turn
 	for(const auto & chapter : chapters)
@@ -477,6 +484,7 @@ ReplaySequence ReplayPlanner::prepareEntireGame(const ReplayLog & log)
 	for(const auto & chapter : chapters)
 	{
 		ReplayDay day;
+		day.version = chapter.version;
 		day.packs = chapter.packs;
 
 		// a day of simultaneous turns is watched once per player, shortest pass first - every pass

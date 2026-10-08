@@ -23,7 +23,7 @@ class MineInstanceConstructor;
 using TTeleportExitsList = std::vector<std::pair<ObjectInstanceID, int3>>;
 
 /// Legacy class, use CRewardableObject instead
-class DLL_LINKAGE CTeamVisited: public CGObjectInstance
+class CTeamVisited: public CGObjectInstance
 {
 public:
 	using CGObjectInstance::CGObjectInstance;
@@ -98,7 +98,7 @@ public:
 
 	void onHeroVisit(IGameEventCallback & gameEvents, const CGHeroInstance * h) const override;
 	void battleFinished(IGameEventCallback & gameEvents, const CGHeroInstance *hero, const BattleResult &result) const override;
-	void blockingDialogAnswered(IGameEventCallback & gameEvents, const CGHeroInstance *hero, int32_t answer) const override;
+	void blockingDialogAnswered(IGameEventCallback & gameEvents, const CGHeroInstance *hero, int32_t answer, const JsonNode & visitState) const override;
 
 	MetaString getObjectName() const override;
 	MetaString getPopupText(PlayerColor player) const override;
@@ -155,7 +155,7 @@ private:
 
 	void onHeroVisit(IGameEventCallback & gameEvents, const CGHeroInstance * h) const override;
 	void battleFinished(IGameEventCallback & gameEvents, const CGHeroInstance *hero, const BattleResult &result) const override;
-	void blockingDialogAnswered(IGameEventCallback & gameEvents, const CGHeroInstance *hero, int32_t answer) const override;
+	void blockingDialogAnswered(IGameEventCallback & gameEvents, const CGHeroInstance *hero, int32_t answer, const JsonNode & visitState) const override;
 
 	void flagMine(IGameEventCallback & gameEvents, const PlayerColor & player) const;
 	void initObj(IGameRandomizer & gameRandomizer) override;
@@ -170,7 +170,7 @@ public:
 		h & producedResource;
 		h & producedQuantity;
 		h & abandonedMineResources;
-		if(h.version >= Handler::Version::HOTA_MAP_FORMAT_EXTENSIONS_2)
+		if(h.hasFeature(Handler::Version::HOTA_MAP_FORMAT_EXTENSIONS_2))
 			h & abandonedMineGuards;
 	}
 	ui32 defaultResProduction() const;
@@ -184,7 +184,7 @@ protected:
 	void serializeJsonOptions(JsonSerializeFormat & handler) override;
 };
 
-struct DLL_LINKAGE TeleportChannel : public Serializeable
+struct TeleportChannel : public Serializeable
 {
 	enum EPassability {UNKNOWN, IMPASSABLE, PASSABLE};
 
@@ -229,6 +229,8 @@ public:
 	static bool isConnected(const CGTeleport * src, const CGTeleport * dst);
 	static bool isConnected(const CGObjectInstance * src, const CGObjectInstance * dst);
 	static void addToChannel(std::map<TeleportChannelID, std::shared_ptr<TeleportChannel> > &channelsList, const CGTeleport * obj);
+	/// Warns if the map places this teleport with a template that has no visitable tile, which heroes can neither enter nor leave
+	void warnIfNotVisitable() const;
 	static std::vector<ObjectInstanceID> getPassableExits(const IGameInfoCallback & gameInfo, const CGHeroInstance * h, std::vector<ObjectInstanceID> exits);
 	static bool isExitPassable(const IGameInfoCallback & gameInfo, const CGHeroInstance * h, const CGObjectInstance * obj);
 
@@ -240,7 +242,7 @@ public:
 	}
 };
 
-class DLL_LINKAGE CGMonolith : public CGTeleport
+class CGMonolith : public CGTeleport
 {
 	TeleportChannelID findMeChannel(const std::vector<Obj> & IDs, MapObjectSubID SubID) const;
 
@@ -261,7 +263,7 @@ public:
 	}
 };
 
-class DLL_LINKAGE CGSubterraneanGate : public CGMonolith
+class CGSubterraneanGate : public CGMonolith
 {
 	void onHeroVisit(IGameEventCallback & gameEvents, const CGHeroInstance * h) const override;
 	void initObj(IGameRandomizer & gameRandomizer) override;
@@ -280,7 +282,7 @@ public:
 	}
 };
 
-class DLL_LINKAGE CGWhirlpool : public CGMonolith
+class CGWhirlpool : public CGMonolith
 {
 	void onHeroVisit(IGameEventCallback & gameEvents, const CGHeroInstance * h) const override;
 	void teleportDialogAnswered(IGameEventCallback & gameEvents, const CGHeroInstance *hero, ui32 answer, TTeleportExitsList exits) const override;
@@ -295,7 +297,7 @@ public:
 	}
 };
 
-class DLL_LINKAGE CGSirens : public CGObjectInstance
+class CGSirens : public CGObjectInstance
 {
 public:
 	using CGObjectInstance::CGObjectInstance;
@@ -379,7 +381,7 @@ protected:
 	void serializeJsonOptions(JsonSerializeFormat & handler) override;
 };
 
-class DLL_LINKAGE CGMagi : public CGObjectInstance
+class CGMagi : public CGObjectInstance
 {
 public:
 	using CGObjectInstance::CGObjectInstance;
@@ -393,7 +395,7 @@ public:
 	}
 };
 
-class DLL_LINKAGE CGDenOfthieves : public CGObjectInstance
+class CGDenOfthieves : public CGObjectInstance
 {
 	void onHeroVisit(IGameEventCallback & gameEvents, const CGHeroInstance * h) const override;
 public:
@@ -418,7 +420,7 @@ protected:
 	void setPropertyDer(ObjProperty what, ObjPropertyID identifier) override;
 };
 
-class DLL_LINKAGE CGTerrainPatch : public CGObjectInstance
+class CGTerrainPatch : public CGObjectInstance
 {
 public:
 	using CGObjectInstance::CGObjectInstance;

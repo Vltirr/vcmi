@@ -20,6 +20,7 @@ class CGDwelling;
 class IMarket;
 class MetaString;
 
+class CPlayerInterface;
 class CButton;
 class CControllerActionButton;
 class LRClickableArea;
@@ -54,7 +55,7 @@ class CRecruitmentWindow : public CStatusbarWindow
 {
 	class CCreatureCard : public CIntObject, public std::enable_shared_from_this<CCreatureCard>
 	{
-		CRecruitmentWindow * parent;
+		CRecruitmentWindow * owner;
 		std::shared_ptr<CCreaturePic> animation;
 		bool selected;
 
@@ -149,7 +150,9 @@ class CLevelWindow : public CWindowObject
 	std::shared_ptr<CLabel> skillValue;
 
 	std::shared_ptr<CComponentBox> box; //skills to select
-	std::function<void(ui32)> cb;
+	QuestionID questionID;
+	CPlayerInterface * owner = nullptr; ///< interface that was asked; in hotseat it may not be the current one
+	bool moreLevelsFollow = false; ///< window stays open for the next level instead of closing on selection
 
 	int skillViewOffset = 0;
 	std::shared_ptr<CButton> buttonLeft;
@@ -160,20 +163,19 @@ class CLevelWindow : public CWindowObject
 	const CGHeroInstance * hero;
 
 	void selectionChanged(unsigned to);
-	void initLevelUpData(const CGHeroInstance * heroInstance, const std::vector<SecondarySkill> & availableSkills, const std::function<void(ui32)> & callback);
+	void initLevelUpData(CPlayerInterface * askedInterface, const CGHeroInstance * heroInstance, const std::vector<SecondarySkill> & availableSkills, bool moreLevels, QuestionID question);
 	void createLevelUpControls(PrimarySkill pskill);
 	void createSkillBox();
 	void submitSelection();
+	void answer(ui32 selection);
 
 public:
-	CLevelWindow(const CGHeroInstance *hero, PrimarySkill pskill, std::vector<SecondarySkill> &skills, std::function<void(ui32)> callback);
-	void updateLevelUpData(const CGHeroInstance * heroInstance, PrimarySkill pskill, const std::vector<SecondarySkill> & availableSkills, const std::function<void(ui32)> & callback);
-	void setCloseOnSelection(bool value);
+	CLevelWindow(CPlayerInterface * askedInterface, const CGHeroInstance *hero, PrimarySkill pskill, const std::vector<SecondarySkill> &skills, bool moreLevels, QuestionID question);
+	void updateLevelUpData(CPlayerInterface * askedInterface, const CGHeroInstance * heroInstance, PrimarySkill pskill, const std::vector<SecondarySkill> & availableSkills, bool moreLevels, QuestionID question);
 
 	void close() override;
 
 private:
-	bool closeOnSelection = true;
 	bool selectionSubmitted = false;
 };
 
@@ -182,13 +184,13 @@ class CObjectListWindow : public CWindowObject
 {
 	class CItem : public CIntObject
 	{
-		CObjectListWindow * parent;
+		CObjectListWindow * owner;
 		std::shared_ptr<CLabel> text;
 		std::shared_ptr<CPicture> border;
 		std::shared_ptr<CPicture> icon;
 	public:
 		const size_t index;
-		CItem(CObjectListWindow * parent, size_t id, std::string text);
+		CItem(CObjectListWindow * owner, size_t id, std::string text);
 
 		void select(bool on);
 		void clickPressed(const Point & cursorPosition) override;
@@ -200,7 +202,7 @@ class CObjectListWindow : public CWindowObject
 	std::shared_ptr<CIntObject> titleWidget;
 	std::shared_ptr<CLabel> title;
 	std::shared_ptr<CLabel> descr;
-	std::vector<std::shared_ptr<IImage>> images;
+	std::function<std::shared_ptr<IImage>(size_t)> imageLoader;
 
 	std::shared_ptr<CListBox> list;
 	std::shared_ptr<CControllerActionButton> ok;
@@ -214,7 +216,7 @@ class CObjectListWindow : public CWindowObject
 	std::vector< std::pair<int, std::string> > items; //all items present in list
 	std::vector< std::pair<int, std::string> > itemsVisible; //visible items present in list
 
-	void init(std::shared_ptr<CIntObject> titleWidget_, std::string _title, std::string _descr, bool searchBoxEnabled, bool blue);
+	void init(std::shared_ptr<CIntObject> titleWidget_, const std::string & _title, const std::string & _descr, bool searchBoxEnabled, bool blue);
 	void trimTextIfTooWide(std::string & text, bool preserveCountSuffix) const; // trim item's text to fit within window's width
 	void updateControllerCursorVisibility();
 	void itemsSearchCallback(const std::string & text);
@@ -229,8 +231,11 @@ public:
 	/// Callback will be called when OK button is pressed, returns id of selected item. initState = initially selected item
 	/// Image can be nullptr
 	///item names will be taken from map objects
-	CObjectListWindow(const std::vector<int> &_items, std::shared_ptr<CIntObject> titleWidget_, std::string _title, std::string _descr, std::function<void(int)> Callback, size_t initialSelection = 0, std::vector<std::shared_ptr<IImage>> images = {}, bool searchBoxEnabled = false, bool blue = false);
-	CObjectListWindow(const std::vector<std::string> &_items, std::shared_ptr<CIntObject> titleWidget_, std::string _title, std::string _descr, std::function<void(int)> Callback, size_t initialSelection = 0, std::vector<std::shared_ptr<IImage>> images = {}, bool searchBoxEnabled = false, bool blue = false);
+	CObjectListWindow(const std::vector<int> &_items, std::shared_ptr<CIntObject> titleWidget_, const std::string & _title, const std::string & _descr, const std::function<void(int)> & Callback, size_t initialSelection = 0, std::vector<std::shared_ptr<IImage>> images = {}, bool searchBoxEnabled = false, bool blue = false);
+	CObjectListWindow(const std::vector<std::string> &_items, std::shared_ptr<CIntObject> titleWidget_, const std::string & _title, const std::string & _descr, const std::function<void(int)> & Callback, size_t initialSelection = 0, std::vector<std::shared_ptr<IImage>> images = {}, bool searchBoxEnabled = false, bool blue = false);
+	CObjectListWindow(const std::vector<std::string> &_items, std::shared_ptr<CIntObject> titleWidget_, const std::string & _title, const std::string & _descr, const std::function<void(int)> & Callback, size_t initialSelection, const std::function<std::shared_ptr<IImage>(size_t)> & _imageLoader, bool searchBoxEnabled = false, bool blue = false);
+	/// Creates a lazy loader that loads and caches small hero portraits (PortraitsSmall) on demand.
+	static std::function<std::shared_ptr<IImage>(size_t)> makeLazyHeroPortraitLoader(std::vector<int32_t> iconIndices);
 	void setControllerActionPrompts(const std::string & acceptActionText, const std::string & cancelActionText);
 	void activate() override;
 	void deactivate() override;
@@ -335,14 +340,14 @@ class CTransformerWindow : public CStatusbarWindow, public IGarrisonHolder
 		int id;//position of creature in hero army
 		bool left;//position of the item
 		int size; //size of creature stack
-		CTransformerWindow * parent;
+		CTransformerWindow * owner;
 		std::shared_ptr<CAnimImage> icon;
 		std::shared_ptr<CLabel> count;
 
 		void move();
 		void clickPressed(const Point & cursorPosition) override;
 		void update();
-		CItem(CTransformerWindow * parent, int size, int id);
+		CItem(CTransformerWindow * owner, int size, int id);
 	};
 
 	const CArmedInstance * army;//object with army for transforming (hero or town)
@@ -382,7 +387,7 @@ class CUniversityWindow final : public CStatusbarWindow, public IMarketHolder
 		std::shared_ptr<CLabel> level;
 	public:
 		SecondarySkill ID;//id of selected skill
-		CUniversityWindow * parent;
+		CUniversityWindow * owner;
 
 		void update();
 		CItem(CUniversityWindow * _parent, int _ID, int X, int Y);

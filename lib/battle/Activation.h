@@ -3,7 +3,7 @@
  */
 #pragma once
 
-#include "../Global.h"
+#include "Global.h"
 #include "../constants/Enumerations.h"
 #include "../spells/ProxyCaster.h"
 

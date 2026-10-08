@@ -11,6 +11,7 @@
 
 #include "../../lib/constants/EntityIdentifiers.h"
 #include "../../lib/int3.h"
+#include "../../lib/serializer/ESerializationVersion.h"
 
 class ReplayLog;
 class CGameState;
@@ -42,6 +43,7 @@ struct ReplayPass
 /// interleaved - every pass ends with the last pack of the player it is watched with.
 struct ReplayDay
 {
+	ESerializationVersion version = ESerializationVersion::CURRENT;
 	std::vector<std::vector<std::byte>> packs;
 	std::vector<ReplayPass> passes;
 };
@@ -53,9 +55,10 @@ struct ReplaySequence
 	uint32_t day = 0;
 
 	std::vector<std::byte> snapshot;
+	ESerializationVersion snapshotVersion = ESerializationVersion::CURRENT;
 
 	/// packs between the snapshot and the beginning of the replayed part - applied without visuals
-	std::vector<std::vector<std::byte>> fastForwardPacks;
+	std::vector<ReplayDay> fastForwardDays;
 
 	/// days that are actually shown
 	std::vector<ReplayDay> days;

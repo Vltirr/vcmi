@@ -52,6 +52,7 @@
 				"startingStackChances" :          { "type" : "array" },
 				"backpackSize" :                  { "type" : "number" },
 				"tavernInvite" :                  { "type" : "boolean" },
+				"maximalPrimarySkills" :          { "type" : "array" },
 				"minimalPrimarySkills" :          { "type" : "array" },
 				"movementCostBase"  :             { "type" : "number" },
 				"movementPointsLand" :            { "type" : "array" },
@@ -119,6 +120,7 @@
 				"badLuckChance" :                 { "type" : "array" },
 				"luckDiceSize" :                  { "type" : "number" },
 				"luckBias" :                      { "type" : "number" },
+				"luckyStrikeAffectsAllTargets" :  { "type" : "boolean" },
 				"backpackSize" :                { "type" : "number" },
 				"attackPointDamageFactor" :     { "type" : "number" },
 				"attackPointDamageFactorCap" :  { "type" : "number" },
@@ -169,7 +171,8 @@
 			"type" : "object",
 			"additionalProperties" : false,
 			"properties" : {
-				"h3BugQuestTakesEntireArmy" : { "type" : "boolean" }
+				"h3BugQuestTakesEntireArmy" : { "type" : "boolean" },
+				"roadsAboveSpecialGround" : { "type" : "boolean" }
 			}
 		},
 		"banks": {

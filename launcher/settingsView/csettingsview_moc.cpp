@@ -19,13 +19,18 @@
 #include "../../vcmiqt/jsonutils.h"
 #include "../languages.h"
 
+#include <QDesktopServices>
 #include <QFileInfo>
 #include <QGuiApplication>
 
 #include "../../lib/CConfigHandler.h"
 
-#ifndef VCMI_MOBILE
+#if !defined(VCMI_MOBILE) || defined(VCMI_SDL3)
+#ifdef VCMI_SDL3
+#include <SDL3/SDL.h>
+#else
 #include <SDL2/SDL.h>
+#endif
 #endif
 
 static QString resolutionToString(const QSize & resolution)
@@ -68,8 +73,11 @@ static constexpr std::array upscalingFilterTypes =
 	"auto",
 	"none",
 	"xbrz2",
+	"xbrz2rcas",
 	"xbrz3",
-	"xbrz4"
+	"xbrz3rcas",
+	"xbrz4",
+	"xbrz4rcas"
 };
 
 static constexpr std::array downscalingFilterTypes =
@@ -237,6 +245,7 @@ void CSettingsView::loadSettings()
 
 	ui->lineEditRepositoryDefault->setText(QString::fromStdString(settings["launcher"]["defaultRepositoryURL"].String()));
 	ui->lineEditRepositoryExtra->setText(QString::fromStdString(settings["launcher"]["extraRepositoryURL"].String()));
+	ui->lineEditHttpProxy->setText(QString::fromStdString(settings["launcher"]["httpProxy"].String()));
 
 	ui->lineEditRepositoryDefault->setEnabled(settings["launcher"]["defaultRepositoryEnabled"].Bool());
 	ui->lineEditRepositoryExtra->setEnabled(settings["launcher"]["extraRepositoryEnabled"].Bool());
@@ -249,6 +258,9 @@ void CSettingsView::loadSettings()
 	std::string upscalingFilter = settings["video"]["upscalingFilter"].String();
 	int upscalingFilterIndex = vstd::find_pos(upscalingFilterTypes, upscalingFilter);
 	ui->comboBoxUpscalingFilter->setCurrentIndex(upscalingFilterIndex);
+
+	ui->spinBoxUpscalingFilterSharpness->setValue(settings["video"]["upscalingFilterSharpness"].Float());
+	ui->spinBoxUpscalingFilterSharpness->setEnabled(upscalingFilter.find("rcas") != std::string::npos);
 
 	std::string downscalingFilter = settings["video"]["downscalingFilter"].String();
 	int downscalingFilterIndex = vstd::find_pos(downscalingFilterTypes, downscalingFilter);
@@ -370,11 +382,15 @@ void CSettingsView::fillValidScalingRange()
 	ui->spinBoxInterfaceScaling->setRange(minimalScaling, maximalScaling);
 }
 
-#ifndef VCMI_MOBILE
+#if !defined(VCMI_MOBILE) || defined(VCMI_SDL3)
 
 static QStringList getAvailableRenderingDrivers()
 {
+	// SDL3 lists the compiled-in render drivers without an initialized video subsystem,
+	// which matters on mobile where the launcher shares its process with the client
+#ifndef VCMI_SDL3
 	SDL_InitSubSystem(SDL_INIT_VIDEO);
+#endif
 	QStringList result;
 
 	result += QString(); // empty value for autoselection
@@ -383,14 +399,55 @@ static QStringList getAvailableRenderingDrivers()
 
 	for(int it = 0; it < driversCount; it++)
 	{
+#ifdef VCMI_SDL3
+		const char * driver = SDL_GetRenderDriver(it);
+
+		// "vulkan" is not stable enough to use, and "gpu" holds on to every rendering operation
+		// queued into a render target until a present, which the map cache fills thousands of
+		// at a time - https://github.com/libsdl-org/SDL/issues/15799
+		const bool usable = driver != nullptr
+			&& QLatin1String(driver) != QLatin1String("vulkan")
+			&& QLatin1String(driver) != QLatin1String("gpu");
+
+		if (usable)
+			result += QString::fromLatin1(driver);
+#else
 		SDL_RendererInfo info;
 		if (SDL_GetRenderDriverInfo(it, &info) == 0)
 			result += QString::fromLatin1(info.name);
+#endif
 	}
 
+#ifndef VCMI_SDL3
 	SDL_QuitSubSystem(SDL_INIT_VIDEO);
+#endif
 	return result;
 }
+
+void CSettingsView::fillValidRenderers()
+{
+	QSignalBlocker guard(ui->comboBoxRendererType); // avoid saving wrong renderer after adding first item from the list
+
+	ui->comboBoxRendererType->clear();
+
+	auto driversList = getAvailableRenderingDrivers();
+	ui->comboBoxRendererType->addItems(driversList);
+
+	std::string rendererName = settings["video"]["driver"].String();
+
+	int index = ui->comboBoxRendererType->findText(QString::fromStdString(rendererName));
+	ui->comboBoxRendererType->setCurrentIndex(index);
+}
+#else
+void CSettingsView::fillValidRenderers()
+{
+	// SDL2 renderer selection is untested on mobile platforms
+	ui->comboBoxRendererType->hide();
+	ui->labelRendererType->hide();
+}
+#endif
+
+#ifndef VCMI_MOBILE
 
 static QVector<QSize> findAvailableResolutions(int displayIndex)
 {
@@ -399,6 +456,21 @@ static QVector<QSize> findAvailableResolutions(int displayIndex)
 	QVector<QSize> result;
 	SDL_InitSubSystem(SDL_INIT_VIDEO);
 
+#ifdef VCMI_SDL3
+	// SDL3 identifies displays by opaque ID's while our settings store a plain index
+	int displaysCount = 0;
+	SDL_DisplayID * displays = SDL_GetDisplays(&displaysCount);
+	SDL_DisplayID displayID = (displays && displayIndex >= 0 && displayIndex < displaysCount) ? displays[displayIndex] : SDL_GetPrimaryDisplay();
+	SDL_free(displays);
+
+	int modesCount = 0;
+	SDL_DisplayMode ** modes = SDL_GetFullscreenDisplayModes(displayID, &modesCount);
+
+	for (int i = 0; modes && i < modesCount; ++i)
+		result.push_back(QSize(modes[i]->w, modes[i]->h));
+
+	SDL_free(modes);
+#else
 	int modesCount = SDL_GetNumDisplayModes(displayIndex);
 
 	for (int i = 0; i < modesCount; ++i)
@@ -411,6 +483,7 @@ static QVector<QSize> findAvailableResolutions(int displayIndex)
 
 		result.push_back(resolution);
 	}
+#endif
 
 	std::ranges::sort(result, [](const auto & left, const auto & right)
 	{
@@ -483,34 +556,12 @@ void CSettingsView::fillValidResolutionsForScreen(int screenIndex)
 		}
 	}
 }
-
-void CSettingsView::fillValidRenderers()
-{
-	QSignalBlocker guard(ui->comboBoxRendererType); // avoid saving wrong renderer after adding first item from the list
-
-	ui->comboBoxRendererType->clear();
-
-	auto driversList = getAvailableRenderingDrivers();
-	ui->comboBoxRendererType->addItems(driversList);
-
-	std::string rendererName = settings["video"]["driver"].String();
-
-	int index = ui->comboBoxRendererType->findText(QString::fromStdString(rendererName));
-	ui->comboBoxRendererType->setCurrentIndex(index);
-}
 #else
 void CSettingsView::fillValidResolutionsForScreen(int screenIndex)
 {
 	// resolutions are not selectable on mobile platforms
 	ui->comboBoxResolution->hide();
 	ui->labelResolution->hide();
-}
-
-void CSettingsView::fillValidRenderers()
-{
-	// untested on mobile platforms
-	ui->comboBoxRendererType->hide();
-	ui->labelRendererType->hide();
 }
 #endif
 
@@ -773,6 +824,17 @@ void CSettingsView::on_lineEditRepositoryExtra_textEdited(const QString &arg1)
 	node->String() = arg1.toStdString();
 }
 
+void CSettingsView::on_lineEditHttpProxy_textEdited(const QString &arg1)
+{
+	Settings node = settings.write["launcher"]["httpProxy"];
+	node->String() = arg1.trimmed().toStdString();
+}
+
+void CSettingsView::on_buttonHttpProxyHelp_clicked()
+{
+	QDesktopServices::openUrl(QUrl("https://curl.se/libcurl/c/CURLOPT_PROXY.html"));
+}
+
 void CSettingsView::on_spinBoxInterfaceScaling_valueChanged(int arg1)
 {
 	Settings node = settings.write["video"]["resolution"]["scaling"];
@@ -837,6 +899,14 @@ void CSettingsView::on_comboBoxUpscalingFilter_currentIndexChanged(int index)
 {
 	Settings node = settings.write["video"]["upscalingFilter"];
 	node->String() = upscalingFilterTypes[index];
+
+	ui->spinBoxUpscalingFilterSharpness->setEnabled(std::string(upscalingFilterTypes[index]).find("rcas") != std::string::npos);
+}
+
+void CSettingsView::on_spinBoxUpscalingFilterSharpness_valueChanged(double value)
+{
+	Settings node = settings.write["video"]["upscalingFilterSharpness"];
+	node->Float() = value;
 }
 
 void CSettingsView::on_comboBoxDownscalingFilter_currentIndexChanged(int index)

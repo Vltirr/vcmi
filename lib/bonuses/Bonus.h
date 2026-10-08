@@ -28,7 +28,7 @@ struct Bonus;
 
 namespace BonusMigration
 {
-DLL_LINKAGE bool migrateCombatAbility(Bonus & bonus);
+bool migrateCombatAbility(Bonus & bonus);
 }
 
 using TBonusListPtr = std::shared_ptr<BonusList>;
@@ -47,6 +47,7 @@ struct DLL_LINKAGE Bonus : public std::enable_shared_from_this<Bonus>, public Se
 	BonusValueType valType = BonusValueType::ADDITIVE_VALUE; // 1 byte
 	BonusSource source = BonusSource::OTHER; //source type" uses BonusSource values - what gave that bonus - 1 byte
 	BonusSource targetSourceType = BonusSource::OTHER;//Bonuses of what origin this amplifies, uses BonusSource values. Needed for PERCENT_TO_TARGET_TYPE. - 1 byte
+	BonusSourceID targetSourceID;//Narrows targetSourceType to a single source object. Empty value means no restriction
 	BonusLimitEffect effectRange = BonusLimitEffect::NO_LIMIT; // 1 byte
 	BonusType type = BonusType::NONE; //uses BonusType values - says to what is this bonus - 2 bytes
 
@@ -119,11 +120,17 @@ struct DLL_LINKAGE Bonus : public std::enable_shared_from_this<Bonus>, public Se
 		else
 			actionReturnsControl = false;
 
+		if (h.hasFeature(Handler::Version::BONUS_TARGET_SOURCE_ID))
+			h & targetSourceID;
+		else
+			targetSourceID = BonusSourceID();
+
 		//old saves stored BATTLE_NO_FLEEING in the slot now used by BATTLE_CAN_FLEE, it blocked retreating unconditionally
 		if(!h.saving && !h.hasFeature(Handler::Version::RETREAT_PERMISSION_BONUSES) && type == BonusType::BATTLE_CAN_FLEE)
 			val = -GameConstants::BATTLE_RETREAT_BLOCK;
 
-		if (!h.saving && !h.hasFeature(Handler::Version::COMBAT_ABILITY_SCRIPTS))
+		// Rebirth was retired after COMBAT_ABILITY_SCRIPTS without changing the serialized layout.
+		if(!h.saving && (type == BonusType::UNUSED_REBIRTH || !h.hasFeature(Handler::Version::COMBAT_ABILITY_SCRIPTS)))
 			BonusMigration::migrateCombatAbility(*this);
 	}
 

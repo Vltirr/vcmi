@@ -35,6 +35,8 @@
 #include "../networkPacks/PacksForClientBattle.h"
 #include "../networkPacks/StackLocation.h"
 #include "../gameState/UpgradeInfo.h"
+#include "../modding/CModHandler.h"
+#include "ObjectTemplate.h"
 
 #include <vstd/RNG.h>
 
@@ -105,7 +107,7 @@ void CGMine::onHeroVisit(IGameEventCallback & gameEvents, const CGHeroInstance *
 		else
 			ynd.text.appendTextID("core.advevent.187");
 
-		gameEvents.showBlockingDialog(this, &ynd);
+		gameEvents.showBlockingDialog(&ynd);
 		return;
 	}
 
@@ -269,7 +271,7 @@ void CGMine::battleFinished(IGameEventCallback & gameEvents, const CGHeroInstanc
 	}
 }
 
-void CGMine::blockingDialogAnswered(IGameEventCallback & gameEvents, const CGHeroInstance *hero, int32_t answer) const
+void CGMine::blockingDialogAnswered(IGameEventCallback & gameEvents, const CGHeroInstance *hero, int32_t answer, const JsonNode & visitState) const
 {
 	if(answer)
 		gameEvents.startBattle(hero, this);
@@ -377,8 +379,29 @@ std::vector<ObjectInstanceID> CGTeleport::getPassableExits(const IGameInfoCallba
 	return exits;
 }
 
+void CGTeleport::warnIfNotVisitable() const
+{
+	if(!appearance || isVisitable())
+		return;
+
+	std::string modName = "unknown";
+	try
+	{
+		modName = LIBRARY->modh->findResourceOrigin(appearance->animationFile.addPrefix("SPRITES/"));
+	}
+	catch(const std::runtime_error &)
+	{
+		// the sprite may be missing entirely, which is reported when the map is loaded
+	}
+
+	logGlobal->warn("%s at %s uses template '%s' from mod '%s' that has no visitable tile, heroes can neither enter nor leave it!",
+		getObjectNameTextID(), anchorPos().toString(), appearance->animationFile.getOriginalName(), modName);
+}
+
 void CGTeleport::addToChannel(std::map<TeleportChannelID, std::shared_ptr<TeleportChannel> > &channelsList, const CGTeleport * obj)
 {
+	obj->warnIfNotVisitable();
+
 	std::shared_ptr<TeleportChannel> tc;
 	if(channelsList.find(obj->channel) == channelsList.end())
 	{
@@ -410,9 +433,9 @@ TeleportChannelID CGMonolith::findMeChannel(const std::vector<Obj> & IDs, MapObj
 		return obj && vstd::contains(IDs, obj->ID) && obj->subID == SubID;
 	};
 
-	for(const auto & [channelID, channel] : cb->gameState().getMap().teleportChannels)
+	for(const auto & [channelID, teleportChannel] : cb->gameState().getMap().teleportChannels)
 	{
-		if(vstd::contains_if(channel->entrances, matches) || vstd::contains_if(channel->exits, matches))
+		if(vstd::contains_if(teleportChannel->entrances, matches) || vstd::contains_if(teleportChannel->exits, matches))
 			return channelID;
 	}
 	return TeleportChannelID();
@@ -610,15 +633,20 @@ void CGWhirlpool::onHeroVisit(IGameEventCallback & gameEvents, const CGHeroInsta
 
 	if(!isProtected(h))
 	{
+		//weakest stack is determined by fight value of creatures in it, not by their AI value
+		auto stackStrength = [h](const SlotID & slot) -> uint64_t
+		{
+			return static_cast<uint64_t>(h->getCreature(slot)->getFightValue()) * h->getStackCount(slot);
+		};
+
 		SlotID targetstack = h->Slots().begin()->first; //slot numbers may vary
 		for(auto i = h->Slots().rbegin(); i != h->Slots().rend(); i++)
 		{
-			if(h->getPower(targetstack) > h->getPower(i->first))
+			if(stackStrength(targetstack) > stackStrength(i->first))
 				targetstack = (i->first);
 		}
 
-		auto countToTake = static_cast<TQuantity>(h->getStackCount(targetstack) * 0.5);
-		vstd::amax(countToTake, 1);
+		auto countToTake = static_cast<TQuantity>((h->getStackCount(targetstack) + 1) / 2); // 50%, rounded up
 
 		InfoWindow iw;
 		iw.type = EInfoWindowMode::AUTO;
@@ -626,7 +654,7 @@ void CGWhirlpool::onHeroVisit(IGameEventCallback & gameEvents, const CGHeroInsta
 		iw.text.appendTextID("core.advevent.168");
 		iw.components.emplace_back(ComponentType::CREATURE, h->getCreature(targetstack)->getId(), -countToTake);
 		gameEvents.showInfoDialog(&iw);
-		gameEvents.changeStackCount(StackLocation(h->id, targetstack), -countToTake, ChangeValueMode::RELATIVE);
+		gameEvents.changeStackCount(StackLocation(h->id, targetstack), -countToTake, ChangeValueMode::RELATIVE); // server already refuses to take hero's last stack
 	}
 	else
 	{
@@ -842,7 +870,7 @@ void CGArtifact::onHeroVisit(IGameEventCallback & gameEvents, const CGHeroInstan
 					ynd.text.replaceRawString(getArmyDescription().toString(LIBRARY->staticTexts()));
 					ynd.text.replaceTextID("core.genrltxt.43"); // creatures
 				}
-				gameEvents.showBlockingDialog(this, &ynd);
+				gameEvents.showBlockingDialog(&ynd);
 			}
 			break;
 		case Obj::SPELL_SCROLL:
@@ -852,10 +880,10 @@ void CGArtifact::onHeroVisit(IGameEventCallback & gameEvents, const CGHeroInstan
 					BlockingDialog ynd(true,false);
 					ynd.player = h->getOwner();
 					ynd.text = message;
-					gameEvents.showBlockingDialog(this, &ynd);
+					gameEvents.showBlockingDialog(&ynd);
 				}
 				else
-					blockingDialogAnswered(gameEvents, h, true);
+					gameEvents.startBattle(h, this);
 			}
 			break;
 		}
@@ -879,7 +907,7 @@ void CGArtifact::battleFinished(IGameEventCallback & gameEvents, const CGHeroIns
 		pick(gameEvents, hero);
 }
 
-void CGArtifact::blockingDialogAnswered(IGameEventCallback & gameEvents, const CGHeroInstance *hero, int32_t answer) const
+void CGArtifact::blockingDialogAnswered(IGameEventCallback & gameEvents, const CGHeroInstance *hero, int32_t answer, const JsonNode & visitState) const
 {
 	if(answer)
 		gameEvents.startBattle(hero, this);

@@ -127,9 +127,7 @@ public:
 
 	static void setSkill(CGHeroInstance * hero, const std::string & skill, int level)
 	{
-		auto identifier = LIBRARY->identifiers()->getIdentifier(ModScope::scopeGame(), "secondarySkill", skill);
-		ASSERT_TRUE(identifier.has_value()) << "unknown secondary skill " << skill;
-		hero->setSecSkillLevel(SecondarySkill(*identifier), level, ChangeValueMode::ABSOLUTE);
+		hero->setSecSkillLevel(skillByName(skill), level, ChangeValueMode::ABSOLUTE);
 	}
 };
 
@@ -140,7 +138,7 @@ class DamageCalculatorTest : public DamageCalculatorTestBase
 // ---- no factors at all ------------------------------------------------------------------------
 
 /// The whole suite reads against this: angels have as much attack as defense, so two of them
-/// cancel out and the stack deals exactly what its creatures are worth.
+/// cancel out and the stack deals exactly the base damage of its creatures.
 TEST_F(DamageCalculatorTest, EqualAttackAndDefenseLeaveCreatureDamageAlone)
 {
 	auto result = estimate(attacker(angel), defender(angel));
@@ -175,11 +173,11 @@ TEST_F(DamageCalculatorTest, AttackAdvantageAddsFivePercentPerPoint)
 	EXPECT_EQ(result.kills.min, 37);
 }
 
-TEST_F(DamageCalculatorTest, AttackAdvantageIsCappedAtFourHundredPercent)
+TEST_F(DamageCalculatorTest, AttackAdvantageIsCappedAtThreeHundredPercent)
 {
 	attackerSideHero->setPrimarySkill(PrimarySkill::ATTACK, 200, ChangeValueMode::ABSOLUTE); // +1000%, capped
 
-	EXPECT_EQ(estimate(attacker(angel), defender(angel)).damage.min, 25000);
+	EXPECT_EQ(estimate(attacker(angel), defender(angel)).damage.min, 20000);
 }
 
 TEST_F(DamageCalculatorTest, DefenseAdvantageRemovesTwoAndAHalfPercentPerPoint)
@@ -277,7 +275,7 @@ INSTANTIATE_TEST_SUITE_P(Scenarios, SecondarySkillDamageTest, ::testing::Values(
 	SkillCase{"armorerAdvanced",  "armorer", advanced, true,  angel, false, 4500, 4500},
 	SkillCase{"armorerExpert",    "armorer", expert,   true,  angel, false, 4250, 4250},
 
-	// 100 titans shoot for 4000..6000, and archery is worth more than offence at every mastery
+	// 100 titans shoot for 4000..6000, and archery gives more than offence at every mastery
 	SkillCase{"archeryBasic",     "archery", basic,    false, titan, true,  4400, 6600},
 	SkillCase{"archeryAdvanced",  "archery", advanced, false, titan, true,  5000, 7500},
 	SkillCase{"archeryExpert",    "archery", expert,   false, titan, true,  6000, 9000},
@@ -288,7 +286,7 @@ INSTANTIATE_TEST_SUITE_P(Scenarios, SecondarySkillDamageTest, ::testing::Values(
 ),
 	[](const ::testing::TestParamInfo<SkillCase> & info) { return info.param.name; });
 
-// ---- luck, death blow and the rest of the attack flags ------------------------------------------
+// ---- luck, Death Blow and the rest of the attack flags ------------------------------------------
 
 namespace
 {
@@ -688,7 +686,7 @@ TEST_F(DamageCalculatorTest, CurseCollapsesTheRangeOntoItsMinimum)
 }
 
 /// From advanced mastery the spell shifts the whole range by a point before collapsing it, which is
-/// what makes an expert blessing worth more than a plain one.
+/// what makes an expert blessing better than a plain one.
 TEST_F(DamageCalculatorTest, ExpertBlessAddsAPointBeforeCollapsing)
 {
 	const auto * source = attacker(titan);
@@ -715,7 +713,7 @@ TEST_F(DamageCalculatorTest, ExpertCurseTakesAPointBeforeCollapsing)
 
 TEST_F(DamageCalculatorTest, DamageCapLimitsBothDamageAndCasualties)
 {
-	// capped at 10% of one creature's 100 health, so a killing blow becomes a scratch
+	// capped at 10% of one creature's 100 health, so a lethal hit becomes a scratch
 	auto result = estimate(attacker(hornedDemon), defender("vcmi-test:testDamageCapped"));
 
 	EXPECT_EQ(result.damage.min, 10);
@@ -845,7 +843,7 @@ TEST_F(DamageCalculatorTest, FrenzyLeavesItsBearerWithNoDefence)
 	const auto * target = defender(angel);
 	cast(defenderSideHero, SpellID(SpellID::FRENZY), target);
 
-	// 20 attack against no defense at all is worth +100%
+	// 20 attack against no defense at all gives +100%
 	EXPECT_EQ(estimate(attacker(angel), target).damage.min, 10000);
 }
 
@@ -879,7 +877,7 @@ TEST_P(SlayerDamageTest, appliesOnlyWithinItsMastery)
 }
 
 INSTANTIATE_TEST_SUITE_P(Scenarios, SlayerDamageTest, ::testing::Values(
-	// angels are kings of the second level, and the 8 points of attack the spell grants are worth
+	// angels are kings of the second level, and the 8 points of attack the spell grants give
 	// +40% over their 20 defense - but only from the mastery that reaches a king that high
 	SlayerCase{"masteryBelowTheKing",  MasteryLevel::NONE,     angel, 5000},
 	SlayerCase{"basicIsStillTooLow",   MasteryLevel::BASIC,    angel, 5000},

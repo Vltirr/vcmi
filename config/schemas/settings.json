@@ -227,11 +227,13 @@
 				"cursorScalingFactor",
 				"fontScalingFactor",
 				"upscalingFilter",
+				"upscalingFilterSharpness",
 				"fontUpscalingFilter",
 				"downscalingFilter",
 				"allowPortrait",
 				"asyncUpscaling",
-				"useHdTextures"
+				"useHdTextures",
+				"assetCacheSize"
 			],
 			"properties" : {
 				"resolution" : {
@@ -271,9 +273,8 @@
 				},
 				"driver" : {
 					"type" : "string",
-					"defaultWindows" : "",
-					"default" : "opengl",
-					"description" : "preferred graphics backend driver name for SDL2"
+					"default" : "",
+					"description" : "preferred graphics backend driver name, empty to let SDL choose"
 				},
 				"displayIndex" : {
 					"type" : "number",
@@ -318,8 +319,13 @@
 				},
 				"upscalingFilter" : {
 					"type" : "string",
-					"enum" : [ "auto", "none", "xbrz2", "xbrz3", "xbrz4" ],
+					"enum" : [ "auto", "none", "xbrz2", "xbrz2rcas", "xbrz3", "xbrz3rcas", "xbrz4", "xbrz4rcas" ],
 					"default" : "auto"
+				},
+				"upscalingFilterSharpness" : {
+					"type" : "number",
+					"default" : 0.2,
+					"description" : "Sharpen strength for upscaling filters that support it (currently AMD FSR RCAS, used by the *rcas filters); 0 is strongest, higher values are weaker"
 				},
 				"downscalingFilter" : {
 					"type" : "string",
@@ -337,6 +343,11 @@
 				"useHdTextures" : {
 					"type" : "boolean",
 					"default" : true
+				},
+				"assetCacheSize" : {
+					"type" : "number",
+					"description" : "Memory budget in MiB for cached images and def files; 0 derives it from system RAM",
+					"default" : 0
 				}
 			}
 		},
@@ -733,6 +744,7 @@
 				"defaultRepositoryURL",
 				"extraRepositoryURL",
 				"extraRepositoryEnabled",
+				"httpProxy",
 				"autoCheckRepositories",
 				"fullModExtraction",
 				"ignoreSslErrors",
@@ -754,6 +766,10 @@
 					"default" : false
 				},
 				"extraRepositoryURL" : {
+					"type" : "string",
+					"default" : ""
+				},
+				"httpProxy" : {
 					"type" : "string",
 					"default" : ""
 				},

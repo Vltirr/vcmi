@@ -143,7 +143,7 @@ struct DLL_LINKAGE Reward final
 		h & manaDiff;
 		h & manaOverflowFactor;
 		h & movePoints;
-		if (h.version >= Handler::Version::REWARDABLE_EXTENSIONS_2)
+		if (h.hasFeature(Handler::Version::REWARDABLE_EXTENSIONS_2))
 			h & moveOverflowFactor;
 
 		h & primary;

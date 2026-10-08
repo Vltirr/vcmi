@@ -30,9 +30,9 @@
 #include "../gui/CursorHandler.h"
 #include "../gui/Shortcut.h"
 #include "../gui/WindowHandler.h"
-#include "../render/CAnimation.h"
-#include "../render/Canvas.h"
-#include "../render/IRenderHandler.h"
+#include "render/CAnimation.h"
+#include "render/Canvas.h"
+#include "render/IRenderHandler.h"
 #include "../widgets/Buttons.h"
 #include "../widgets/Images.h"
 #include "../windows/CCreatureWindow.h"
@@ -295,7 +295,7 @@ void BattleWindow::showStickyQuickSpellWindow()
 
 	auto hero = owner.getBattle()->battleGetMyHero();
 
-	bool quickSpellWindowVisible = hasSpaceForQuickActions() && hero != nullptr && hero->hasSpellbook();
+	bool quickSpellWindowVisible = hasSpaceForQuickActions() && hero != nullptr && hero->canCastSpells();
 	bool unitActionWindowVisible = hasSpaceForQuickActions();
 
 	quickSpellWindow->setEnabled(quickSpellWindowVisible);
@@ -486,6 +486,7 @@ void BattleWindow::setPositionInfoWindow()
 				? Point(pos.x + pos.w - 1 + xOffsetDefender, pos.y - 1 + yOffsetDefender)
 				: Point(pos.x + pos.w -79, pos.y + 195);
 		defenderHeroWindow->moveTo(position);
+		defenderHeroWindow->setAboveBattlefield(!placeInfoWindowsOutside());
 	}
 	if(attackerHeroWindow)
 	{
@@ -493,6 +494,7 @@ void BattleWindow::setPositionInfoWindow()
 				? Point(pos.x - 77 + xOffsetAttacker, pos.y - 1 + yOffsetAttacker)
 				: Point(pos.x + 1, pos.y + 195);
 		attackerHeroWindow->moveTo(position);
+		attackerHeroWindow->setAboveBattlefield(!placeInfoWindowsOutside());
 	}
 	if(defenderStackWindow)
 	{
@@ -500,6 +502,7 @@ void BattleWindow::setPositionInfoWindow()
 				? Point(pos.x + pos.w - 1 + xOffsetDefender, defenderHeroWindow ? defenderHeroWindow->pos.y + 210 : pos.y - 1 + yOffsetDefender)
 				: Point(pos.x + pos.w -79, defenderHeroWindow ? defenderHeroWindow->pos.y : pos.y + 195);
 		defenderStackWindow->moveTo(position);
+		defenderStackWindow->setAboveBattlefield(!placeInfoWindowsOutside());
 	}
 	if(attackerStackWindow)
 	{
@@ -507,6 +510,7 @@ void BattleWindow::setPositionInfoWindow()
 				? Point(pos.x - 77 + xOffsetAttacker, attackerHeroWindow ? attackerHeroWindow->pos.y + 210 : pos.y - 1 + yOffsetAttacker)
 				: Point(pos.x + 1, attackerHeroWindow ? attackerHeroWindow->pos.y : pos.y + 195);
 		attackerStackWindow->moveTo(position);
+		attackerStackWindow->setAboveBattlefield(!placeInfoWindowsOutside());
 	}
 }
 
@@ -540,6 +544,7 @@ void BattleWindow::updateStackInfoWindow(const CStack * stack)
 	
 	createTimerInfoWindows();
 	setPositionInfoWindow();
+	redraw();
 }
 
 void BattleWindow::heroManaPointsChanged(const CGHeroInstance * hero)

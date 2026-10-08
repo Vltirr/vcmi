@@ -41,7 +41,7 @@ public:
 	virtual std::shared_ptr<spells::effects::Effect> createSpellEffect(const std::string & scriptId) const = 0;
 };
 
-class DLL_LINKAGE ScriptService : boost::noncopyable
+class ScriptService : boost::noncopyable
 {
 public:
 	virtual ~ScriptService() = default;
@@ -61,7 +61,7 @@ public:
 	virtual void prepareParameters(ScriptID scriptID, JsonNode & parameters, const TextIdentifier & owner) const = 0;
 
 	/// The damage calculator of the game, or null when no script declares one - which leaves no rule
-	/// for what an attack is worth, so whoever asks for one throws.
+	/// for how much damage an attack deals, so whoever asks for one throws.
 	virtual const IDamageCalculatorScript * getDamageCalculator() const = 0;
 
 	virtual void registerFactory(std::shared_ptr<IScriptFactory> factory) = 0;

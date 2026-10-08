@@ -14,11 +14,11 @@
 #include "TextControls.h"
 
 #include "../GameEngine.h"
-#include "../eventsSDL/InputHandler.h"
+#include "events/InputHandler.h"
 #include "../gui/Shortcut.h"
-#include "../render/Graphics.h"
-#include "../render/IFont.h"
-#include "../render/IRenderHandler.h"
+#include "render/Graphics.h"
+#include "render/IFont.h"
+#include "render/IRenderHandler.h"
 
 #include "../../lib/texts/TextOperations.h"
 
@@ -202,6 +202,13 @@ void CTextInput::setFilterFilename()
 void CTextInput::setFilterNumber(int minValue, int maxValue, int metricDigits)
 {
 	onTextFiltering = std::bind(&CTextInput::numberFilter, _1, _2, minValue, maxValue, metricDigits);
+	numberInputOnly = true;
+}
+
+void CTextInput::setFilterCustom(TextFilterCallback filter, bool numbersOnly)
+{
+	onTextFiltering = std::move(filter);
+	numberInputOnly = numbersOnly;
 }
 
 std::string CTextInput::getVisibleText() const
@@ -400,7 +407,7 @@ void CTextInput::activate()
 #if defined(VCMI_MOBILE)
 		//giveFocus();
 #else
-		ENGINE->input().startTextInput(pos);
+		ENGINE->input().startTextInput(pos, numberInputOnly);
 #endif
 	}
 }
@@ -431,7 +438,7 @@ void CTextInput::onFocusLost()
 void CFocusable::focusGot()
 {
 	if (isActive())
-		ENGINE->input().startTextInput(pos);
+		ENGINE->input().startTextInput(pos, isNumberInputOnly());
 	onFocusGot();
 }
 

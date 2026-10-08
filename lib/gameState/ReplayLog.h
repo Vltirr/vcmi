@@ -10,6 +10,7 @@
 #pragma once
 
 #include "../constants/EntityIdentifiers.h"
+#include "../serializer/ESerializationVersion.h"
 
 struct CPack;
 struct CPackForClient;
@@ -21,7 +22,7 @@ class IGameInfoCallback;
 namespace ReplayPackSerializer
 {
 	DLL_LINKAGE std::vector<std::byte> write(const CPackForClient & pack);
-	DLL_LINKAGE std::unique_ptr<CPack> read(const std::vector<std::byte> & data, IGameInfoCallback * cb);
+	DLL_LINKAGE std::unique_ptr<CPack> read(const std::vector<std::byte> & data, IGameInfoCallback * cb, ESerializationVersion version = ESerializationVersion::CURRENT);
 }
 
 /// Marks a single player turn inside a chapter. With simturns those ranges overlap.
@@ -53,6 +54,7 @@ struct DLL_LINKAGE ReplayTurnMark
 struct DLL_LINKAGE ReplayChapter
 {
 	uint32_t day = 0;
+	ESerializationVersion version = ESerializationVersion::CURRENT;
 	std::vector<std::byte> gamestateSnapshot;
 	std::vector<std::vector<std::byte>> packs;
 	std::vector<ReplayTurnMark> turns;
@@ -63,6 +65,12 @@ struct DLL_LINKAGE ReplayChapter
 		h & gamestateSnapshot;
 		h & packs;
 		h & turns;
+		if(h.hasFeature(Handler::Version::VERSIONED_REPLAY_CHAPTERS))
+			h & version;
+		else if(!h.saving)
+			version = h.version;
+		if(!h.saving && !isSupportedSerializationVersion(version))
+			throw std::runtime_error("Unsupported replay chapter format");
 	}
 };
 

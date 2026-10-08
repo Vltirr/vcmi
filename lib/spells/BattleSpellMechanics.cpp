@@ -193,8 +193,6 @@ bool BattleSpellMechanics::canBeCast(Problem & problem) const
 				logGlobal->debug("CSpell::canBeCast: invalid caster");
 				genProblem = ESpellCastProblem::NO_HERO_TO_CAST_SPELL;
 			}
-			else if(!castingHero->getArt(ArtifactPosition::SPELLBOOK))
-				genProblem = ESpellCastProblem::NO_SPELLBOOK;
 			else if(!castingHero->canCastThisSpell(owner))
 				genProblem = ESpellCastProblem::HERO_DOESNT_KNOW_SPELL;
 			else if(castingHero->mana < battle()->battleGetSpellCost(owner, castingHero)) //not enough mana
@@ -215,8 +213,18 @@ bool BattleSpellMechanics::canBeCast(Problem & problem) const
 	if(side == BattleSide::NONE)
 		return adaptProblem(ESpellCastProblem::INVALID, problem);
 
+	//Cursed Ground blocks magic of creatures - their active casts as well as passively triggered abilities
+	bool castByCreature = (mode == Mode::CREATURE_ACTIVE || mode == Mode::ENCHANTER || mode == Mode::PASSIVE) && !caster->getHeroCaster();
+
+	if(castByCreature && owner->isMagical())
+	{
+		const auto * unitCaster = battle()->battleGetUnitByID(caster->getCasterUnitId());
+
+		if(unitCaster && unitCaster->hasBonusOfType(BonusType::BLOCK_CREATURE_MAGIC))
+			return adaptProblem(ESpellCastProblem::MAGIC_IS_BLOCKED, problem);
+	}
+
 	//effect like Recanter's Cloak. Blocks also passive casting.
-	//TODO: check creature abilities to block
 	//TODO: check any possible caster
 
 	if(battle()->battleMaxSpellLevel(side) < getSpellLevel() || battle()->battleMinSpellLevel(side) > getSpellLevel())
@@ -413,6 +421,15 @@ void BattleSpellMechanics::cast(ServerCallback * server, const Target & target)
 		break;
 	}
 
+	// Capture target states before applying effects for the SPELL_HIT payload.
+	std::vector<std::shared_ptr<const battle::CUnitState>> unitsBeforeCast;
+	if(sc.activeCast)
+	{
+		unitsBeforeCast.reserve(affectedUnits.size());
+		for(const auto * unit : affectedUnits)
+			unitsBeforeCast.push_back(unit->acquireState());
+	}
+
 	doRemoveEffects(server, affectedUnits, std::bind(&BattleSpellMechanics::counteringSelector, this, _1));
 
 	for(auto & unit : affectedUnits)
@@ -442,6 +459,15 @@ void BattleSpellMechanics::cast(ServerCallback * server, const Target & target)
 	StacksInjured fakeEvent;
 	fakeEvent.battleID = battle()->getBattle()->getBattleID();
 	server->apply(fakeEvent);
+
+	// Notify after applying all effects. Only deliberate casts generate SPELL_HIT.
+	if(sc.activeCast)
+	{
+		// Hero and unit IDs share a numeric range, so hero casts have no caster unit.
+		const auto * casterUnit = sc.castByHero ? nullptr : battle()->battleGetUnitByID(sc.casterStack);
+
+		server->spellHasHit(*battle(), *owner, casterUnit, unitsBeforeCast);
+	}
 }
 
 void BattleSpellMechanics::beforeCast(BattleSpellCast & sc, vstd::RNG & rng, const Target & target)
@@ -736,4 +762,3 @@ const Spell * BattleSpellMechanics::getSpell() const
 
 
 }
-

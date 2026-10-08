@@ -175,17 +175,28 @@ void CMapLoaderH3M::readHeader()
 
 		if(features.levelHOTA9)
 		{
-			int unknown = reader->readInt32();
-			if(unknown != 0)
-				logGlobal->warn("Map '%s': Unknown value in header was set to %d!", mapName, unknown);
+			// duplicates those script variables that are shared with the campaign, so that they can be read without loading the map
+			uint32_t sharedVariablesCount = reader->readUInt32();
+
+			for(uint32_t i = 0; i < sharedVariablesCount; ++i)
+			{
+				std::string variableName = readBasicString();
+				int32_t variableUnknownA = reader->readInt32(); // unique ID or initial value
+				uint8_t variableUnknownB = reader->readUInt8(); // one of the two campaign flags
+
+				logGlobal->warn("Map '%s': Variable '%s' (%d, %d) shared with campaign is not implemented!", mapName, variableName, variableUnknownA, static_cast<int>(variableUnknownB));
+			}
 		}
 
-		if(features.levelHOTA9)
-		{
-			// MOD COMPATIBILITY TODO: should be moved to hota mod for future versions
-			if (LIBRARY->modh->getModInfo("hota").getVersion() < CModVersion(1,8,0))
-				throw std::runtime_error("Unsupported map format! Format ID " + std::to_string(static_cast<int>(mapHeader->version)));
-		}
+		const JsonNode & hotaFormat = LIBRARY->engineSettings()->getValue(EGameSettings::MAP_FORMAT_HORN_OF_THE_ABYSS);
+
+		// hota mod versions that predate the maxVersion field are recognized by their own version instead
+		int maxSupportedVersion = hotaFormat["maxVersion"].isNull()
+			? (LIBRARY->modh->getModInfo("hota").getVersion() < CModVersion(1, 8, 0) ? 8 : 9)
+			: hotaFormat["maxVersion"].Integer();
+
+		if(hotaVersion > maxSupportedVersion)
+			throw std::runtime_error("Unsupported map format! Format ID " + std::to_string(static_cast<int>(mapHeader->version)));
 
 	}
 	else
@@ -862,16 +873,22 @@ void CMapLoaderH3M::readPredefinedHeroes()
 
 	assert(heroesCount <= features.heroesCount);
 
+	const auto createPredefinedHero = [this](int heroID)
+	{
+		auto handler = LIBRARY->objtypeh->getHandlerFor(Obj::HERO, HeroTypeID(heroID).toHeroType()->heroClass->getIndex());
+		auto object = handler->create(map->cb, handler->getTemplates().front());
+		auto hero = std::dynamic_pointer_cast<CGHeroInstance>(object);
+		hero->subID = heroID;
+		return hero;
+	};
+
 	for(int heroID = 0; heroID < heroesCount; heroID++)
 	{
 		bool custom = reader->readBool();
 		if(!custom)
 			continue;
 
-		auto handler = LIBRARY->objtypeh->getHandlerFor(Obj::HERO, HeroTypeID(heroID).toHeroType()->heroClass->getIndex());
-		auto object = handler->create(map->cb, handler->getTemplates().front());
-		auto hero = std::dynamic_pointer_cast<CGHeroInstance>(object);
-		hero->subID = heroID;
+		auto hero = createPredefinedHero(heroID);
 
 		bool hasExp = reader->readBool();
 		if(hasExp)
@@ -926,19 +943,28 @@ void CMapLoaderH3M::readPredefinedHeroes()
 	{
 		for(int heroID = 0; heroID < heroesCount; heroID++)
 		{
-			bool alwaysAddSkills = reader->readBool(); // prevent heroes from receiving additional random secondary skills at the start of the map if they are not of the first level
-			bool cannotGainXP = reader->readBool();
-			int32_t level = reader->readInt32(); // Needs investigation how this interacts with usual setting of level via experience
+			const bool alwaysAddSkills = reader->readBool();
+			const bool cannotGainXP = reader->readBool();
+			const int32_t level = reader->readInt32();
 			assert(level > 0);
 
-			if (!alwaysAddSkills)
-				logGlobal->warn("Map '%s': Option to prevent hero %d from gaining skills on map start is not implemented!", mapName, heroID);
+			auto * hero = map->tryGetFromHeroPool(HeroTypeID(heroID));
 
-			if (cannotGainXP)
-				logGlobal->warn("Map '%s': Option to prevent hero %d from receiveing experience is not implemented!", mapName, heroID);
+			if(!hero && (level > 1 || cannotGainXP))
+			{
+				auto heroObject = createPredefinedHero(heroID);
+				map->addToHeroPool(heroObject);
+				hero = heroObject.get();
+			}
 
-			if (level > 1)
-				logGlobal->warn("Map '%s': Option to set level of hero %d to %d is not implemented!", mapName, heroID, level);
+			if(hero)
+			{
+				if(level > 1)
+				{
+					hero->mapLevel = MapHeroLevel{static_cast<ui32>(level), alwaysAddSkills};
+				}
+				hero->cannotGainExperience = cannotGainXP;
+			}
 		}
 	}
 }
@@ -1107,6 +1133,7 @@ void CMapLoaderH3M::readBoxContent(CGPandoraBox * object, const int3 & mapPositi
 
 	reward.heroExperience = reader->readUInt32();
 	reward.manaDiff = reader->readInt32();
+	reward.manaOverflowFactor = 100;
 	if(auto val = reader->readInt8Checked(-3, 3))
 		reward.heroBonuses.push_back(std::make_shared<Bonus>(BonusDuration::ONE_BATTLE, BonusType::MORALE, BonusSource::OBJECT_INSTANCE, val, BonusSourceID(idToBeGiven)));
 	if(auto val = reader->readInt8Checked(-3, 3))
@@ -1255,7 +1282,13 @@ std::shared_ptr<CGObjectInstance> CMapLoaderH3M::readMonster(const int3 & mapPos
 		// 100 = default, percent of monsters that will join on successful aggression check
 		object->joiningPercentage = reader->readInt32();
 		// Presence of upgraded stack, -1 = random, 0 = never, 1 = always
-		object->upgradedStackPresence = static_cast<CGCreature::UpgradedStackPresence>(reader->readInt32());
+		int32_t upgradedPresence = reader->readInt32();
+		if(upgradedPresence < -1 || upgradedPresence > 1)
+		{
+			logGlobal->warn("Map '%s': Wandering monster at %s has out of range upgraded stack presence %d! Using random.", mapName, mapPosition.toString(), upgradedPresence);
+			upgradedPresence = static_cast<int32_t>(CGCreature::UpgradedStackPresence::RANDOM);
+		}
+		object->upgradedStackPresence = static_cast<CGCreature::UpgradedStackPresence>(upgradedPresence);
 		// How many creature stacks will be present on battlefield, -1 = default
 		object->stacksCount = reader->readInt32();
 	}
@@ -1637,7 +1670,11 @@ std::shared_ptr<CGObjectInstance> CMapLoaderH3M::readQuestGuard(const int3 & map
 	auto object = readGeneric(mapPosition, objectTemplate);
 	auto guard = std::dynamic_pointer_cast<QuestSource>(object);
 	if (guard)
-		readQuest(guard->addQuest(), mapPosition);
+	{
+		Quest & quest = guard->addQuest();
+		readQuest(quest, mapPosition);
+        readQuestGiverName(quest, mapPosition, 0);
+	}
 	return guard;
 }
 
@@ -1646,7 +1683,11 @@ std::shared_ptr<CGObjectInstance> CMapLoaderH3M::readQuestGate(const int3 & mapP
 	auto object = readGeneric(mapPosition, objectTemplate);
 	auto gate = std::dynamic_pointer_cast<QuestSource>(object);
 	if (gate)
-		readQuest(gate->addQuest(), mapPosition);
+	{
+		Quest & quest = gate->addQuest();
+		readQuest(quest, mapPosition);
+        readQuestGiverName(quest, mapPosition, 0);
+	}
 	return gate;
 }
 
@@ -2494,19 +2535,16 @@ std::shared_ptr<CGObjectInstance> CMapLoaderH3M::readHero(const int3 & mapPositi
 
 	if(features.levelHOTA5)
 	{
-		bool alwaysAddSkills = reader->readBool(); // prevent heroes from receiving additional random secondary skills at the start of the map if they are not of the first level
-		bool cannotGainXP = reader->readBool();
-		int32_t level = reader->readInt32(); // Needs investigation how this interacts with usual setting of level via experience
+		const bool alwaysAddSkills = reader->readBool();
+		const bool cannotGainXP = reader->readBool();
+		const int32_t level = reader->readInt32();
 		assert(level > 0);
 
-		if (!alwaysAddSkills)
-			logGlobal->warn("Map '%s': Option to prevent hero %d from gaining skills on map start is not implemented!", mapName, object->subID.num);
-
-		if (cannotGainXP)
-			logGlobal->warn("Map '%s': Option to prevent hero %d from receiveing experience is not implemented!", mapName, object->subID.num);
-
-		if (level > 1)
-			logGlobal->warn("Map '%s': Option to set level of hero %d to %d is not implemented!", mapName, object->subID.num, level);
+		if(level > 1)
+		{
+			object->mapLevel = MapHeroLevel{static_cast<ui32>(level), alwaysAddSkills};
+		}
+		object->cannotGainExperience = cannotGainXP;
 	}
 	return object;
 }
@@ -2520,8 +2558,9 @@ std::shared_ptr<CGObjectInstance> CMapLoaderH3M::readSeerHut(const int3 & positi
 	if(features.levelHOTA3)
 		questsCount = reader->readUInt32();
 
-	for(size_t i = 0; i < questsCount; ++i)
-		readSeerHutQuest(hut.get(), hut->addQuest(), position, idToBeGiven);
+	int questIndex = 0;
+	for(; questIndex < questsCount; ++questIndex)
+		readSeerHutQuest(hut->addQuest(), position, idToBeGiven, questIndex);
 
 	if(features.levelHOTA3)
 	{
@@ -2530,12 +2569,13 @@ std::shared_ptr<CGObjectInstance> CMapLoaderH3M::readSeerHut(const int3 & positi
 		for(size_t i = 0; i < repeateableQuestsCount; ++i)
 		{
 			Quest & quest = hut->addQuest();
-			readSeerHutQuest(hut.get(), quest, position, idToBeGiven);
+			readSeerHutQuest(quest, position, idToBeGiven, questIndex);
 			quest.repeatedQuest = true;
+			questIndex++;
 		}
 	}
 
-	reader->skipZero(2);
+	reader->skipZero(features.levelHOTA10 ? 3 : 2);
 
 	return hut;
 }
@@ -2555,12 +2595,12 @@ enum class ESeerHutRewardType : uint8_t
 	CREATURE = 10,
 };
 
-void CMapLoaderH3M::readSeerHutQuest(SeerHut * hut, Quest & quest, const int3 & position, const ObjectInstanceID & idToBeGiven)
+void CMapLoaderH3M::readSeerHutQuest(Quest & quest, const int3 & position, const ObjectInstanceID & idToBeGiven, const int & questIndex)
 {
 	EQuestMission missionType = EQuestMission::NONE;
 	if(features.levelAB)
 	{
-		missionType = readQuest(quest, position);
+		missionType = readQuest(quest, position, questIndex);
 	}
 	else
 	{
@@ -2577,6 +2617,8 @@ void CMapLoaderH3M::readSeerHutQuest(SeerHut * hut, Quest & quest, const int3 & 
 
 	if(missionType != EQuestMission::NONE)
 	{
+        readQuestGiverName(quest, position, questIndex);
+
 		auto rewardType = static_cast<ESeerHutRewardType>(reader->readInt8Checked(0, 10));
 		Rewardable::VisitInfo vinfo;
 		auto & reward = vinfo.reward;
@@ -2675,7 +2717,15 @@ void CMapLoaderH3M::readSeerHutQuest(SeerHut * hut, Quest & quest, const int3 & 
 	}
 }
 
-EQuestMission CMapLoaderH3M::readQuest(Quest & quest, const int3 & position)
+void CMapLoaderH3M::readQuestGiverName(Quest & quest, const int3 & position, int questIndex)
+{
+	if(!features.levelHOTA10)
+		return;
+
+    quest.questGiverNameTextID = readLocalizedString(TextIdentifier("quest", position.x, position.y, position.z, questIndex, "giverName"));
+}
+
+EQuestMission CMapLoaderH3M::readQuest(Quest & quest, const int3 & position, const int questIndex)
 {
 	auto missionId = static_cast<EQuestMission>(reader->readInt8Checked(0, 10));
 
@@ -2796,9 +2846,19 @@ EQuestMission CMapLoaderH3M::readQuest(Quest & quest, const int3 & position)
 	}
 
 	quest.lastDay = reader->readInt32();
-	quest.firstVisitText.appendTextID(readLocalizedString(TextIdentifier("quest", position.x, position.y, position.z, "firstVisit")));
-	quest.nextVisitText.appendTextID(readLocalizedString(TextIdentifier("quest", position.x, position.y, position.z, "nextVisit")));
-	quest.completedText.appendTextID(readLocalizedString(TextIdentifier("quest", position.x, position.y, position.z, "completed")));
+
+	if (questIndex!=0)
+	{
+		quest.firstVisitText.appendTextID(readLocalizedString(TextIdentifier("quest", position.x, position.y, position.z, questIndex, "firstVisit")));
+		quest.nextVisitText.appendTextID(readLocalizedString(TextIdentifier("quest", position.x, position.y, position.z, questIndex, "nextVisit")));
+		quest.completedText.appendTextID(readLocalizedString(TextIdentifier("quest", position.x, position.y, position.z, questIndex,  "completed")));
+	}
+	else
+	{
+		quest.firstVisitText.appendTextID(readLocalizedString(TextIdentifier("quest", position.x, position.y, position.z, "firstVisit")));
+		quest.nextVisitText.appendTextID(readLocalizedString(TextIdentifier("quest", position.x, position.y, position.z, "nextVisit")));
+		quest.completedText.appendTextID(readLocalizedString(TextIdentifier("quest", position.x, position.y, position.z,  "completed")));
+	}
 	return missionId;
 }
 

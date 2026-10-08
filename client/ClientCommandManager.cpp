@@ -46,6 +46,7 @@
 #include "../lib/modding/ModUtility.h"
 #include "../lib/serializer/GameConnection.h"
 #include "../lib/VCMIDirs.h"
+#include "../lib/texts/TextOperations.h"
 #include "../lib/ObstacleHandler.h"
 #include "../lib/logging/VisualLogger.h"
 
@@ -74,51 +75,6 @@ void ClientCommandManager::handleLoadCommand(std::istringstream& singleWordBuffe
 	//std::string fname;
 	//singleWordBuffer >> fname;
 	//GAME->server().client->loadGame(fname);
-}
-
-void ClientCommandManager::handleGoSoloCommand()
-{
-	Settings session = settings.write["session"];
-
-	std::scoped_lock interfaceLock(ENGINE->interfaceMutex);
-
-	if(!GAME->server().client)
-	{
-		printCommandMessage("Game is not in playing state");
-		return;
-	}
-
-	if(session["aiSolo"].Bool())
-	{
-		// unlikely it will work but just in case to be consistent
-		for(auto & color : GAME->server().getAllClientPlayers(GAME->server().logicConnection->connectionID))
-		{
-			if(color.isValidPlayer() && GAME->server().client->gameInfo().getStartInfo()->playerInfos.count(color) && GAME->server().client->gameInfo().getStartInfo()->playerInfos.at(color).isControlledByHuman())
-			{
-				GAME->server().client->installNewPlayerInterface(std::make_shared<CPlayerInterface>(color), color);
-			}
-		}
-	}
-	else
-	{
-		PlayerColor currentColor = GAME->interface()->playerID;
-		GAME->server().client->removeGUI();
-
-		for(auto & color : GAME->server().getAllClientPlayers(GAME->server().logicConnection->connectionID))
-		{
-			if(color.isValidPlayer() && GAME->server().client->gameInfo().getStartInfo()->playerInfos.at(color).isControlledByHuman())
-			{
-				auto AiToGive = GAME->server().client->aiNameForPlayer(*GAME->server().client->gameInfo().getPlayerSettings(color), false, false);
-				printCommandMessage("Player " + color.toString() + " will be lead by " + AiToGive, ELogLevel::INFO);
-				GAME->server().client->installNewPlayerInterface(AIFactory::createAdventureAI(AiToGive), color);
-			}
-		}
-
-		ENGINE->windows().totalRedraw();
-		giveTurn(currentColor);
-	}
-
-	session["aiSolo"].Bool() = !session["aiSolo"].Bool();
 }
 
 void ClientCommandManager::handleAutoskipCommand()
@@ -223,7 +179,7 @@ void ClientCommandManager::handleTranslateGameCommand(bool onlyMissing)
 	}
 
 	printCommandMessage("Translation export complete");
-	printCommandMessage("Extracted files can be found in " + outPath.string() + " directory\n");
+	printCommandMessage("Extracted files can be found in " + TextOperations::filesystemPathToUtf8(outPath) + " directory\n");
 }
 
 void ClientCommandManager::handleTranslateMapsCommand()
@@ -306,7 +262,7 @@ void ClientCommandManager::handleTranslateMapsCommand()
 	}
 
 	printCommandMessage("Translation export complete");
-	printCommandMessage("Extracted files can be found in " + outPath.string() + " directory\n");
+	printCommandMessage("Extracted files can be found in " + TextOperations::filesystemPathToUtf8(outPath) + " directory\n");
 
 }
 
@@ -348,7 +304,7 @@ void ClientCommandManager::handleGetConfigCommand()
 	}
 
 	printCommandMessage("\rExtracting done :)\n");
-	printCommandMessage("Extracted files can be found in " + outPath.string() + " directory\n");
+	printCommandMessage("Extracted files can be found in " + TextOperations::filesystemPathToUtf8(outPath) + " directory\n");
 }
 
 void ClientCommandManager::handleAntilagCommand(std::istringstream& singleWordBuffer)
@@ -400,7 +356,7 @@ void ClientCommandManager::handleGetTextCommand()
 	}
 
 	printCommandMessage("\rExtracting done :)\n");
-	printCommandMessage("Extracted files can be found in " + outPath.string() + " directory\n");
+	printCommandMessage("Extracted files can be found in " + TextOperations::filesystemPathToUtf8(outPath) + " directory\n");
 }
 
 void ClientCommandManager::handleDef2bmpCommand(std::istringstream& singleWordBuffer)
@@ -625,22 +581,19 @@ void ClientCommandManager::printCommandMessage(const std::string &commandMessage
 
 	if(currentCallFromIngameConsole)
 	{
-		std::scoped_lock interfaceLock(ENGINE->interfaceMutex);
-		if(GAME->interface() && GAME->interface()->cingconsole)
+		// commands run with ENGINE->interfaceMutex already locked, so the message is handed
+		// over to the main thread instead of locking the non-recursive mutex a second time
+		ENGINE->dispatchMainThread([commandMessage]()
 		{
-			GAME->interface()->cingconsole->addMessage("", "System", commandMessage);
-		}
+			if(GAME->interface() && GAME->interface()->cingconsole)
+				GAME->interface()->cingconsole->addMessage("", "System", commandMessage);
+		});
 	}
 }
 
 void ClientCommandManager::giveTurn(const PlayerColor &colorIdentifier)
 {
-	PlayerStartsTurn yt;
-	yt.player = colorIdentifier;
-	yt.queryID = QueryID::NONE;
-
-	ApplyClientNetPackVisitor visitor(*GAME->server().client, GAME->server().client->gameState());
-	yt.visit(visitor);
+	GAME->server().client->giveTurnLocally(colorIdentifier);
 }
 
 void ClientCommandManager::processCommand(const std::string & message, bool calledFromIngameConsole)
@@ -663,9 +616,6 @@ void ClientCommandManager::processCommand(const std::string & message, bool call
 
 	else if(commandName=="load")
 		handleLoadCommand(singleWordBuffer); // not implemented
-
-	else if(commandName == "gosolo")
-		handleGoSoloCommand();
 
 	else if(commandName == "autoskip")
 		handleAutoskipCommand();

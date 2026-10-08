@@ -24,9 +24,12 @@ std::vector<std::byte> ReplayPackSerializer::write(const CPackForClient & pack)
 	return serializer.extractBuffer();
 }
 
-std::unique_ptr<CPack> ReplayPackSerializer::read(const std::vector<std::byte> & data, IGameInfoCallback * cb)
+std::unique_ptr<CPack> ReplayPackSerializer::read(const std::vector<std::byte> & data, IGameInfoCallback * cb, ESerializationVersion version)
 {
+	if(!isSupportedSerializationVersion(version))
+		throw std::runtime_error("Unsupported replay pack format");
 	CMemorySerializer serializer(data);
+	serializer.iser.version = version;
 	serializer.iser.cb = cb;
 
 	std::unique_ptr<CPack> result;
@@ -124,8 +127,20 @@ void ReplayLog::recordPack(CPackForClient & pack, CGameState & gs)
 	// every game day opens a new chapter, anchored by the state that day started from.
 	// NewTurn is recorded before it is applied, so the new day is only known from the pack itself
 	const auto * newTurn = dynamic_cast<const NewTurn *>(&pack);
-	if(chapters.empty() || newTurn != nullptr)
+	const bool formatChanged = !chapters.empty() && chapters.back().version != ESerializationVersion::CURRENT;
+	std::vector<PlayerColor> continuingTurns;
+	if(formatChanged)
+		for(auto & turn : chapters.back().turns)
+			if(turn.lastPack == ReplayTurnMark::ongoingTurn)
+			{
+				turn.lastPack = static_cast<uint32_t>(chapters.back().packs.size());
+				continuingTurns.push_back(turn.player);
+			}
+	if(chapters.empty() || newTurn != nullptr || formatChanged)
 		beginDay(newTurn ? newTurn->day : gs.day, gs.saveToMemory());
+	if(formatChanged && !newTurn)
+		for(const auto player : continuingTurns)
+			addTurn(player);
 
 	if(const auto * turnStart = dynamic_cast<const PlayerStartsTurn *>(&pack))
 		addTurn(turnStart->player);

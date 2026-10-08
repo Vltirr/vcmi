@@ -22,6 +22,7 @@
 #include <QTimer>
 
 #include "../lib/VCMIDirs.h"
+#include "../lib/texts/TextOperations.h"
 #include "../lib/GameLibrary.h"
 #include "../lib/logging/CBasicLogConfigurator.h"
 #include "../lib/CConfigHandler.h"
@@ -167,7 +168,7 @@ void EditorMainWindow::loadUserSettings()
 	}
 	lastSavingDir = s.value(lastDirectorySetting).toString();
 	if(lastSavingDir.isEmpty())
-		lastSavingDir = QString::fromStdString(VCMIDirs::get().userDataPath().make_preferred().string());
+		lastSavingDir = pathToQString(VCMIDirs::get().userDataPath().make_preferred());
 }
 
 void EditorMainWindow::saveUserSettings()
@@ -296,7 +297,7 @@ EditorMainWindow::EditorMainWindow(QWidget* parent) :
 #endif
 	logConfig->configureDefault();
 	logGlobal->info("Starting map editor of '%s'", GameConstants::VCMI_PROJECT_NAME_VERSIONED);
-	logGlobal->info("The log file will be saved to %s", logPath);
+	logGlobal->info("The log file will be saved to %s", TextOperations::filesystemPathToUtf8(logPath));
 
 	//init
 	LIBRARY = new GameLibrary();
@@ -560,16 +561,10 @@ void EditorMainWindow::initializeMap(bool isNew)
 	ui->actionMapSettings->setEnabled(true);
 	ui->actionPlayers_settings->setEnabled(true);
 	ui->actionTranslations->setEnabled(true);
-	for(auto & box : levelComboBoxes)
-	{
-		box->clear();
-		for(int i = 0; i < controller.map()->levels(); i++)
-		{
-			box->addItems({ tr("Level %1: %2").arg(i + 1).arg(QString::fromStdString(controller.map()->mapLayers.at(i).toEntity(LIBRARY)->getNameTranslated())) });
-		}
-	}
+	refreshLevelComboBoxes();
 	ui->actionLevel->setEnabled(true);
 	ui->actionMapLayer->setEnabled(true);
+	ui->actionAddLevel->setEnabled(true);
 
 	//set minimal players count
 	if(isNew)
@@ -637,7 +632,7 @@ void EditorMainWindow::on_actionOpen_triggered()
 		return;
 
 	auto title = tr("Open map");
-	auto dir = QString::fromStdString(VCMIDirs::get().userDataPath().make_preferred().string());
+	auto dir = pathToQString(VCMIDirs::get().userDataPath().make_preferred());
 	auto filter = tr("All supported maps (*.vmap *.h3m);;VCMI maps(*.vmap);;HoMM3 maps(*.h3m)");
 
 	auto filenameSelect = EditorFileDialog::getOpenFileName(this, title, dir, filter);
@@ -773,7 +768,7 @@ void EditorMainWindow::saveMap(bool force)
 	CMapService mapService;
 	try
 	{
-		mapService.saveMap(controller.getMapUniquePtr(), filename.toStdString());
+		mapService.saveMap(controller.getMapUniquePtr(), qstringToPath(filename));
 	}
 	catch(const std::exception & e)
 	{
@@ -1515,6 +1510,66 @@ void EditorMainWindow::on_actionRecreate_obstacles_triggered()
 }
 
 
+void EditorMainWindow::refreshLevelComboBoxes()
+{
+	for(auto & box : levelComboBoxes)
+	{
+		box->clear();
+		for(int i = 0; i < controller.map()->levels(); i++)
+		{
+			box->addItems({ tr("Level %1: %2").arg(i + 1).arg(QString::fromStdString(controller.map()->mapLayers.at(i).toEntity(LIBRARY)->getNameTranslated())) });
+		}
+	}
+}
+
+void EditorMainWindow::on_actionAddLevel_triggered()
+{
+	if(!controller.map())
+		return;
+
+	if(!controller.canAddLevel())
+	{
+		QMessageBox::information(this, tr("Add level"), tr("This map already has the maximum number of levels supported by the editor."));
+		return;
+	}
+
+	QList<QPair<QString, MapLayerId>> layers;
+	for(const auto & layer : LIBRARY->mapLayerHandler->objects)
+		layers.append(qMakePair(QString::fromStdString(layer->getNameTranslated()), layer->getId()));
+
+	QStringList layerNames;
+	for(const auto & p : layers)
+		layerNames << p.first;
+
+	bool ok = false;
+	QString selected = QInputDialog::getItem(
+		this,
+		tr("Add level"),
+		tr("Select the type of the new level.\n\nWarning: levels cannot be removed once added."),
+		layerNames,
+		0,
+		false,
+		&ok
+	);
+
+	if(!ok)
+		return;
+
+	for(const auto & p : layers)
+	{
+		if(p.first == selected)
+		{
+			controller.addLevel(p.second);
+			refreshLevelComboBoxes();
+
+			int newLevel = controller.map()->levels() - 1;
+			if(!levelComboBoxes.isEmpty())
+				levelComboBoxes.first()->setCurrentIndex(newLevel);
+			break;
+		}
+	}
+}
+
 void EditorMainWindow::on_actionMapLayer_triggered()
 {
 	auto & currentType = controller.map()->mapLayers[mapLevel];
@@ -1678,7 +1733,7 @@ void EditorMainWindow::on_actionTranslations_triggered()
 void EditorMainWindow::on_actionh3m_converter_triggered()
 {
 	auto mapFiles = QFileDialog::getOpenFileNames(this, tr("Select maps to convert"),
-		QString::fromStdString(VCMIDirs::get().userDataPath().make_preferred().string()),
+		pathToQString(VCMIDirs::get().userDataPath().make_preferred()),
 		tr("HoMM3 maps(*.h3m)"));
 	if(mapFiles.empty())
 		return;
@@ -1686,7 +1741,7 @@ void EditorMainWindow::on_actionh3m_converter_triggered()
 #ifdef VCMI_ANDROID
 	QString contentUri;
 	QString saveDirectory = EditorFileDialog::getSaveFileName(this, tr("Choose directory to save converted maps"),
-		QString::fromStdString(VCMIDirs::get().userDataPath().make_preferred().string()) + "/Maps",
+		pathToQString(VCMIDirs::get().userDataPath().make_preferred()) + "/Maps",
 		tr("Directory"), contentUri);
 	if(saveDirectory.isEmpty())
 		return;
@@ -1706,7 +1761,7 @@ void EditorMainWindow::on_actionh3m_converter_triggered()
 			controller.getCallback()->setMap(map.get());
 			controller.repairMap(map.get());
 			QString outVmap = saveDirectory + '/' + QFileInfo(m).completeBaseName() + ".vmap";
-			mapService.saveMap(map, outVmap.toStdString());
+			mapService.saveMap(map, qstringToPath(outVmap));
 		}
 		QMessageBox::information(this, tr("Operation completed"), tr("Successfully converted %1 maps").arg(mapFiles.size()));
 	}
@@ -1718,7 +1773,7 @@ void EditorMainWindow::on_actionh3m_converter_triggered()
 
 void EditorMainWindow::on_actionh3c_converter_triggered()
 {
-	auto dir = QString::fromStdString(VCMIDirs::get().userDataPath().make_preferred().string());
+	auto dir = pathToQString(VCMIDirs::get().userDataPath().make_preferred());
 
 	auto openTitle = tr("Select campaign to convert");
 	auto openFilter = tr("HoMM3 campaigns (*.h3c)");

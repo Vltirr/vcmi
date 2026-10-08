@@ -164,19 +164,13 @@ namespace
 
 Router::Router() : addrstr(MakeAddrStr(this)), basetag(addrstr + ":MMAI"), logtag(basetag) {}
 
-Router::~Router()
-{
-	cb->waitTillRealize = wasWaitingForRealize;
-}
+Router::~Router() = default;
 
 void Router::initBattleInterface(std::shared_ptr<Environment> ENV, std::shared_ptr<CBattleCallback> CB)
 {
 	env = ENV;
 	cb = CB;
 	colorname = cb->getPlayerID()->toString();
-	wasWaitingForRealize = cb->waitTillRealize;
-
-	cb->waitTillRealize = false;
 	bai.reset();
 }
 
@@ -221,10 +215,10 @@ void Router::battleCatapultAttacked(const BattleID & bid, const CatapultAttack &
 	bai->battleCatapultAttacked(bid, ca);
 }
 
-void Router::battleEnd(const BattleID & bid, const BattleResult * br, QueryID queryID)
+void Router::battleEnd(const BattleID & bid, const BattleResult * br, QuestionID questionID)
 {
 	MMAI_LOG_TAG;
-	bai->battleEnd(bid, br, queryID);
+	bai->battleEnd(bid, br, questionID);
 }
 
 void Router::battleGateStateChanged(const BattleID & bid, const EGateState state)

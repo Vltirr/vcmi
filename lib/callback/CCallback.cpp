@@ -42,21 +42,21 @@ void CCallback::moveHero(const CGHeroInstance *h, const std::vector<int3> & path
 	sendRequest(pack);
 }
 
-int CCallback::selectionMade(int selection, QueryID queryID)
+int CCallback::selectionMade(int selection, QuestionID questionID)
 {
-	return sendQueryReply(selection, queryID);
+	return sendQuestionAnswer(selection, questionID);
 }
 
-int CCallback::sendQueryReply(std::optional<int32_t> reply, QueryID queryID)
+int CCallback::sendQuestionAnswer(std::optional<int32_t> reply, QuestionID questionID)
 {
 	ASSERT_IF_CALLED_WITH_PLAYER
-	if(queryID == QueryID(-1))
+	if(questionID == QuestionID(-1))
 	{
-		logGlobal->error("Cannot answer the query -1!");
+		logGlobal->error("Cannot answer question -1!");
 		return -1;
 	}
 
-	QueryReply pack(queryID, reply);
+	QuestionAnswer pack(questionID, reply);
 	pack.player = *getPlayerID();
 	return sendRequest(pack);
 }
@@ -341,7 +341,7 @@ void CCallback::gamePause(bool pause)
 	}
 	else
 	{
-		sendQueryReply(0, QueryID::CLIENT);
+		sendQuestionAnswer(0, QuestionID::CLIENT);
 	}
 }
 
@@ -375,6 +375,11 @@ bool CCallback::canMoveBetween(const int3 &a, const int3 &b)
 {
 	//bidirectional
 	return gameState().getMap().canMoveBetween(a, b);
+}
+
+bool CCallback::isContactAllowed(PlayerColor color1, PlayerColor color2) const
+{
+	return gameState().isContactAllowed(color1, color2);
 }
 
 std::optional<PlayerColor> CCallback::getPlayerID() const

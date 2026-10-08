@@ -291,7 +291,7 @@ public:
 		h & creationDateTime;
 		h & width;
 		h & height;
-		if (h.version >= Handler::Version::NAME_MAP_LAYERS)
+		if (h.hasFeature(Handler::Version::NAME_MAP_LAYERS))
 			h & mapLayers;
 		else
 		{

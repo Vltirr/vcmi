@@ -8,6 +8,14 @@ on:
       - develop
   pull_request:
   workflow_dispatch:
+    inputs:
+      enable_lto:
+        description: 'Enable link-time optimization'
+        type: boolean
+        default: false
+
+env:
+  VCMI_ENABLE_LTO: ${{ (github.ref == 'refs/heads/master' || inputs.enable_lto) && 'ON' || 'OFF' }}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
@@ -897,6 +905,9 @@ jobs:
     steps:
       - name: Checkout (for script path)
         uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            CI/final_summary.py
 
       - name: Download all partial JSON artifacts
         continue-on-error: true

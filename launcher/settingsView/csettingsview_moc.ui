@@ -53,7 +53,7 @@
        </rect>
       </property>
       <layout class="QGridLayout" name="gridLayout" columnstretch="20,5,5,5,5,10">
-      <item row="65" column="5">
+      <item row="66" column="5">
         <widget class="QToolButton" name="buttonValidationFull">
          <property name="enabled">
           <bool>true</bool>
@@ -126,7 +126,7 @@
          </property>
         </widget>
        </item>
-      <item row="65" column="3" colspan="2">
+      <item row="66" column="3" colspan="2">
         <widget class="QToolButton" name="buttonValidationBasic">
          <property name="enabled">
           <bool>true</bool>
@@ -151,7 +151,7 @@
          </attribute>
         </widget>
        </item>
-      <item row="65" column="1" colspan="2">
+      <item row="66" column="1" colspan="2">
         <widget class="QToolButton" name="buttonValidationOff">
          <property name="enabled">
           <bool>true</bool>
@@ -246,7 +246,7 @@
          </property>
         </widget>
        </item>
-       <item row="62" column="0">
+       <item row="63" column="0">
         <widget class="QLabel" name="labelNetworkPortLobby">
          <property name="text">
           <string>Online Lobby port</string>
@@ -328,14 +328,14 @@
          </property>
         </widget>
        </item>
-      <item row="65" column="0">
+      <item row="66" column="0">
         <widget class="QLabel" name="labelModsValidation">
          <property name="text">
           <string>Mods Validation</string>
          </property>
         </widget>
        </item>
-       <item row="61" column="1" colspan="5">
+       <item row="62" column="1" colspan="5">
         <widget class="QLineEdit" name="lineEditGameLobbyHost">
          <property name="text">
           <string notr="true"/>
@@ -431,14 +431,14 @@
          </property>
         </widget>
        </item>
-       <item row="66" column="0">
+       <item row="67" column="0">
         <widget class="QLabel" name="labelFullModExtraction">
          <property name="text">
           <string>Full mod extraction</string>
          </property>
         </widget>
        </item>
-       <item row="66" column="1" colspan="5">
+       <item row="67" column="1" colspan="5">
         <widget class="QToolButton" name="buttonFullModExtraction">
          <property name="enabled">
           <bool>true</bool>
@@ -460,7 +460,7 @@
          </property>
         </widget>
        </item>
-       <item row="67" column="1" colspan="5">
+       <item row="68" column="1" colspan="5">
         <widget class="QPushButton" name="buttonConfigEditor">
          <property name="text">
           <string>Open editor</string>
@@ -491,7 +491,29 @@
          </property>
         </widget>
        </item>
-       <item row="26" column="1" colspan="5">
+       <item row="26" column="4" colspan="2">
+        <widget class="QDoubleSpinBox" name="spinBoxUpscalingFilterSharpness">
+         <property name="toolTip">
+          <string>Sharpening strength for the xBRZ + Sharpen upscaling filters</string>
+         </property>
+         <property name="decimals">
+          <number>2</number>
+         </property>
+         <property name="minimum">
+          <double>0.0</double>
+         </property>
+         <property name="maximum">
+          <double>2.0</double>
+         </property>
+         <property name="singleStep">
+          <double>0.05</double>
+         </property>
+         <property name="value">
+          <double>0.2</double>
+         </property>
+        </widget>
+       </item>
+       <item row="26" column="1" colspan="3">
         <widget class="QComboBox" name="comboBoxUpscalingFilter">
          <item>
           <property name="text">
@@ -510,12 +532,27 @@
          </item>
          <item>
           <property name="text">
+           <string>xBRZ x2 + Sharpen</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
            <string>xBRZ x3</string>
           </property>
          </item>
          <item>
           <property name="text">
+           <string>xBRZ x3 + Sharpen</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
            <string>xBRZ x4</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>xBRZ x4 + Sharpen</string>
           </property>
          </item>
         </widget>
@@ -572,7 +609,7 @@
          </property>
         </widget>
        </item>
-       <item row="63" column="0">
+       <item row="64" column="0">
         <widget class="QLabel" name="labelMiscellaneous">
          <property name="font">
           <font>
@@ -587,14 +624,14 @@
          </property>
         </widget>
        </item>
-       <item row="64" column="0">
+       <item row="65" column="0">
         <widget class="QLabel" name="labelDiscordRichPresence">
          <property name="text">
           <string>Show Status in Discord</string>
          </property>
         </widget>
        </item>
-       <item row="64" column="1" colspan="5">
+       <item row="65" column="1" colspan="5">
         <widget class="QToolButton" name="buttonEnableDiscordRichPresence">
          <property name="enabled">
           <bool>true</bool>
@@ -773,6 +810,33 @@
         <widget class="QLineEdit" name="lineEditRepositoryExtra">
          <property name="text">
           <string notr="true"/>
+         </property>
+        </widget>
+       </item>
+       <item row="61" column="0">
+        <widget class="QLabel" name="labelHttpProxy">
+         <property name="text">
+          <string>HTTP proxy</string>
+         </property>
+        </widget>
+       </item>
+       <item row="61" column="1">
+        <widget class="QPushButton" name="buttonHttpProxyHelp">
+         <property name="text">
+          <string>Open help</string>
+         </property>
+        </widget>
+       </item>
+       <item row="61" column="2" colspan="4">
+        <widget class="QLineEdit" name="lineEditHttpProxy">
+         <property name="toolTip">
+          <string>Proxy server used for downloads, for example http://host:port or socks5h://host:port. If empty, proxy from environment variables is used</string>
+         </property>
+         <property name="text">
+          <string notr="true"/>
+         </property>
+         <property name="placeholderText">
+          <string notr="true">socks5h://host:port</string>
          </property>
         </widget>
        </item>
@@ -1299,7 +1363,7 @@
          </property>
         </widget>
        </item>
-       <item row="61" column="0">
+       <item row="62" column="0">
         <widget class="QLabel" name="labelGameLobbyHost">
          <property name="text">
           <string>Online Lobby address</string>
@@ -1322,7 +1386,7 @@
          </property>
         </widget>
        </item>
-       <item row="62" column="1" colspan="5">
+       <item row="63" column="1" colspan="5">
         <widget class="QSpinBox" name="spinBoxNetworkPortLobby">
          <property name="minimum">
           <number>1024</number>
@@ -1342,7 +1406,7 @@
          </property>
         </widget>
        </item>
-       <item row="67" column="0">
+       <item row="68" column="0">
         <widget class="QLabel" name="labelConfigEditor">
          <property name="text">
           <string>Config editor</string>

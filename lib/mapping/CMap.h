@@ -41,7 +41,7 @@ struct TeleportChannel;
 enum class EGameSettings;
 
 /// The rumor struct consists of a rumor name and text.
-struct DLL_LINKAGE Rumor
+struct Rumor
 {
 	std::string name;
 	MetaString text;
@@ -97,6 +97,8 @@ public:
 	explicit CMap(IGameInfoCallback *cb);
 	~CMap();
 	void initTerrain();
+	/// Appends a new, empty level filled with the layer type's default terrain.
+	void addLevel(const MapLayerId & layerType);
 
 	CMapEditManager * getEditManager();
 	inline TerrainTile & getTile(const int3 & tile);
@@ -164,10 +166,10 @@ public:
 	/// Only for use in map editor / RMG
 	std::shared_ptr<CGObjectInstance> removeObject(ObjectInstanceID oldObject);
 
-	/// Replaced map object with specified ID with new object
-	/// Old object must exist and will be removed from map
-	/// Returns pointer to old object, which can be manipulated or dropped
-	std::shared_ptr<CGObjectInstance> replaceObject(ObjectInstanceID oldObject, const std::shared_ptr<CGObjectInstance> & newObject);
+	/// Inserts a new object with the specified id
+	/// If an object with this id already exists, it will be removed
+	/// Returns pointer to old object or nullptr if the object does not exist
+	std::shared_ptr<CGObjectInstance> replaceObject(ObjectInstanceID oldObjectId, const std::shared_ptr<CGObjectInstance> & newObject);
 
 	/// Erases object from map without shifting indices
 	/// Returns pointer to old object, which can be manipulated or dropped
@@ -297,7 +299,6 @@ public:
 	const IGameSettings & getSettings() const;
 
 	void parseUidCounter();
-	static bool compareObjectBlitOrder(const CGObjectInstance * a, const CGObjectInstance * b);
 
 private:
 

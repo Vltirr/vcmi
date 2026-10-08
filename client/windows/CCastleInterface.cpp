@@ -24,9 +24,9 @@
 
 #include "../gui/Shortcut.h"
 #include "../gui/WindowHandler.h"
-#include "../eventsSDL/InputHandler.h"
-#include "../media/IMusicPlayer.h"
-#include "../media/ISoundPlayer.h"
+#include "events/InputHandler.h"
+#include "media/IMusicPlayer.h"
+#include "media/ISoundPlayer.h"
 #include "../widgets/MiscWidgets.h"
 #include "../widgets/CComponent.h"
 #include "../widgets/CGarrisonInt.h"
@@ -35,12 +35,12 @@
 #include "../widgets/TextControls.h"
 #include "../widgets/RadialMenu.h"
 #include "../widgets/CExchangeController.h"
-#include "../render/Canvas.h"
-#include "../render/IImage.h"
-#include "../render/IRenderHandler.h"
-#include "../render/CAnimation.h"
-#include "../render/ColorFilter.h"
-#include "../render/IFont.h"
+#include "render/Canvas.h"
+#include "render/IImage.h"
+#include "render/IRenderHandler.h"
+#include "render/CAnimation.h"
+#include "render/ColorFilter.h"
+#include "render/IFont.h"
 #include "../adventureMap/AdventureMapInterface.h"
 #include "../adventureMap/CList.h"
 #include "../adventureMap/CResDataBar.h"
@@ -118,6 +118,17 @@ static UpgradableSlotsResult getUpgradableSlots(const CArmedInstance *obj)
 	return UpgradableSlotsResult { hasCreaturesToUpgrade, !upgradeInfos.empty(), slotInfosToDelete.empty(), costs, upgradeInfos };
 }
 
+static std::string getUpgradeAllConfirmationTextID(const UpgradableSlotsResult & upgradableSlots)
+{
+	if(!upgradableSlots.canAffordAll)
+		return "vcmi.townWindow.upgradeAll.notAllUpgradable";
+
+	if(upgradableSlots.totalCosts.empty())
+		return "vcmi.upgrade.freeConfirm";
+
+	return "core.genrltxt.207";
+}
+
 static void upgradeAllCreatures(const CArmedInstance *obj, const UpgradableSlotsResult & upgradableSlots)
 {
 	if(!upgradableSlots.canAffordAny)
@@ -129,13 +140,13 @@ static void upgradeAllCreatures(const CArmedInstance *obj, const UpgradableSlots
 	std::vector<std::shared_ptr<CComponent>> resComps;
 	for(TResources::nziterator i(upgradableSlots.totalCosts); i.valid(); i++)
 		resComps.push_back(std::make_shared<CComponent>(ComponentType::RESOURCE, i->resType, i->resVal));
-	if(resComps.empty())
-		resComps.push_back(std::make_shared<CComponent>(ComponentType::RESOURCE, static_cast<GameResID>(GameResID::GOLD), 0)); // add at least gold, when there are no costs
-	resComps.back()->newLine = true;
+	// Free upgrades have no resource components, so only add a separator when costs are present.
+	if(!resComps.empty())
+		resComps.back()->newLine = true;
 	for(auto & upgradeInfo : upgradableSlots.upgradeInfos)
 		resComps.push_back(std::make_shared<CComponent>(ComponentType::CREATURE, upgradeInfo.second.getUpgrade(), obj->Slots().at(upgradeInfo.first)->getCount()));
 
-	std::string textID = upgradableSlots.canAffordAll ? "core.genrltxt.207" : "vcmi.townWindow.upgradeAll.notAllUpgradable";
+	const std::string textID = getUpgradeAllConfirmationTextID(upgradableSlots);
 
 	GAME->interface()->showYesNoDialog(LIBRARY->generaltexth->translate(textID), [upgradableSlots, obj](){
 		for(auto & upgradeInfo : upgradableSlots.upgradeInfos)
@@ -193,7 +204,7 @@ CSpellResearchDialog::CSpellResearchDialog(const std::string & textToShow, const
 
 CBuildingRect::CBuildingRect(CCastleBuildings * Par, const CGTownInstance * Town, const CStructure * Str)
 	: CShowableAnim(0, 0, Str->defName, CShowableAnim::BASE, BUILDING_FRAME_TIME),
-	  parent(Par),
+	  owner(Par),
 	  town(Town),
 	  str(Str),
 	  border(nullptr),
@@ -260,18 +271,18 @@ void CBuildingRect::hover(bool on)
 
 	if(on)
 	{
-		if(! parent->selectedBuilding //no building hovered
-		  || (*parent->selectedBuilding)<(*this)) //or we are on top
+		if(! owner->selectedBuilding //no building hovered
+		  || (*owner->selectedBuilding)<(*this)) //or we are on top
 		{
-			parent->selectedBuilding = this;
+			owner->selectedBuilding = this;
 			ENGINE->statusbar()->write(getSubtitle());
 		}
 	}
 	else
 	{
-		if(parent->selectedBuilding == this)
+		if(owner->selectedBuilding == this)
 		{
-			parent->selectedBuilding = nullptr;
+			owner->selectedBuilding = nullptr;
 			ENGINE->statusbar()->clear();
 		}
 	}
@@ -279,16 +290,16 @@ void CBuildingRect::hover(bool on)
 
 void CBuildingRect::clickPressed(const Point & cursorPosition)
 {
-	if(getBuilding() && area && (parent->selectedBuilding==this))
+	if(getBuilding() && area && (owner->selectedBuilding==this))
 	{
 		auto building = getBuilding();
-		parent->buildingClicked(building->bid);
+		owner->buildingClicked(building->bid);
 	}
 }
 
 void CBuildingRect::showPopupWindow(const Point & cursorPosition)
 {
-	if((!area) || (this!=parent->selectedBuilding) || getBuilding() == nullptr)
+	if((!area) || (this!=owner->selectedBuilding) || getBuilding() == nullptr)
 		return;
 
 	BuildingID bid = getBuilding()->bid;
@@ -301,7 +312,7 @@ void CBuildingRect::showPopupWindow(const Point & cursorPosition)
 	else
 	{
 		int level = BuildingID::getLevelIndexFromDwelling(bid);
-		ENGINE->windows().createAndPushWindow<CDwellingInfoBox>(parent->pos.x+parent->pos.w / 2, parent->pos.y+parent->pos.h  /2, town, level);
+		ENGINE->windows().createAndPushWindow<CDwellingInfoBox>(owner->pos.x+owner->pos.w / 2, owner->pos.y+owner->pos.h  /2, town, level);
 	}
 }
 
@@ -326,7 +337,7 @@ void CBuildingRect::show(Canvas & to)
 	{
 		if(stateTimeCounter >= BUILD_ANIMATION_FINISHED_TIMEPOINT)
 		{
-			if(parent->selectedBuilding == this || showTextOverlay)
+			if(owner->selectedBuilding == this || showTextOverlay)
 				to.draw(border, pos.topLeft());
 			return;
 		}
@@ -361,7 +372,7 @@ void CBuildingRect::showAll(Canvas & to)
 		return;
 
 	CShowableAnim::showAll(to);
-	if(!isActive() && parent->selectedBuilding == this && border)
+	if(!isActive() && owner->selectedBuilding == this && border)
 		to.draw(border, pos.topLeft());
 }
 
@@ -819,6 +830,8 @@ void CCastleBuildings::drawOverlays(Canvas & to, std::vector<std::shared_ptr<CBu
 			backColor = Colors::PURPLE; // dwelling
 
 		auto contentRect = buildingRect->border->contentRect();
+		if(contentRect.w <= 0 || contentRect.h <= 0)
+			continue; // border image has no visible content (e.g. fully transparent), nothing to label
 		auto center = Rect(buildingRect->pos.x + contentRect.x, buildingRect->pos.y + contentRect.y, contentRect.w, contentRect.h).center();
 		Point dimensions(font->getStringWidth(overlay), font->getLineHeight());
 		Rect textRect = Rect(center - dimensions / 2, dimensions).resize(2);
@@ -977,7 +990,7 @@ bool CCastleBuildings::buildingTryActivateCustomUI(BuildingID buildingToTest, Bu
 				return true;
 
 		case BuildingID::TAVERN:
-				GAME->interface()->showTavernWindow(town, nullptr, QueryID::NONE);
+				GAME->interface()->showTavernWindow(town, nullptr, QuestionID::NONE);
 				return true;
 
 		case BuildingID::SHIPYARD:
@@ -1824,7 +1837,7 @@ void CCastleInterface::keyPressed(EShortcut key)
 	}
 	case EShortcut::TOWN_OPEN_TAVERN:
 		if(town->hasBuilt(BuildingID::TAVERN))
-			GAME->interface()->showTavernWindow(town, nullptr, QueryID::NONE);
+			GAME->interface()->showTavernWindow(town, nullptr, QuestionID::NONE);
 		break;
 	case EShortcut::ADVENTURE_OPEN_WIKI:
 		ENGINE->windows().createAndPushWindow<WikiWindow>(

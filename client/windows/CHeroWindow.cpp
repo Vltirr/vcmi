@@ -30,7 +30,7 @@
 #include "../widgets/TextControls.h"
 #include "../widgets/Buttons.h"
 #include "../widgets/Slider.h"
-#include "../render/IRenderHandler.h"
+#include "render/IRenderHandler.h"
 
 #include "../../lib/CConfigHandler.h"
 #include "../../lib/CSkillHandler.h"
@@ -304,12 +304,7 @@ void CHeroWindow::updateArtifacts()
 	manastr << curHero->mana << '/' << curHero->manaLimit();
 	manaValue->setText(manastr.str());
 
-	MetaString expText;
-	expText.appendTextID("core.genrltxt.2");
-	expText.replaceNumber(curHero->level);
-	expText.replaceNumber(LIBRARY->heroh->reqExp(curHero->level + 1));
-	expText.replaceNumber(curHero->exp);
-	expArea->text = expText.toString(&GAME->translator());
+	expArea->text = curHero->getExperienceDescription().toString(&GAME->translator());
 
 	MetaString spellPointsText;
 	spellPointsText.appendTextID("core.genrltxt.205");

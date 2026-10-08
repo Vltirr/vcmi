@@ -23,8 +23,8 @@
 #include "../client/gui/CursorHandler.h"
 #include "../client/gui/WindowHandler.h"
 #include "../client/mainmenu/CMainMenu.h"
-#include "../client/render/Graphics.h"
-#include "../client/render/IRenderHandler.h"
+#include "render/Graphics.h"
+#include "render/IRenderHandler.h"
 #include "../client/windows/CMessage.h"
 #include "../client/windows/InfoWindows.h"
 
@@ -36,6 +36,7 @@
 #include "../lib/filesystem/Filesystem.h"
 #include "../lib/logging/CBasicLogConfigurator.h"
 #include "../lib/modding/IdentifierStorage.h"
+#include "../lib/texts/TextOperations.h"
 #include "../lib/modding/CModHandler.h"
 #include "../lib/modding/ModDescription.h"
 #include "../lib/texts/CGeneralTextHandler.h"
@@ -47,12 +48,31 @@
 #include <boost/program_options.hpp>
 #include <vstd/StringUtils.h>
 
+#ifdef VCMI_SDL3
+// SDL_main.h is header-only in SDL3 and emits the platform entry point here.
+// When VCMI supplies its own wmain() below, SDL must not generate one.
+#if defined(VCMI_WINDOWS) && !defined(__GNUC__) && defined(VCMI_WITH_DEBUG_CONSOLE)
+#define SDL_MAIN_HANDLED
+#endif
+// iOS enters through client_main() in ios/main.m instead, so only the declaration of
+// SDL_main() is wanted here - the generated entry point would collide with it
+#ifdef VCMI_IOS
+#define SDL_MAIN_NOIMPL
+#endif
+#include <SDL3/SDL_main.h>
+#include <SDL3/SDL.h>
+#else
 #include <SDL_main.h>
 #include <SDL.h>
+#endif
 
 #ifdef VCMI_ANDROID
 #include "../lib/CAndroidVMHelper.h"
+#ifdef VCMI_SDL3
+#include <SDL3/SDL_system.h>
+#else
 #include <SDL_system.h>
+#endif
 #endif
 
 #if __MINGW32__
@@ -126,8 +146,17 @@ int SDL_main(int argc, char *argv[])
 int main(int argc, char * argv[])
 #endif
 {
+#ifdef SDL_MAIN_HANDLED
+	// entry point is provided by VCMI, so SDL has to be told that it already ran
+	SDL_SetMainReady();
+#endif
+
 #ifdef VCMI_ANDROID
+#ifdef VCMI_SDL3
+	CAndroidVMHelper::initClassloader(SDL_GetAndroidJNIEnv());
+#else
 	CAndroidVMHelper::initClassloader(SDL_AndroidGetJNIEnv());
+#endif
 	// boost will crash without this
 	setenv("LANG", "C", 1);
 #endif
@@ -224,7 +253,7 @@ int main(int argc, char * argv[])
 	logConfigurator.configureDefault();
 	logGlobal->info("Starting client of '%s'", GameConstants::VCMI_PROJECT_NAME_VERSIONED);
 	logGlobal->info("Creating console and configuring logger: %d ms", pomtime.getDiff());
-	logGlobal->info("The log file will be saved to %s", logPath);
+	logGlobal->info("The log file will be saved to %s", TextOperations::filesystemPathToUtf8(logPath));
 
 	// Init filesystem and settings
 	try
@@ -293,7 +322,7 @@ int main(int argc, char * argv[])
 
 		testFile("DATA/HELP.TXT", "VCMI requires Heroes III: Shadow of Death or Heroes III: Complete data files to run!");
 		testFile("MODS/VCMI/MOD.JSON", "VCMI installation is corrupted!\nBuilt-in mod was not found!");
-		testFile("DATA/NOTOSERIF-MEDIUM.TTF", "VCMI installation is corrupted!\nBuilt-in font was not found!\nManually deleting '" + VCMIDirs::get().userDataPath().string() + "/Mods/VCMI' directory (if it exists)\nor clearing app data and reimporting Heroes III files may fix this problem.");
+		testFile("DATA/NOTOSERIF-MEDIUM.TTF", "VCMI installation is corrupted!\nBuilt-in font was not found!\nManually deleting '" + TextOperations::filesystemPathToUtf8(VCMIDirs::get().userDataPath()) + "/Mods/VCMI' directory (if it exists)\nor clearing app data and reimporting Heroes III files may fix this problem.");
 		testFile("DATA/PLAYERS.PAL", "Heroes III data files (Data/H3Bitmap.lod) are incomplete or corruped!\n Please reinstall them.");
 		testFile("SPRITES/DEFAULT.DEF", "Heroes III data files (Data/H3Sprite.lod) are incomplete or corruped!\n Please reinstall them.");
 

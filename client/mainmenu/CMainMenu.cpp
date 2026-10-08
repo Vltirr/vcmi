@@ -18,17 +18,17 @@
 #include "../lobby/CBonusSelection.h"
 #include "../lobby/CSelectionBase.h"
 #include "../lobby/CLobbyScreen.h"
-#include "../media/IMusicPlayer.h"
-#include "../media/IVideoPlayer.h"
+#include "media/IMusicPlayer.h"
+#include "media/IVideoPlayer.h"
 #include "../gui/CursorHandler.h"
 #include "../windows/GUIClasses.h"
 #include "../GameEngine.h"
 #include "../GameInstance.h"
-#include "../eventsSDL/InputHandler.h"
+#include "events/InputHandler.h"
 #include "../gui/ShortcutHandler.h"
 #include "../gui/Shortcut.h"
 #include "../gui/WindowHandler.h"
-#include "../render/Canvas.h"
+#include "render/Canvas.h"
 #include "../globalLobby/GlobalLobbyLoginWindow.h"
 #include "../globalLobby/GlobalLobbyClient.h"
 #include "../globalLobby/GlobalLobbyWindow.h"
@@ -68,8 +68,20 @@ ISelectionScreenInfo * SEL = nullptr;
 CMenuScreen::CMenuScreen(const JsonNode & configNode)
 	: CWindowObject(BORDERED), config(configNode)
 {
-	OBJECT_CONSTRUCTION;
 	addUsedEvents(KEYBOARD);
+
+	for(const JsonNode & node : config["items"].Vector())
+		menuNameToEntry.push_back(node["name"].String());
+
+	//Hardcoded entry
+	menuNameToEntry.push_back("credits");
+
+	buildMenu();
+}
+
+void CMenuScreen::buildMenu()
+{
+	OBJECT_CONSTRUCTION;
 
 	const auto& bgConfig = config["background"];
 	if (bgConfig.isVector())
@@ -95,16 +107,30 @@ CMenuScreen::CMenuScreen(const JsonNode & configNode)
 		videoPlayer = std::make_shared<VideoWidget>(videoPosition, VideoPath::fromJson(config["video"]["name"]), false);
 	}
 
-	for(const JsonNode & node : config["items"].Vector())
-		menuNameToEntry.push_back(node["name"].String());
-
-	//Hardcoded entry
-	menuNameToEntry.push_back("credits");
-
 	tabs = std::make_shared<CTabbedInt>(std::bind(&CMenuScreen::createTab, this, _1));
 	if(config["video"].isNull())
 		tabs->setRedrawParent(true);
+}
 
+void CMenuScreen::onScreenResize()
+{
+	// deactivate before rebuilding, otherwise activate() of new children bypasses virtual dispatch
+	bool wasActive = isActive();
+	if(wasActive)
+		deactivate();
+
+	size_t activeTab = tabs->getActive();
+
+	tabs.reset();
+	videoPlayer.reset();
+	images.clear();
+	background.reset();
+
+	buildMenu();
+	tabs->setActive(activeTab);
+
+	if(wasActive)
+		activate();
 }
 
 std::shared_ptr<CIntObject> CMenuScreen::createTab(size_t index)
@@ -384,7 +410,10 @@ void CMainMenu::activate()
 {
 	// check if screen was resized while main menu was inactive - e.g. in gameplay mode
 	if (pos.dimensions() != ENGINE->screenDimensions())
+	{
 		onScreenResize();
+		menu->onScreenResize();
+	}
 
 	CIntObject::activate();
 }
@@ -393,9 +422,6 @@ void CMainMenu::onScreenResize()
 {
 	pos.w = ENGINE->screenDimensions().x;
 	pos.h = ENGINE->screenDimensions().y;
-
-	menu = nullptr;
-	menu = std::make_shared<CMenuScreen>(CMainMenuConfig::get().getConfig()["window"]);
 
 	backgroundAroundMenu->pos = pos;
 }

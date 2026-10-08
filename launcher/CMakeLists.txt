@@ -250,7 +250,17 @@ endif()
 
 if(ANDROID)
 	target_link_libraries(vcmilauncher Qt${QT_VERSION_MAJOR}::AndroidExtras)
-elseif(NOT IOS)
+endif()
+
+# the launcher queries SDL for displays and rendering drivers. the lookup is repeated
+# here because imported targets are scoped to the directory that creates them.
+# on mobile the launcher shares its process with the client, so it needs the headers too.
+if(ENABLE_SDL3)
+	find_package(SDL3 REQUIRED)
+	target_link_libraries(vcmilauncher ${SDL3_CORE_TARGET})
+	target_compile_definitions(vcmilauncher PRIVATE VCMI_SDL3)
+elseif(NOT ANDROID AND NOT IOS)
+	find_package(SDL2 REQUIRED)
 	target_link_libraries(vcmilauncher SDL2::SDL2)
 endif()
 
@@ -258,7 +268,7 @@ if(ENABLE_STATIC_LIBS OR NOT (ENABLE_EDITOR AND ENABLE_LAUNCHER))
 	target_compile_definitions(vcmilauncher PRIVATE VCMIQT_STATIC)
 endif()
 
-target_link_libraries(vcmilauncher vcmi vcmiqt Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
+target_link_libraries(vcmilauncher vcmi vcmiqt Qt${QT_VERSION_MAJOR}::Widgets)
 target_include_directories(vcmilauncher
 	PUBLIC	${CMAKE_CURRENT_SOURCE_DIR}
 )

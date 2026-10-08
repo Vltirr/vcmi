@@ -18,7 +18,7 @@
 /// Which bonuses of a bearer a script is asking about. Every field left out widens the answer, so
 /// an empty filter asks for all of them. Anything the fields below cannot express is for the script
 /// to sort out over the bonuses this returns.
-struct DLL_LINKAGE BonusFilter final : public scripting::ApiSerializable<BonusFilter>
+struct BonusFilter final : public scripting::ApiSerializable<BonusFilter>
 {
 	static constexpr std::string_view luaName = "BonusFilter";
 	static constexpr std::string_view luaDescription =
@@ -32,7 +32,7 @@ struct DLL_LINKAGE BonusFilter final : public scripting::ApiSerializable<BonusFi
 	/// names. Meaningless without a type, since the type is what decides what a subtype is.
 	std::optional<std::string> subtype;
 	std::optional<BonusSource> sourceType;
-	/// Kind of blow the bonus has to count for, rather than the effect range it carries: a bonus
+	/// Kind of attack the bonus has to count for, rather than the effect range it carries: a bonus
 	/// limited to the other kind is left out, one limited to neither always counts. Asked this way
 	/// because "counts in melee" is two effect ranges at once, and splitting it into two queries
 	/// would add their values up instead of combining them as the engine does.
@@ -44,7 +44,7 @@ struct DLL_LINKAGE BonusFilter final : public scripting::ApiSerializable<BonusFi
 		s("type", type, "Bonus type to look for, by its json key.");
 		s("subtype", subtype, "Subtype to look for, by its json key. Requires a type.");
 		s("sourceType", sourceType, "Where the bonus has to come from - an artifact, a spell effect, ...");
-		s("shooting", shooting, "Kind of blow the bonus has to count for - pass the `shooting` flag of the attack. Bonuses limited to the other kind are left out, those limited to neither always count.");
+		s("shooting", shooting, "Kind of attack the bonus has to count for - pass the `shooting` flag of the attack. Bonuses limited to the other kind are left out, those limited to neither always count.");
 	}
 
 	/// Selector matching what this filter describes, and the string the bonus system caches its

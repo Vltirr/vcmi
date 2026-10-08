@@ -46,13 +46,24 @@ public:
 	bool attemptCastingSpell(const CStack * stack);
 	bool canCastSpell();
 	std::optional<PossibleSpellcast> findBestCreatureSpell(const CStack * stack);
-	BattleAction goTowardsNearest(const CStack * stack, const BattleHexArray & hexes, const PotentialTargets & targets);
+	BattleAction goTowardsNearest(
+		const CStack * stack,
+		const BattleHexArray & movementTargets,
+		const PotentialTargets & potentialTargets,
+		const BattleHexArray & finalDestinationHexes);
 	std::vector<BattleHex> getBrokenWallMoatHexes() const;
 	bool hasWorkingTowers() const;
 	std::string findAttackAbility(const CStack * stack, const battle::Unit * target) const;
-	void evaluateCreatureSpellcast(const CStack * stack, PossibleSpellcast & ps); //for offensive damaging spells only
+	void evaluateCreatureSpellcast(const CStack * stack, PossibleSpellcast & ps);
+	/// Value that bonuses of a simulated cast add to our army and take away from the enemy. Health that
+	/// the same cast changed is scored separately, so only what the bonuses are worth is counted here
+	float scoreBonusEffects(const battle::Units & units, const DamageCache & cache) const;
 	void print(const std::string & text) const;
-	BattleAction moveOrAttack(const CStack * stack, const BattleHex & hex, const PotentialTargets & targets);
+	BattleAction moveOrAttack(
+		const CStack * stack,
+		const BattleHex & movementTarget,
+		const PotentialTargets & potentialTargets,
+		const BattleHexArray & allowedAttackOrigins = {});
 
 	BattleEvaluator(
 		std::shared_ptr<Environment> env,

@@ -17,8 +17,8 @@
 #include "../GameInstance.h"
 #include "../gui/WindowHandler.h"
 #include "../gui/Shortcut.h"
-#include "../media/IMusicPlayer.h"
-#include "../media/ISoundPlayer.h"
+#include "media/IMusicPlayer.h"
+#include "media/ISoundPlayer.h"
 #include "../widgets/Buttons.h"
 #include "../widgets/CTextInput.h"
 #include "../widgets/Images.h"
@@ -26,8 +26,8 @@
 #include "../widgets/VideoWidget.h"
 #include "../windows/InfoWindows.h"
 #include "../widgets/TextControls.h"
-#include "../render/Canvas.h"
-#include "../render/IRenderHandler.h"
+#include "render/Canvas.h"
+#include "render/IRenderHandler.h"
 
 #include "../../lib/texts/CGeneralTextHandler.h"
 #include "../../lib/texts/TextOperations.h"
@@ -210,7 +210,7 @@ CHighScoreInputScreen::CHighScoreInputScreen(bool won, HighScoreCalculation calc
 	OBJECT_CONSTRUCTION;
 	pos = center(Rect(0, 0, 800, 600));
 
-	background = std::make_shared<TransparentFilledRectangle>(Rect(0, 0, pos.w, pos.h), Colors::BLACK);
+	backgroundRect = std::make_shared<TransparentFilledRectangle>(Rect(0, 0, pos.w, pos.h), Colors::BLACK);
 
 	if(won)
 	{
