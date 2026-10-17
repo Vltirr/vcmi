@@ -57,6 +57,7 @@
 
 #include <vcmi/scripting/MapEventDispatcher.h>
 #include "../lib/gameState/QuestInfo.h"
+#include "../lib/gameState/SaveMetadata.h"
 #include "../lib/gameState/UpgradeInfo.h"
 
 #include "../lib/mapping/CMap.h"
@@ -84,8 +85,10 @@
 
 #include "../lib/rmg/CMapGenOptions.h"
 
-#include "../lib/serializer/CSaveFile.h"
+#include "../lib/serializer/CLegacyLoadFile.h"
 #include "../lib/serializer/CLoadFile.h"
+#include "../lib/serializer/CMemorySerializer.h"
+#include "../lib/serializer/CSaveFile.h"
 
 #include "../lib/spells/CSpell.h"
 
@@ -528,7 +531,7 @@ void CGameHandler::init(StartInfo *si, Load::ProgressAccumulator & progressTrack
 void CGameHandler::setPortalDwelling(const CGTownInstance * town, bool forced=false, bool clear = false)
 {// bool forced = true - if creature should be replaced, if false - only if no creature was set
 
-	const PlayerState * p = gameInfo().getPlayerState(town->tempOwner);
+	const PlayerState * p = gameInfo().tryGetPlayerState(town->tempOwner);
 	if (!p)
 	{
 		assert(town->tempOwner == PlayerColor::NEUTRAL);
@@ -732,7 +735,7 @@ void CGameHandler::giveSpells(const CGTownInstance *t, const CGHeroInstance *h)
 
 bool CGameHandler::removeObject(const CGObjectInstance * obj, const PlayerColor & initiator)
 {
-	if (!obj || !gameInfo().getObj(obj->id))
+	if (!obj || !gameInfo().tryGetObj(obj->id))
 	{
 		logGlobal->error("Something wrong, that object already has been removed or hasn't existed!");
 		return false;
@@ -1768,10 +1771,18 @@ void CGameHandler::save(const std::string & filename, PlayerColor playerToNotify
 
 	try
 	{
-		CSaveFile save;
-		gameState().saveGame(save);
+		CMemorySerializer header;
+		gameState().saveHeader(header.oser);
+
+		CMemorySerializer game;
+		gameState().saveGame(game.oser);
 		logGlobal->info("Saving server state");
-		save.save(*this);
+		game.oser & *this;
+
+		CSaveFile save;
+		save.addChunk(SaveFileFormat::CHUNK_METADATA, SaveMetadata::create(gameState()).toBytes());
+		save.addChunk(SaveFileFormat::CHUNK_HEADER, header.extractBuffer());
+		save.addChunk(SaveFileFormat::CHUNK_GAMESTATE, game.extractBuffer());
 		const auto saveFile = *CResourceHandler::get("local")->getResourceName(savePath);
 		save.write(saveFile);
 
@@ -1801,12 +1812,34 @@ void CGameHandler::load(const StartInfo &info)
 {
 	logGlobal->info("Loading from %s", info.mapname);
 
-	CLoadFile lf(*CResourceHandler::get()->getResourceName(ResourcePath(info.mapname, EResType::SAVEGAME)), gs.get());
+	const auto saveFileName = CResourceHandler::get()->getResourceName(ResourcePath(info.mapname, EResType::SAVEGAME));
+	if(!saveFileName)
+		throw std::runtime_error("Error: saved game '" + info.mapname + "' not found!");
+
+	const auto & saveFile = *saveFileName;
 	gs = std::make_shared<CGameState>();
 	randomizer = std::make_unique<GameRandomizer>(*gs);
-	gs->loadGame(lf);
-	logGlobal->info("Loading server state");
-	lf.load(*this);
+
+	if(!serializationHasFeature(CLoadFile::readVersion(saveFile), ESerializationVersion::SAVE_CHUNKS))
+	{
+		CLegacyLoadFile lf(saveFile, gs.get());
+		BinaryDeserializer & game = lf.skipToGameState();
+		gs->loadGame(game);
+		logGlobal->info("Loading server state");
+		game & *this;
+	}
+	else
+	{
+		CLoadFile lf(saveFile);
+		SaveMetadata::verifyMods(SaveMetadata::parse(lf.readChunk(SaveFileFormat::CHUNK_METADATA), info.mapname));
+
+		auto game = lf.openChunk(SaveFileFormat::CHUNK_GAMESTATE, gs.get());
+		gs->loadGame(game->iser);
+		logGlobal->info("Loading server state");
+		game->iser & *this;
+		if(!game->isFullyRead())
+			throw std::runtime_error("Error: saved game '" + info.mapname + "' contains unexpected data after game state!");
+	}
 	logGlobal->info("Game has been successfully loaded!");
 
 	gs->preInit(LIBRARY);
@@ -2075,8 +2108,8 @@ bool CGameHandler::bulkSplitAndRebalanceStack(SlotID slotSrc, ObjectInstanceID s
 
 bool CGameHandler::arrangeStacks(ObjectInstanceID id1, ObjectInstanceID id2, ui8 what, SlotID p1, SlotID p2, si32 val, PlayerColor player)
 {
-	const auto * s1 = dynamic_cast<const CArmedInstance *>(gameInfo().getObj(id1));
-	const auto * s2 = dynamic_cast<const CArmedInstance *>(gameInfo().getObj(id2));
+	const auto * s1 = dynamic_cast<const CArmedInstance *>(gameInfo().tryGetObj(id1));
+	const auto * s2 = dynamic_cast<const CArmedInstance *>(gameInfo().tryGetObj(id2));
 
 	if (s1 == nullptr || s2 == nullptr)
 	{
@@ -2202,7 +2235,12 @@ bool CGameHandler::arrangeStacks(ObjectInstanceID id1, ObjectInstanceID id2, ui8
 					return false;
 			}
 
-			moveStack(sl1, sl2, countToMove);
+			// negative countToMove means creatures flow from dest to source - swap direction
+			// so RebalanceStacks always carries a positive count (and never the magic value -1)
+			if (countToMove > 0)
+				moveStack(sl1, sl2, countToMove);
+			else if (countToMove < 0)
+				moveStack(sl2, sl1, -countToMove);
 			//S2.slots[p2]->count = val;
 			//S1.slots[p1]->count = total - val;
 		}
@@ -2531,10 +2569,10 @@ bool CGameHandler::spellResearch(ObjectInstanceID tid, SpellID spellAtSlot, bool
 
 bool CGameHandler::recruitCreatures(ObjectInstanceID objid, ObjectInstanceID dstid, CreatureID crid, int32_t cram, int32_t fromLvl, PlayerColor player)
 {
-	const auto * dwelling = dynamic_cast<const CGDwelling *>(gameInfo().getObj(objid));
-	const auto * town = dynamic_cast<const CGTownInstance *>(gameInfo().getObj(objid));
-	const auto * army = dynamic_cast<const CArmedInstance *>(gameInfo().getObj(dstid));
-	const auto * hero = dynamic_cast<const CGHeroInstance *>(gameInfo().getObj(dstid));
+	const auto * dwelling = dynamic_cast<const CGDwelling *>(gameInfo().tryGetObj(objid));
+	const auto * town = dynamic_cast<const CGTownInstance *>(gameInfo().tryGetObj(objid));
+	const auto * army = dynamic_cast<const CArmedInstance *>(gameInfo().tryGetObj(dstid));
+	const auto * hero = dynamic_cast<const CGHeroInstance *>(gameInfo().tryGetObj(dstid));
 	const auto * c = crid.toCreature();
 
 	const bool warMachine = c->warMachine != ArtifactID::NONE;
@@ -3074,7 +3112,7 @@ bool CGameHandler::switchArtifactsCostume(const PlayerColor & player, const Obje
 {
 	const auto * artSet = gameState().getArtSet(heroID);
 	COMPLAIN_RET_FALSE_IF(artSet == nullptr, "switchArtifactsCostume: wrong hero's ID");
-	const auto * playerState = gameInfo().getPlayerState(player);
+	const auto * playerState = gameInfo().tryGetPlayerState(player);
 	COMPLAIN_RET_FALSE_IF(playerState == nullptr, "switchArtifactsCostume: wrong player");
 
 	if(auto costume = playerState->costumesArtifacts.find(costumeIdx); costume != playerState->costumesArtifacts.end())
@@ -3265,6 +3303,9 @@ bool CGameHandler::buyArtifact(const IMarket *m, const CGHeroInstance *h, GameRe
 	if (gameInfo().getResource(h->tempOwner, rid) < b1)
 		COMPLAIN_RET("You can't afford to buy this artifact!");
 
+	if(!aid.toArtifact()->canBePutAt(h))
+		COMPLAIN_RET("Hero has no slot for this artifact!");
+
 	giveResource(h->tempOwner, rid, -b1);
 
 	SetAvailableArtifacts saa;
@@ -3435,7 +3476,7 @@ bool CGameHandler::transformInUndead(const IMarket *market, const CGHeroInstance
 
 bool CGameHandler::sendResources(ui32 val, PlayerColor player, GameResID r1, PlayerColor r2)
 {
-	const PlayerState *p2 = gameInfo().getPlayerState(r2, false);
+	const PlayerState *p2 = gameInfo().tryGetPlayerState(r2);
 	if (!p2  ||  p2->status != EPlayerStatus::INGAME)
 	{
 		complain("Dest player must be in game!");
@@ -3636,8 +3677,8 @@ bool CGameHandler::isAllowedExchange(PlayerColor player, ObjectInstanceID id1, O
 	if (id1 == id2)
 		return true;
 
-	const CGObjectInstance *o1 = gameInfo().getObj(id1);
-	const CGObjectInstance *o2 = gameInfo().getObj(id2);
+	const CGObjectInstance *o1 = gameInfo().tryGetObj(id1);
+	const CGObjectInstance *o2 = gameInfo().tryGetObj(id2);
 	if (!o1 || !o2)
 		return true; //arranging stacks within an object should be always allowed
 
@@ -3695,7 +3736,7 @@ void CGameHandler::objectVisited(const CGObjectInstance * visitedObject, const C
 
 		if(visitedTown)
 		{
-			const bool isEnemy = visitedHero->getOwner() != h->getOwner();
+			const bool isEnemy = gameInfo().getPlayerRelations(visitedHero->getOwner(), h->getOwner()) == PlayerRelations::ENEMIES;
 
 			if(isEnemy && !visitedTown->isBattleOutsideTown(visitedHero))
 				visitedObject = visitedTown;
@@ -3752,7 +3793,7 @@ void CGameHandler::checkVictoryLossConditions(const std::set<PlayerColor> & play
 {
 	for (auto playerColor : playerColors)
 	{
-		if (gameInfo().getPlayerState(playerColor, false))
+		if (gameInfo().tryGetPlayerState(playerColor))
 			checkVictoryLossConditionsForPlayer(playerColor);
 	}
 }
@@ -3769,7 +3810,7 @@ void CGameHandler::checkVictoryLossConditionsForAll()
 
 void CGameHandler::checkVictoryLossConditionsForPlayer(PlayerColor player)
 {
-	const PlayerState * p = gameInfo().getPlayerState(player);
+	const PlayerState * p = gameInfo().tryGetPlayerState(player);
 
 	if(!p || p->status != EPlayerStatus::INGAME)
 		return;
@@ -4302,8 +4343,12 @@ bool CGameHandler::giveHeroNewArtifact(
 	if(pos == ArtifactPosition::FIRST_AVAILABLE)
 	{
 		na.pos = ArtifactUtils::getArtAnyPosition(h, artType->getId());
+		// e.g. rewarded war machine that hero already has - lost, like grail in battle loot
 		if(!artType->canBePutAt(h, na.pos))
-			COMPLAIN_RET("Cannot put artifact in that slot!");
+		{
+			logGlobal->debug("Hero %s has no slot for artifact %s, artifact is lost", h->getNameTextID(), artType->getJsonKey());
+			return false;
+		}
 	}
 	else if(ArtifactUtils::isSlotBackpack(pos))
 	{

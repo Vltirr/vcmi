@@ -118,11 +118,6 @@ Services * BattleTestFixture::gameServices()
 	return LIBRARY;
 }
 
-void BattleTestFixture::configurePlayer(PlayerSettings & settings) const
-{
-	settings.bonus = PlayerStartingBonus::GOLD; // no random starting artifact
-}
-
 void BattleTestFixture::startGame()
 {
 	const CreatureID token(0);
@@ -347,6 +342,19 @@ void BattleTestFixture::addMoat(const BattleHex & hex)
 	obstacle.nativeVisible = false;
 	obstacle.trigger = spellByName("core:castleMoatTrigger");
 	obstacle.minimalDamage = 70;
+
+	addObstacle(obstacle);
+}
+
+void BattleTestFixture::addForceField(const BattleHex & hex)
+{
+	SpellCreatedObstacle obstacle;
+	obstacle.ID = SpellID(SpellID::FORCE_FIELD).getNum();
+	obstacle.obstacleType = CObstacleInstance::SPELL_CREATED;
+	obstacle.pos = hex;
+	obstacle.customSize.insert(hex);
+	obstacle.casterSide = BattleSide::DEFENDER;
+	obstacle.passable = false;
 
 	addObstacle(obstacle);
 }

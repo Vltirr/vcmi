@@ -504,7 +504,7 @@ CStackWindow::ButtonsSection::ButtonsSection(CStackWindow * owner, int yOffset)
 		stackWindow->switchButtons[stackWindow->activeTab]->disable();
 	}
 
-	exit = std::make_shared<CButton>(Point(382, 5), AnimationPath::builtin("hsbtns.def"), LIBRARY->generaltexth->zelp[447], [this](){ stackWindow->submitSelection(); }, EShortcut::GLOBAL_RETURN);
+	exit = std::make_shared<CButton>(Point(382, 5), AnimationPath::builtin("hsbtns.def"), LIBRARY->generaltexth->zelp[447], [this](){ stackWindow->submitSelection(); }, stackWindow->closeShortcut);
 }
 
 CStackWindow::CommanderMainSection::CommanderMainSection(CStackWindow * owner, int yOffset)
@@ -852,9 +852,10 @@ void CStackWindow::MainSection::addStatLabel(EStat index, int64_t value)
 	addStatLabel(index, value, value);
 }
 
-CStackWindow::CStackWindow(const CStack * stack, bool popup)
+CStackWindow::CStackWindow(const CStack * stack, bool popup, EShortcut closeShortcut)
 	: CWindowObject(BORDERED | (popup ? RCLICK_POPUP : 0)),
-	info(std::make_unique<UnitView>())
+	info(std::make_unique<UnitView>()),
+	closeShortcut(closeShortcut)
 {
 	info->stack = stack;
 	info->stackNode = stack->base;

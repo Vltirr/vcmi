@@ -57,7 +57,6 @@
 #include "../mapping/CMap.h"
 #include "../mapping/CMapEditManager.h"
 #include "../mapping/CMapService.h"
-#include "../modding/ActiveModsInSaveList.h"
 #include "../modding/IdentifierStorage.h"
 #include "../modding/ModScope.h"
 #include "../networkPacks/NetPacksBase.h"
@@ -65,8 +64,6 @@
 #include "../pathfinder/PathfinderOptions.h"
 #include "../rmg/CMapGenerator.h"
 #include "../serializer/CMemorySerializer.h"
-#include "../serializer/CLoadFile.h"
-#include "../serializer/CSaveFile.h"
 #include "../spells/CSpell.h"
 #include "UpgradeInfo.h"
 #include "mapObjects/CGPandoraBox.h"
@@ -1566,13 +1563,13 @@ bool CGameState::checkForStandardLoss(const PlayerColor & player) const
 
 void CGameState::markObjectControlled(PlayerColor player, ObjectInstanceID id)
 {
-	if(auto * playerState = getPlayerState(player))
+	if(auto * playerState = tryGetPlayerState(player))
 		playerState->markObjectControlled(id);
 }
 
 bool CGameState::hasEverControlled(PlayerColor player, ObjectInstanceID id) const
 {
-	const auto * playerState = getPlayerState(player);
+	const auto * playerState = tryGetPlayerState(player);
 	return playerState && playerState->hasEverControlled(id);
 }
 
@@ -1809,14 +1806,16 @@ CArtifactInstance * CGameState::createArtifact(const ArtifactID & artID, const S
 	return map->createArtifact(artID, spellId);
 }
 
-void CGameState::saveGame(CSaveFile & file) const
+void CGameState::saveHeader(BinarySerializer & h) const
 {
-	ActiveModsInSaveList activeModsDummy;
+	h & *getMapHeader();
+	h & *getStartInfo();
+}
+
+void CGameState::saveGame(BinarySerializer & h) const
+{
 	logGlobal->info("Saving game state");
-	file.save(*getMapHeader());
-	file.save(*getStartInfo());
-	file.save(activeModsDummy);
-	file.save(*this);
+	h & *this;
 }
 
 std::vector<std::byte> CGameState::saveToMemory()
@@ -1848,18 +1847,10 @@ void CGameState::loadFromMemory(std::vector<std::byte> data, ESerializationVersi
 	serializer.iser & *this;
 }
 
-void CGameState::loadGame(CLoadFile & file)
+void CGameState::loadGame(BinaryDeserializer & h)
 {
 	logGlobal->info("Loading game state...");
-
-	CMapHeader dummyHeader;
-	ActiveModsInSaveList dummyActiveMods;
-
-	file.load(dummyHeader);
-	StartInfo dummyStartInfo;
-	file.load(dummyStartInfo);
-	file.load(dummyActiveMods);
-	file.load(*this);
+	h & *this;
 
 	// Runtime-only object, not serialized; rebuild from the loaded script source.
 	mapEventDispatcher = LIBRARY->scripts()->createMapScriptDispatcher(*this, false);

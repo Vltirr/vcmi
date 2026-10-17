@@ -247,6 +247,7 @@ void BattleStacksController::setActiveStack(const CStack *stack)
 
 	activeStack = stack;
 	owner.actionsController->cancelMoveAndShootSelection();
+	owner.fieldController->activeStackChanged();
 
 	if (activeStack) // update UI
 		stackAnimation[activeStack->unitId()]->setBorderColor(AnimationControls::getGoldBorder());

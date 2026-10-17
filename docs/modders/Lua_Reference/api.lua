@@ -1098,9 +1098,8 @@ function Game:getHero(objectID) end
 
 ---Returns the map object by its identifier, or nil if not found.
 ---@param objectID integer # Map object identifier of the object to fetch.
----@param verbose boolean # Pass true to log a warning when the object isn't found.
 ---@return MapObject
-function Game:getObj(objectID, verbose) end
+function Game:getObj(objectID) end
 
 ---Returns the amount of the given resource owned by the player.
 ---@param player integer # Player whose treasury is queried.
@@ -1228,6 +1227,14 @@ function HeroInstance:getPrimarySkill(skill) end
 ---@param skill integer # Secondary skill JSON key.
 ---@return integer # Mastery level (0 = none, 1 = basic, 2 = advanced, 3 = expert).
 function HeroInstance:getSecondarySkill(skill) end
+
+---Returns the hero type (Orrin, Kyrre, Astral...) of this hero.
+---@return HeroType # Type of the hero, comparable with the result of Services:getHeroTypeByName.
+function HeroInstance:getHeroType() end
+
+---Returns the hero class of this hero.
+---@return HeroClass # Class of the hero, comparable with the result of Services:getHeroClassByName.
+function HeroInstance:getHeroClass() end
 
 ---Returns whether the hero owns the given artifact, either as equipped or in the backpack.
 ---@param artifact integer # Artifact JSON key.
@@ -1638,6 +1645,10 @@ function TownInstance:getOwner() end
 ---@return Building[] # Every building standing in this town.
 function TownInstance:getBuildings() end
 
+---Returns the faction (Castle, Rampart, Tower...) of this town.
+---@return Faction # Faction of the town, comparable with the result of Services:getFactionByName.
+function TownInstance:getFaction() end
+
 ---Represents a creature stack participating in the current battle. Provides access to the live combat state — position, owner, current health, applied bonuses, ability checks. To stage modifications, copy into a UnitState, edit it, then commit via server.
 ---@class Unit
 local Unit = {}
@@ -1722,6 +1733,10 @@ function Unit:hasAbsoluteImmunity(spell) end
 ---True if the stack was summoned during battle (e.g. by Summon Elementals).
 ---@return boolean
 function Unit:isSummoned() end
+
+---True if the stack is a hero's commander.
+---@return boolean
+function Unit:isCommander() end
 
 ---True if the stack is a living creature - not undead, not a golem-like non-living unit.
 ---@return boolean

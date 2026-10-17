@@ -213,11 +213,16 @@ int CGHeroInstance::movementPointsLimit() const
 static int getMovementSpeed(const CStackInstance & stack)
 {
 	// artifact speed bonuses (e.g. Ring of the Wayfarer) only apply in battle
+	// so do general hero specialties (e.g. Sir Mullich), only creature-specific specialties have effect on adventure map
 	static const CSelector selector = Selector::type()(BonusType::STACKS_SPEED)
 		.And(Selector::sourceTypeSel(BonusSource::ARTIFACT).Not())
-		.And(Selector::sourceTypeSel(BonusSource::ARTIFACT_INSTANCE).Not());
+		.And(Selector::sourceTypeSel(BonusSource::ARTIFACT_INSTANCE).Not())
+		.And([](const Bonus * bonus)
+		{
+			return bonus->source != BonusSource::HERO_SPECIAL || bonus->limiter != nullptr;
+		});
 
-	return stack.valOfBonuses(selector, "type_STACKS_SPEED_noArtifacts");
+	return stack.valOfBonuses(selector, "type_STACKS_SPEED_noArtifactsNoGeneralSpecialty");
 }
 
 int CGHeroInstance::getLowestCreatureSpeed() const
@@ -813,12 +818,12 @@ bool CGHeroInstance::compareCampaignValue(const CGHeroInstance * left, const CGH
 
 	uint32_t leftLevel = left->level;
 	uint64_t leftExperience = left->exp;
-	uint32_t leftPrimary = left->getPrimSkillLevel(PrimarySkill::ATTACK) + left->getPrimSkillLevel(PrimarySkill::DEFENSE) + left->getPrimSkillLevel(PrimarySkill::SPELL_POWER) + left->getPrimSkillLevel(PrimarySkill::DEFENSE);
+	uint32_t leftPrimary = left->getPrimSkillLevel(PrimarySkill::ATTACK) + left->getPrimSkillLevel(PrimarySkill::DEFENSE) + left->getPrimSkillLevel(PrimarySkill::SPELL_POWER) + left->getPrimSkillLevel(PrimarySkill::KNOWLEDGE);
 	uint32_t leftPrimaryAndLevel = leftPrimary + leftLevel;
 
 	uint32_t rightLevel = right->level;
 	uint64_t rightExperience = right->exp;
-	uint32_t rightPrimary = right->getPrimSkillLevel(PrimarySkill::ATTACK) + right->getPrimSkillLevel(PrimarySkill::DEFENSE) + right->getPrimSkillLevel(PrimarySkill::SPELL_POWER) + right->getPrimSkillLevel(PrimarySkill::DEFENSE);
+	uint32_t rightPrimary = right->getPrimSkillLevel(PrimarySkill::ATTACK) + right->getPrimSkillLevel(PrimarySkill::DEFENSE) + right->getPrimSkillLevel(PrimarySkill::SPELL_POWER) + right->getPrimSkillLevel(PrimarySkill::KNOWLEDGE);
 	uint32_t rightPrimaryAndLevel = rightPrimary + rightLevel;
 
 	if (leftPrimaryAndLevel != rightPrimaryAndLevel)
@@ -1928,15 +1933,17 @@ bool CGHeroInstance::isMissionCritical() const
 
 void CGHeroInstance::fillUpgradeInfo(UpgradeInfo & info, const CStackInstance & stack) const
 {
-	TConstBonusListPtr lista = stack.getBonusesOfType(BonusType::SPECIAL_UPGRADE, BonusSubtypeID(stack.getId()));
-	for(const auto & it : *lista)
+	TConstBonusListPtr upgrades = stack.getBonusesOfType(BonusType::SPECIAL_UPGRADE);
+	for (const auto & bonus : *upgrades)
 	{
-		if (it->parameters)
+		if (bonus->parameters &&
+			(bonus->subtype == BonusSubtypeID(stack.getId()) ||
+			(bonus->subtype == BonusSubtypeID() && bonus->limiter)))
 		{
-			auto nid = it->parameters->toCreature();
-			if (nid != stack.getId()) //in very specific case the upgrade is available by default (?)
+			auto upgradeID = bonus->parameters->toCreature();
+			if(upgradeID != stack.getId()) //in very specific case the upgrade is available by default (?)
 				// SPECIAL_UPGRADE value adjusts the default 100% cost; clamp the final modifier to 0%.
-				info.addUpgrade(nid, stack.getType(), std::max(0, 100 + it->val));
+				info.addUpgrade(upgradeID, stack.getType(), std::max(0, 100 + bonus->val));
 		}
 	}
 }

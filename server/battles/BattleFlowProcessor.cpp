@@ -32,6 +32,13 @@
 
 #include <vstd/RNG.h>
 
+static BonusParametersEnchanter enchanterParameters(const Bonus & bonus)
+{
+	if(!bonus.parameters)
+		return {};
+	return bonus.parameters->toEnchanter();
+}
+
 BattleFlowProcessor::BattleFlowProcessor(BattleProcessor * owner, CGameHandler * newGameHandler)
 	: owner(owner)
 	, gameHandler(newGameHandler)
@@ -207,6 +214,13 @@ void BattleFlowProcessor::activateNextStack(const CBattleInfoCallback & battle)
 		{
 			// No stacks to move - start next round
 			startNextRound(battle, false);
+
+			// round start triggers (e.g. damage-over-time combat scripts) may have killed the last
+			// units of a side - end the battle now instead of giving a turn to a surviving stack
+			// (or throwing below, if both sides were wiped out)
+			if (owner->checkBattleStateChanges(battle))
+				return;
+
 			next = getNextStack(battle);
 			if (!next)
 				throw std::runtime_error("Failed to find valid stack to act!");
@@ -921,11 +935,17 @@ bool BattleFlowProcessor::activateEnchanter(const CBattleInfoCallback & battle, 
 	bool cast = false;
 	while(!bonuses.empty() && !cast)
 	{
-		auto bonus = *RandomGeneratorUtil::nextItem(bonuses, gameHandler->getRandomGenerator());
+		std::vector<int> weights;
+		for(const auto & candidate : bonuses)
+			weights.push_back(enchanterParameters(*candidate).weight);
+		const auto selectedIndex = RandomGeneratorUtil::nextItemWeighted(weights, gameHandler->getRandomGenerator());
+		if(selectedIndex < 0)
+			break;
+		auto bonus = bonuses[selectedIndex];
 		bonuses.remove_if([&bonus](const Bonus * item) { return item == bonus.get(); });
 
 		const bool hasGenericCooldown = bonus->activation && bonus->activation->cooldown;
-		if(!hasGenericCooldown && battle.battleGetEnchanterCounter(stack->unitSide()) != 0 && bonus->parameters && bonus->parameters->toNumber() != 0)
+		if(!hasGenericCooldown && battle.battleGetEnchanterCounter(stack->unitSide()) != 0 && enchanterParameters(*bonus).cooldown != 0)
 			continue;
 
 		const CSpell * spell = bonus->subtype.as<SpellID>().toSpell();
@@ -937,7 +957,7 @@ bool BattleFlowProcessor::activateEnchanter(const CBattleInfoCallback & battle, 
 		if(parameters.castIfPossible(gameHandler->spellcastEnvironment(), spells::Target(1, parameters.forceMassive ? spells::Destination() : spells::Destination(stack))))
 		{
 			cast = true;
-			int cooldown = bonus->parameters ? bonus->parameters->toNumber() : 0;
+			int cooldown = enchanterParameters(*bonus).cooldown;
 			if(!hasGenericCooldown && cooldown != 0)
 			{
 				BattleSetStackProperty property;

@@ -55,10 +55,23 @@ struct BonusParametersOnCombatEvent
 	}
 };
 
+struct BonusParametersEnchanter
+{
+	int32_t cooldown = 0;
+	int32_t weight = 1;
+
+	template <class H>
+	void serialize(H& h)
+	{
+		h & cooldown;
+		h & weight;
+	}
+};
+
 class BonusParameters final : public Serializeable
 {
 public:
-	using storage_type = std::variant<int32_t, CreatureID, SpellID, std::vector<int32_t>, BonusParametersOnCombatEvent, JsonNode, bool>;
+	using storage_type = std::variant<int32_t, CreatureID, SpellID, std::vector<int32_t>, BonusParametersOnCombatEvent, JsonNode, bool, BonusParametersEnchanter>;
 
 	BonusParameters() = default;
 
@@ -88,6 +101,14 @@ public:
 	const std::vector<int32_t> & toVector() const
 	{
 		return toCustom<std::vector<int32_t>>();
+	}
+
+	BonusParametersEnchanter toEnchanter() const
+	{
+		// Legacy saves store only the cooldown; all spells had equal weight.
+		if(const auto * cooldown = std::get_if<int32_t>(&data_))
+			return {*cooldown, 1};
+		return toCustom<BonusParametersEnchanter>();
 	}
 
 	bool isVector() const

@@ -365,7 +365,7 @@ void Quest::serializeJson(JsonSerializeFormat & handler)
 	handler.serializeBool("repeatedQuest", repeatedQuest, false);
 
 	handler.serializeInt("timeLimit", lastDay, -1);
-	handler.serializeString("questGiverName", questGiverNameTextID);
+	handler.serializeString("timeoutText", timeoutTextID);
 	handler.serializeStruct("limiter", mission);
 
 	// kill quests have a single target; kept as a scalar "killTarget" key for map
@@ -388,6 +388,7 @@ void Quest::serializeJson(JsonSerializeFormat & handler)
 		if(missionType == "PrimaryStat")
 		{
 			auto primarySkills = handler.enterStruct("primarySkills");
+			mission.primary.resize(GameConstants::PRIMARY_SKILLS); // limiter without "primary" key leaves it empty
 			for(int i = 0; i < GameConstants::PRIMARY_SKILLS; ++i)
 				handler.serializeInt(NPrimarySkill::names[i], mission.primary[i], 0);
 		}
@@ -523,7 +524,7 @@ QuestInfo QuestSource::getQuestIdentity() const
 bool QuestSource::hasQuestInLog(PlayerColor player) const
 {
 	const QuestInfo identity = getQuestIdentity();
-	if(const auto * ps = cb->getPlayerState(player, false))
+	if(const auto * ps = cb->tryGetPlayerState(player))
 		for(const auto & qi : ps->quests)
 			if(qi == identity)
 				return true;
@@ -532,7 +533,7 @@ bool QuestSource::hasQuestInLog(PlayerColor player) const
 
 bool QuestSource::isVisibleFor(PlayerColor player) const
 {
-	if(const auto * ps = cb->getPlayerState(player, false))
+	if(const auto * ps = cb->tryGetPlayerState(player))
 	{
 		const QuestInfo identity = getQuestIdentity();
 		for(const auto & qi : ps->quests)
@@ -564,7 +565,7 @@ void SeerHut::setObjToKill()
 		if(q.mission.destroyedObjects.empty())
 			continue;
 
-		const CGObjectInstance * target = cb->getObj(q.mission.destroyedObjects.front());
+		const CGObjectInstance * target = cb->tryGetObj(q.mission.destroyedObjects.front());
 		if(const auto * creature = dynamic_cast<const CGCreature *>(target))
 		{
 			q.stackToKill = creature->getCreatureID();
@@ -588,23 +589,18 @@ void QuestSource::resolveRequiredHero(const CMap & map)
 		if(q.missionKind != EQuestMission::HERO || q.mission.heroes.size() != 1)
 			continue;
 
-		for(const auto * hero : map.getObjects<CGHeroInstance>())
+		if(const auto * hero = map.getHero(q.mission.heroes.front()))
 		{
-			if(hero->getHeroTypeID() == q.mission.heroes.front())
-			{
-				q.heroNameTextID = hero->getNameTextID();
-				q.heroPortrait = hero->getPortraitSource();
-				break;
-			}
+			q.heroNameTextID = hero->getNameTextID();
+			q.heroPortrait = hero->getPortraitSource();
 		}
 	}
 }
 
 void SeerHut::init(vstd::RNG & rand)
 {
-	auto names = LIBRARY->generaltexth->findStringsWithPrefix("core.seerhut.names");
-
-	seerNameTextID = *RandomGeneratorUtil::nextItem(names, rand);
+	if(seerNameTextID.empty())
+		seerNameTextID = TextIdentifier("core.seerhut.names", rand.nextInt(GameConstants::SEER_HUT_NAMES - 1)).get();
 
 	bool h3BugTakesArmy = cb->getSettings().getBoolean(EGameSettings::MAP_OBJECTS_H3_BUG_QUEST_TAKES_ENTIRE_ARMY);
 	for(const auto & q : allQuests())
@@ -683,13 +679,7 @@ void QuestSource::defineDefaultTexts(Quest & q)
 
 std::string SeerHut::getQuestGiverName() const
 {
-	if(seerNameTextID.empty()) // quest guards have no seer of their own
-		return {};
-
-	if(!isEmpty() && !getQuest().questGiverNameTextID.empty())
-		return getQuest().questGiverNameTextID;
-
-	return seerNameTextID;
+	return seerNameTextID; // empty for quest guards, which have no seer of their own
 }
 
 void SeerHut::setSeerName(CMap & map, const std::string & newName)
@@ -882,6 +872,7 @@ void SeerHut::serializeJsonOptions(JsonSerializeFormat & handler)
 
 	//quest and reward
 	CRewardableObject::serializeJsonOptions(handler);
+	handler.serializeString("seerName", seerNameTextID);
 
 	bool oldVersion = false;
 	{

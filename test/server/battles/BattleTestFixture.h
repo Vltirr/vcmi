@@ -118,6 +118,7 @@ public:
 	void addQuicksand(const BattleHex & hex);
 	/// Castle moat, which stops a unit that walks into it and damages a unit that acts inside it.
 	void addMoat(const BattleHex & hex);
+	void addForceField(const BattleHex & hex);
 
 	/// Takes health from the stack, killing it when the damage covers all it has.
 	void injure(const CStack * stack, int64_t damage);
@@ -153,7 +154,6 @@ public:
 protected:
 	/// A battle runs real game logic, which the mocked services cannot answer.
 	Services * gameServices() override;
-	void configurePlayer(PlayerSettings & settings) const override;
 
 private:
 	static void makeNeutral(CGHeroInstance * hero);

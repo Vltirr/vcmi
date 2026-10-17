@@ -13,6 +13,7 @@
 #include "../../lib/filesystem/ResourcePath.h"
 #include "../widgets/MiscWidgets.h"
 #include "CWindowObject.h"
+#include "../gui/Shortcut.h"
 
 class CCommanderInstance;
 class CStackInstance;
@@ -176,6 +177,7 @@ class CStackWindow : public CWindowObject
 
 
 	std::unique_ptr<UnitView> info;
+	EShortcut closeShortcut = EShortcut::GLOBAL_RETURN;
 	std::unique_ptr<CStackInstance> fakeNode;
 	std::vector<BonusInfo> activeBonuses;
 	size_t activeTab;
@@ -211,7 +213,7 @@ class CStackWindow : public CWindowObject
 
 public:
 	// for battles
-	CStackWindow(const CStack * stack, bool popup);
+	CStackWindow(const CStack * stack, bool popup, EShortcut closeShortcut = EShortcut::GLOBAL_RETURN);
 
 	// for non-existing stacks, e.g. recruit screen
 	CStackWindow(const CCreature * creature, bool popup);

@@ -136,7 +136,10 @@ void ReplayLog::recordPack(CPackForClient & pack, CGameState & gs)
 				turn.lastPack = static_cast<uint32_t>(chapters.back().packs.size());
 				continuingTurns.push_back(turn.player);
 			}
-	if(chapters.empty() || newTurn != nullptr || formatChanged)
+	const bool beforeFirstDay = !chapters.empty() && chapters.back().day == 0;
+	if(newTurn && beforeFirstDay && !formatChanged)
+		chapters.back().day = newTurn->day;
+	else if(chapters.empty() || newTurn || formatChanged)
 		beginDay(newTurn ? newTurn->day : gs.day, gs.saveToMemory());
 	if(formatChanged && !newTurn)
 		for(const auto player : continuingTurns)

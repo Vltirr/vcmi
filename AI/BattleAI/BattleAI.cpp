@@ -58,7 +58,7 @@ void CBattleAI::initBattleInterface(std::shared_ptr<Environment> ENV, std::share
 {
 	env = ENV;
 	cb = CB;
-	playerID = *CB->getPlayerID();
+	playerID = CB->getPlayerID().value();
 	movesSkippedByDefense = 0;
 
 	logHexNumbers();

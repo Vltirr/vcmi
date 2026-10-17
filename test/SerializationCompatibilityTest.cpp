@@ -7,6 +7,7 @@
 #include "StdInc.h"
 
 #include "../lib/battle/SideInBattle.h"
+#include "../lib/bonuses/BonusParameters.h"
 #include "../lib/gameState/ReplayLog.h"
 #include "../lib/networkPacks/PacksForClientBattle.h"
 #include "../lib/serializer/CMemorySerializer.h"
@@ -109,4 +110,41 @@ TEST(SerializationCompatibilityTest, refusesUnsupportedEmbeddedReplayFormat)
 	memory.oser & source;
 	ReplayChapter restored;
 	EXPECT_THROW(memory.iser & restored, std::runtime_error);
+}
+
+TEST(SerializationCompatibilityTest, acceptedForkReplayRetainsItsFormatAfterUpgrade)
+{
+	const auto acceptedVersion = forkVersion(ESerializationVersion::HOTA_HERO_LEVEL_OPTIONS, 8);
+	ReplayChapter original;
+	original.version = acceptedVersion;
+	original.day = 4;
+	original.gamestateSnapshot = {std::byte{1}, std::byte{2}};
+	original.packs = {{std::byte{3}}};
+	CMemorySerializer oldSave;
+	oldSave.oser.version = acceptedVersion;
+	oldSave.iser.version = acceptedVersion;
+	oldSave.oser & original;
+	ReplayChapter imported;
+	oldSave.iser & imported;
+
+	CMemorySerializer upgradedSave;
+	upgradedSave.oser & imported;
+	ReplayChapter restored;
+	upgradedSave.iser & restored;
+	EXPECT_EQ(restored.version, acceptedVersion);
+	EXPECT_EQ(restored.gamestateSnapshot, original.gamestateSnapshot);
+	EXPECT_EQ(restored.packs, original.packs);
+}
+
+TEST(SerializationCompatibilityTest, legacyEnchanterKeepsCooldownAndEqualWeight)
+{
+	CMemorySerializer memory;
+	memory.oser.version = forkVersion(ESerializationVersion::HOTA_HERO_LEVEL_OPTIONS, 8);
+	memory.iser.version = memory.oser.version;
+	BonusParameters original(int32_t{3});
+	memory.oser & original;
+	BonusParameters restored;
+	memory.iser & restored;
+	EXPECT_EQ(restored.toEnchanter().cooldown, 3);
+	EXPECT_EQ(restored.toEnchanter().weight, 1);
 }

@@ -79,6 +79,19 @@ static bool colorsSimilar (const SDL_Color & lhs, const SDL_Color & rhs)
 	return std::abs(diffR) < threshold && std::abs(diffG) < threshold && std::abs(diffB) < threshold && std::abs(diffA) < threshold;
 }
 
+/// Shadow and overlay layers of images without palette (e.g. 32-bit mod sprites) have nothing to hide the body with,
+/// so the body is drawn only by the body layer. Indexed images hide it through the palette and need the draw
+static bool drawsOnlyExtraLayers(EImageBlitMode layer, const SDL_Palette * palette)
+{
+	if(palette)
+		return false;
+
+	return layer == EImageBlitMode::ONLY_SHADOW_HIDE_FLAG_COLOR
+		|| layer == EImageBlitMode::ONLY_SHADOW_HIDE_SELECTION
+		|| layer == EImageBlitMode::ONLY_FLAG_COLOR
+		|| layer == EImageBlitMode::ONLY_SELECTION;
+}
+
 ScalableImageParameters::ScalableImageParameters(const SDL_Palette * originalPalette, EImageBlitMode blitMode)
 {
 	if (originalPalette)
@@ -308,6 +321,8 @@ bool ScalableImageShared::forEachLayer(int scalingFactor, const ScalableImagePar
 		loadScaledImages(scalingFactor, parameters.player);
 	}
 
+	const bool extraLayersOnly = drawsOnlyExtraLayers(locator.layer, parameters.palette);
+
 	const auto & pick = [&](FlippedImages & images) -> const ImageType &
 	{
 		return mirrorWhileDrawing ? images[0] : selectFlipped(images, parameters);
@@ -330,6 +345,9 @@ bool ScalableImageShared::forEachLayer(int scalingFactor, const ScalableImagePar
 		// upscaling is still running - the 1x image is stretched to stand in for it
 		RenderHandler::notifyPlaceholderDrawn();
 
+		if(extraLayersOnly)
+			return true;
+
 		bool drawn = drawScaled(pick(scaled[1].body), bodyColorMultiplier(*pick(scaled[1].body)), parameters.alphaValue, flip);
 
 		if (parameters.effectColorMultiplier.a != ColorRGBA::ALPHA_TRANSPARENT)
@@ -351,7 +369,7 @@ bool ScalableImageShared::forEachLayer(int scalingFactor, const ScalableImagePar
 	}
 	else
 	{
-		if (variant.body.at(0))
+		if (variant.body.at(0) && !extraLayersOnly)
 			drawn = drawNative(pick(variant.body), bodyColorMultiplier(*pick(variant.body)), parameters.alphaValue, flip) && drawn;
 
 		if (variant.bodyGrayscale.at(0) && parameters.effectColorMultiplier.a != ColorRGBA::ALPHA_TRANSPARENT)
@@ -396,8 +414,16 @@ bool ScalableImageShared::drawTexture(SDL_Renderer * renderer, const Point & des
 		});
 }
 
+void ScalableImageShared::setPermanent()
+{
+	permanent = true;
+}
+
 void ScalableImageShared::releaseMemory()
 {
+	if(permanent)
+		return;
+
 	// The source at scale 1 stays: everything else is generated from it, and dropping it would
 	// turn a rebuild into a file decode. The rest - upscales, mirrored copies, player colours,
 	// grayscale - is what actually weighs, and it can all be made again.
@@ -647,6 +673,9 @@ std::shared_ptr<const ISharedImage> ScalableImageShared::loadOrGenerateImage(EIm
 	// if all else fails - use base (presumably, indexed) image and convert it to desired form
 	if (color != PlayerColor::CANNOT_DETERMINE && parameters.palette)
 		parameters.playerColored(color);
+
+	if (drawsOnlyExtraLayers(mode, parameters.palette))
+		return nullptr;
 
 	if (upscalingSource)
 		return upscalingSource->scaleInteger(scalingFactor, parameters.palette, mode);

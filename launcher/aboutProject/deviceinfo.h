@@ -1,5 +1,5 @@
 /*
- * ControllerPromptFamily.h, part of VCMI engine
+ * deviceinfo.h, part of VCMI engine
  *
  * Authors: listed in file AUTHORS in main folder
  *
@@ -7,17 +7,12 @@
  * Full text of license available in license.txt file, in main folder
  *
  */
-
 #pragma once
 
-namespace ControllerPrompt
-{
+#include "../StdInc.h"
 
-enum class Family
+class DeviceInfo final
 {
-	UNKNOWN,
-	PLAYSTATION,
-	XBOX
+public:
+	static QString generateReport();
 };
-
-}
