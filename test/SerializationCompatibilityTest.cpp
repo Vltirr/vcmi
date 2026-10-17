@@ -8,6 +8,7 @@
 
 #include "../lib/battle/SideInBattle.h"
 #include "../lib/bonuses/BonusParameters.h"
+#include "../lib/bonuses/Propagators.h"
 #include "../lib/gameState/ReplayLog.h"
 #include "../lib/networkPacks/PacksForClientBattle.h"
 #include "../lib/serializer/CMemorySerializer.h"
