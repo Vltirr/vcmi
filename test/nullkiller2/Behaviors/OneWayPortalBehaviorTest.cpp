@@ -9,6 +9,8 @@
 
 #include "StdInc.h"
 
+#include <shared_mutex>
+
 #include "AI/Nullkiller2/Behaviors/ExplorationBehavior.h"
 
 #include "mock/TinyH3MBuilder.h"
@@ -365,6 +367,8 @@ TEST_F(Nullkiller2_Behaviors_OneWayPortal, entranceIsReachableButCannotBeUsedAsC
 
 TEST_F(Nullkiller2_Behaviors_OneWayPortal, exhaustedPortalRouteRetainsReservationAndLocksHero)
 {
+	// Direct AI calls require the game-state read lock held by AIGateway::makeTurn.
+	std::shared_lock stateLock(CGameState::mutex);
 	start(makeOneWayPortalMap({100}));
 
 	auto * hero = mainHero();
@@ -427,6 +431,8 @@ TEST_F(Nullkiller2_Behaviors_OneWayPortal, soleNoTownMissionCriticalHeroCanUseOn
 
 TEST_F(Nullkiller2_Behaviors_OneWayPortal, mainClearsEntranceGuard)
 {
+	// Direct AI calls require the game-state read lock held by AIGateway::makeTurn.
+	std::shared_lock stateLock(CGameState::mutex);
 	auto builder = makeOneWayPortalMap({500, 1});
 	builder.monster(ENTRANCE_GUARD, CreatureID::ARCHER, 1);
 	start(std::move(builder));
@@ -620,6 +626,8 @@ TEST_F(Nullkiller2_Behaviors_OneWayPortal, busyMainDoesNotProbeWhileScoutIsUnava
 
 TEST_F(Nullkiller2_Behaviors_OneWayPortal, landedHeroStepsOffExit)
 {
+	// Direct AI calls require the game-state read lock held by AIGateway::makeTurn.
+	std::shared_lock stateLock(CGameState::mutex);
 	start(makeOneWayPortalMap({500, 1}));
 
 	auto * landedScout = scout();

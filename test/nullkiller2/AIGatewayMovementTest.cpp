@@ -8,6 +8,8 @@
  */
 #include "StdInc.h"
 
+#include <shared_mutex>
+
 #include "mock/TinyH3MBuilder.h"
 #include "nullkiller2/NullkillerTest.h"
 #include "nullkiller2/ScriptedMovementClient.h"
@@ -64,6 +66,8 @@ protected:
 
 TEST_F(Nullkiller2_AIGateway, stopsRouteWhenMoveConsumesLastMovementPoint)
 {
+	// Direct AI calls require the game-state read lock held by AIGateway::makeTurn.
+	std::shared_lock stateLock(CGameState::mutex);
 	startGame();
 	client->drainMovement(0);
 
@@ -77,6 +81,8 @@ TEST_F(Nullkiller2_AIGateway, stopsRouteWhenMoveConsumesLastMovementPoint)
 
 TEST_F(Nullkiller2_AIGateway, stopsRouteWhenMoveLeavesFewerMovementPointsThanPlanned)
 {
+	// Direct AI calls require the game-state read lock held by AIGateway::makeTurn.
+	std::shared_lock stateLock(CGameState::mutex);
 	startGame();
 	client->drainMovement(1);
 
@@ -87,6 +93,8 @@ TEST_F(Nullkiller2_AIGateway, stopsRouteWhenMoveLeavesFewerMovementPointsThanPla
 
 TEST_F(Nullkiller2_AIGateway, stopsRouteWhenStepBecomesMoreExpensiveThanPlanned)
 {
+	// Direct AI calls require the game-state read lock held by AIGateway::makeTurn.
+	std::shared_lock stateLock(CGameState::mutex);
 	const HeroTypeID fortressHero(112);
 	const CreatureID gnoll(98);
 
@@ -119,6 +127,8 @@ TEST_F(Nullkiller2_AIGateway, stopsRouteWhenStepBecomesMoreExpensiveThanPlanned)
 
 TEST_F(Nullkiller2_AIGateway, throwsAndStopsRouteAfterFailedMovePacket)
 {
+	// Direct AI calls require the game-state read lock held by AIGateway::makeTurn.
+	std::shared_lock stateLock(CGameState::mutex);
 	startGame();
 	client->failMovement();
 
@@ -131,6 +141,8 @@ TEST_F(Nullkiller2_AIGateway, throwsAndStopsRouteAfterFailedMovePacket)
 
 TEST_F(Nullkiller2_AIGateway, reportsUnreachableTileAsBlocked)
 {
+	// Direct AI calls require the game-state read lock held by AIGateway::makeTurn.
+	std::shared_lock stateLock(CGameState::mutex);
 	startGame();
 
 	EXPECT_EQ(moveHeroTo(UNREACHABLE_TILE), NK2AI::HeroMovementResult::BLOCKED);

@@ -105,12 +105,16 @@ TEST_F(SaveFileTest, unsupportedVersionsAreReported)
 {
 	auto content = readSaveFile();
 
-	content[4] = 1;
-	content[5] = 0;
+	const auto setVersion = [&content](int32_t version)
+	{
+		for(size_t i = 0; i < sizeof(version); ++i)
+			content[SaveFileFormat::FILE_MAGIC.size() + i] = static_cast<char>((static_cast<uint32_t>(version) >> (8 * i)) & 0xff);
+	};
+	setVersion(static_cast<int32_t>(ESerializationVersion::MINIMAL) - 1);
 	writeSaveFile(content);
 	EXPECT_THROW(CLoadFile::readVersion(saveFile), SaveTooOldException);
 
-	content[6] = 1;
+	setVersion(static_cast<int32_t>(ESerializationVersion::UPSTREAM_CURRENT) + 1);
 	writeSaveFile(content);
 	try
 	{

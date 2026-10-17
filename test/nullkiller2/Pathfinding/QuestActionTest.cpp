@@ -8,6 +8,8 @@
  */
 #include "StdInc.h"
 
+#include <shared_mutex>
+
 #include "AI/Nullkiller2/Engine/Nullkiller.h"
 #include "AI/Nullkiller2/Goals/ExecuteHeroChain.h"
 #include "AI/Nullkiller2/Pathfinding/AIPathfinder.h"
@@ -102,6 +104,8 @@ public:
 
 TEST_F(Nullkiller2_Pathfinding_QuestAction, addsInitialVisitBeforeCrossingUnopenedGate)
 {
+	// Direct AI calls require the game-state read lock held by AIGateway::makeTurn.
+	std::shared_lock stateLock(CGameState::mutex);
 	startWithMap(makeGateMap());
 	revealMapAndEncloseHero();
 

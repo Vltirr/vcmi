@@ -8,6 +8,8 @@
  */
 #include "StdInc.h"
 
+#include <shared_mutex>
+
 #include "AI/Nullkiller2/AIGateway.h"
 #include "AI/Nullkiller2/Goals/ExecuteHeroChain.h"
 
@@ -67,6 +69,8 @@ protected:
 
 TEST_F(ExecuteHeroChainMovementTest, blockingVisitOnRouteStopsChainForReplanning)
 {
+	// Direct AI calls require the game-state read lock held by AIGateway::makeTurn.
+	std::shared_lock stateLock(CGameState::mutex);
 	startGame();
 	revealMap(PLAYER);
 
@@ -121,6 +125,8 @@ TEST_F(ExecuteHeroChainMovementTest, repeatedIdleChainFailsForReplanning)
 
 TEST_F(ExecuteHeroChainMovementTest, multiTurnNodeLocksHeroWithoutMovementPoints)
 {
+	// Direct AI calls require the game-state read lock held by AIGateway::makeTurn.
+	std::shared_lock stateLock(CGameState::mutex);
 	startGame();
 	revealMap(PLAYER);
 

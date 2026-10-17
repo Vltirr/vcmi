@@ -8,6 +8,8 @@
  */
 #include "StdInc.h"
 
+#include <shared_mutex>
+
 #include "AI/Nullkiller2/AIGateway.h"
 #include "AI/Nullkiller2/Behaviors/GatherArmyBehavior.h"
 #include "AI/Nullkiller2/Engine/Nullkiller.h"
@@ -80,6 +82,8 @@ protected:
 
 TEST_F(Nullkiller2_Behaviors_GatherArmyBehavior, upgradesPikemenCarriedByGarrisonHero)
 {
+	// Direct AI calls require the game-state read lock held by AIGateway::makeTurn.
+	std::shared_lock stateLock(CGameState::mutex);
 	startWithMap(makeGarrisonUpgradeMap());
 
 	auto * hero = findHeroByOwner(PLAYER);
