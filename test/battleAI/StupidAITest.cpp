@@ -12,6 +12,10 @@
 #include "../server/battles/BattleTestFixture.h"
 
 #include "../../AI/StupidAI/StupidAI.h"
+#ifdef ENABLE_BATTLE_AI
+#include "../../AI/BattleAI/BattleAI.h"
+#endif
+#include "../../lib/mapObjects/CGHeroInstance.h"
 #include "../../lib/battle/BattleAction.h"
 #include "../../lib/battle/BattleInfo.h"
 #include "../../lib/battle/CPlayerBattleCallback.h"
@@ -82,5 +86,81 @@ TEST_F(StupidAITest, PrefersMobileTargetWithoutDistancePenalty)
 		shooter, action.target[0].hexValue, fullDamage->getPosition(), true));
 	EXPECT_EQ(shooter->getPosition(), BattleHex(origin));
 }
+
+#ifdef ENABLE_BATTLE_AI
+enum class ReturningAbilityScenario
+{
+	ENCHANTER_WITH_ENEMY_HERO,
+	ENCHANTER_WITHOUT_ENEMY_HERO,
+	DRAIN_WITH_ENEMY_MANA,
+	DRAIN_WITHOUT_ENEMY_MANA,
+	DRAIN_WITHOUT_ENEMY_HERO
+};
+
+class ReturningAbilityAITest : public StupidAITest, public ::testing::WithParamInterface<std::tuple<bool, ReturningAbilityScenario>>
+{
+};
+
+TEST_P(ReturningAbilityAITest, UsesVisibleHeroInfoToSelectCreatureAbilities)
+{
+	const auto [useBattleAI, scenario] = GetParam();
+	const bool enchanter = scenario == ReturningAbilityScenario::ENCHANTER_WITH_ENEMY_HERO
+		|| scenario == ReturningAbilityScenario::ENCHANTER_WITHOUT_ENEMY_HERO;
+	const bool enemyHasHero = scenario != ReturningAbilityScenario::ENCHANTER_WITHOUT_ENEMY_HERO
+		&& scenario != ReturningAbilityScenario::DRAIN_WITHOUT_ENEMY_HERO;
+	const bool enemyHasMana = scenario == ReturningAbilityScenario::DRAIN_WITH_ENEMY_MANA;
+	defenderSideHero->mana = enemyHasMana ? 10 : 0;
+	if(!enemyHasHero)
+		battle()->sides[BattleSide::DEFENDER].heroID = ObjectInstanceID::NONE;
+
+	auto * stack = addStack(BattleSide::ATTACKER, creatureByName("core:pikeman"), BattleHex(leftHex), 10);
+	addStack(BattleSide::DEFENDER, creatureByName("core:pikeman"), BattleHex(rightHex), 10);
+	auto bonus = std::make_shared<Bonus>(BonusDuration::PERMANENT,
+		enchanter ? BonusType::ENCHANTER : BonusType::MANA_DRAIN, BonusSource::CREATURE_ABILITY,
+		enchanter ? 3 : 5, BonusSourceID(), enchanter ? BonusSubtypeID(SpellID(SpellID::BLOODLUST)) : BonusSubtypeID());
+	bonus->activation = Activation{
+		.id = "vcmi-test:returningAbility",
+		.costs = {.focus = 0},
+		.turn = ActivationTurn{.returnsControl = true}
+	};
+	stack->addNewBonus(bonus);
+	beginCombat();
+	battle()->activeStack = stack->unitId();
+	auto callback = std::make_shared<ActionRecordingCallback>();
+	callback->onBattleStarted(battle());
+	ASSERT_EQ(callback->getBattle(BattleID(0))->battleGetMySide(), BattleSide::ATTACKER);
+	std::optional<BattleAction> selected;
+	if(useBattleAI)
+	{
+		CBattleAI ai;
+		ai.initBattleInterface(gameHandler, callback);
+		selected = ai.useReturningCreatureAbility(BattleID(0), stack);
+	}
+	else
+	{
+		CStupidAI ai;
+		ai.initBattleInterface(gameHandler, callback);
+		ai.activeStack(BattleID(0), stack);
+		ASSERT_EQ(callback->actions.size(), 1);
+		if(callback->actions.front().actionType == EActionType::CREATURE_ABILITY)
+			selected = callback->actions.front();
+	}
+	const bool shouldActivate = enchanter || (enemyHasHero && enemyHasMana);
+	ASSERT_EQ(selected.has_value(), shouldActivate);
+	if(selected)
+	{
+		EXPECT_EQ(selected->actionType, EActionType::CREATURE_ABILITY);
+		EXPECT_EQ(selected->activatedAbility, bonus->activation->id);
+	}
+}
+
+INSTANTIATE_TEST_SUITE_P(PlayerPerspective, ReturningAbilityAITest,
+	::testing::Combine(::testing::Bool(), ::testing::Values(
+		ReturningAbilityScenario::ENCHANTER_WITH_ENEMY_HERO,
+		ReturningAbilityScenario::ENCHANTER_WITHOUT_ENEMY_HERO,
+		ReturningAbilityScenario::DRAIN_WITH_ENEMY_MANA,
+		ReturningAbilityScenario::DRAIN_WITHOUT_ENEMY_MANA,
+		ReturningAbilityScenario::DRAIN_WITHOUT_ENEMY_HERO)));
+#endif
 
 }

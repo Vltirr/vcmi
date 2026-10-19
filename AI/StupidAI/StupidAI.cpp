@@ -17,6 +17,7 @@
 #include "../../lib/battle/BattleInfo.h"
 #include "../../lib/battle/CPlayerBattleCallback.h"
 #include "../../lib/callback/CBattleCallback.h"
+#include "../../lib/gameState/InfoAboutArmy.h"
 #include "../../lib/mapObjects/CGHeroInstance.h"
 #include "../../lib/bonuses/Bonus.h"
 #include "../../lib/CRandomGenerator.h"
@@ -129,9 +130,12 @@ static std::optional<BattleAction> findReturningCreatureAbility(const std::share
 			continue;
 		if(bonus->type == BonusType::ENCHANTER && !bonus->activation->cooldown && battle->battleGetEnchanterCounter(stack->unitSide()) != 0)
 			continue;
-		const auto * opponentHero = battle->battleGetFightingHero(battle->otherSide(stack->unitSide()));
-		if(bonus->type == BonusType::MANA_DRAIN && (!opponentHero || opponentHero->mana == 0))
-			continue;
+		if(bonus->type == BonusType::MANA_DRAIN)
+		{
+			const auto opponentHero = battle->battleGetHeroInfo(battle->otherSide(stack->unitSide()));
+			if(!opponentHero.details || opponentHero.details->mana == 0)
+				continue;
+		}
 		return BattleAction::makeCreatureAbility(stack, bonus->activation->id);
 	}
 	return std::nullopt;
