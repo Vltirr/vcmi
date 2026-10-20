@@ -203,6 +203,16 @@ Restores specific amount of mana points for affected heroes on new turn
 
 - val: amount of spell points to restore
 
+With `settings.heroes.naturalManaRegenerationUsesKnowledge` enabled, heroes replace their `HERO_BASE_SKILL` mana regeneration of value type `BASE_NUMBER` with nonnegative effective Knowledge; other sources, including Mysticism, remain additive. Modifiers of other value types still apply. This game setting defaults to `false` and does not change the comparison with percentage regeneration or full recovery in a Mage Guild.
+
+```json
+"settings": {
+    "heroes": {
+        "naturalManaRegenerationUsesKnowledge": true
+    }
+}
+```
+
 ### MANA_PERCENTAGE_REGENERATION
 
 Restores specific percentage of mana pool for affected heroes on new turn. If hero has both MANA_REGENERATION and MANA_PERCENTAGE_REGENERATION, only bonus that gives more mana points will be active
