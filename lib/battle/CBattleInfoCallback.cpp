@@ -25,6 +25,7 @@
 #include "../callback/CallbackDefines.h"
 #include "../entities/building/TownFortifications.h"
 #include "../GameLibrary.h"
+#include "../gameState/InfoAboutArmy.h"
 #include "../combatScripts/IDamageCalculatorScript.h"
 #include "../scripting/ScriptService.h"
 #include "../spells/ObstacleCasterProxy.h"
