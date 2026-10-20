@@ -17,6 +17,7 @@
 #endif
 #include "../../lib/mapObjects/CGHeroInstance.h"
 #include "../../lib/battle/BattleAction.h"
+#include "../../lib/battle/PossiblePlayerBattleAction.h"
 #include "../../lib/battle/BattleInfo.h"
 #include "../../lib/battle/CPlayerBattleCallback.h"
 #include "../../lib/bonuses/BonusCustomTypes.h"
@@ -139,6 +140,13 @@ TEST_P(ReturningAbilityAITest, UsesVisibleHeroInfoToSelectCreatureAbilities)
 	auto callback = std::make_shared<ActionRecordingCallback>();
 	callback->onBattleStarted(battle());
 	ASSERT_EQ(callback->getBattle(BattleID(0))->battleGetMySide(), BattleSide::ATTACKER);
+	const bool shouldActivate = enchanter || (enemyHasHero && enemyHasMana);
+	const auto actions = callback->getBattle(BattleID(0))->getClientActionsForStack(stack, BattleClientInterfaceData{});
+	const bool offersAbility = std::ranges::any_of(actions, [&bonus](const auto & action)
+	{
+		return action.get() == PossiblePlayerBattleAction::CREATURE_ABILITY && action.ability() == bonus->activation->id;
+	});
+	EXPECT_EQ(offersAbility, shouldActivate);
 	std::optional<BattleAction> selected;
 	if(useBattleAI)
 	{
@@ -155,7 +163,6 @@ TEST_P(ReturningAbilityAITest, UsesVisibleHeroInfoToSelectCreatureAbilities)
 		if(callback->actions.front().actionType == EActionType::CREATURE_ABILITY)
 			selected = callback->actions.front();
 	}
-	const bool shouldActivate = enchanter || (enemyHasHero && enemyHasMana);
 	ASSERT_EQ(selected.has_value(), shouldActivate);
 	if(selected)
 	{

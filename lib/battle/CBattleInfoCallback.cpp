@@ -374,9 +374,12 @@ std::vector<PossiblePlayerBattleAction> CBattleInfoCallback::getClientActionsFor
 		{
 			if(bonus->type == BonusType::ENCHANTER && !bonus->activation->cooldown && battleGetEnchanterCounter(stack->unitSide()) != 0)
 				continue;
-			const auto * opponentHero = battleGetFightingHero(otherSide(stack->unitSide()));
-			if(bonus->type == BonusType::MANA_DRAIN && (!opponentHero || opponentHero->mana == 0))
-				continue;
+			if(bonus->type == BonusType::MANA_DRAIN)
+			{
+				const auto opponentHero = battleGetHeroInfo(otherSide(stack->unitSide()));
+				if(!opponentHero.details || opponentHero.details->mana == 0)
+					continue;
+			}
 			PossiblePlayerBattleAction action(PossiblePlayerBattleAction::CREATURE_ABILITY, bonus->activation->id, bonus);
 			configureActivation(action, EActionType::CREATURE_ABILITY);
 			allowedActionList.push_back(action);
