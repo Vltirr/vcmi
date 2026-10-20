@@ -519,6 +519,26 @@
 						"focus": 3
 					}
 				}
+			},
+			"castsBloodlust": {
+				"activation": {
+					"id": "focus-5:enchanterSpell",
+					"turn": { "returnsControl": true },
+					"cooldown": { "scope": "side", "initial": 1, "afterUse": 3 },
+					"costs": {
+						"focus": 3
+					}
+				}
+			},
+			"castsCure": {
+				"activation": {
+					"id": "focus-5:enchanterSpell",
+					"turn": { "returnsControl": true },
+					"cooldown": { "scope": "side", "initial": 1, "afterUse": 3 },
+					"costs": {
+						"focus": 3
+					}
+				}
 			}
 		}
 	},
