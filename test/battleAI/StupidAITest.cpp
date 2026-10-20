@@ -97,8 +97,20 @@ enum class ReturningAbilityScenario
 	DRAIN_WITHOUT_ENEMY_HERO
 };
 
-class ReturningAbilityAITest : public StupidAITest, public ::testing::WithParamInterface<std::tuple<bool, ReturningAbilityScenario>>
+class ReturningAbilityAITest : public BattleTestFixture, public ::testing::WithParamInterface<std::tuple<bool, ReturningAbilityScenario>>
 {
+public:
+	void SetUp() override
+	{
+		BattleTestFixture::SetUp();
+		startGame();
+		const auto scenario = std::get<1>(GetParam());
+		if(scenario == ReturningAbilityScenario::ENCHANTER_WITHOUT_ENEMY_HERO
+			|| scenario == ReturningAbilityScenario::DRAIN_WITHOUT_ENEMY_HERO)
+			setupBattle({attackerSideHero, nullptr}, {attackerSideHero, defenderSideHero}, nullptr, ETerrainId::SAND);
+		else
+			startBattle();
+	}
 };
 
 TEST_P(ReturningAbilityAITest, UsesVisibleHeroInfoToSelectCreatureAbilities)
@@ -110,8 +122,6 @@ TEST_P(ReturningAbilityAITest, UsesVisibleHeroInfoToSelectCreatureAbilities)
 		&& scenario != ReturningAbilityScenario::DRAIN_WITHOUT_ENEMY_HERO;
 	const bool enemyHasMana = scenario == ReturningAbilityScenario::DRAIN_WITH_ENEMY_MANA;
 	defenderSideHero->mana = enemyHasMana ? 10 : 0;
-	if(!enemyHasHero)
-		battle()->sides[BattleSide::DEFENDER].heroID = ObjectInstanceID::NONE;
 
 	auto * stack = addStack(BattleSide::ATTACKER, creatureByName("core:pikeman"), BattleHex(leftHex), 10);
 	addStack(BattleSide::DEFENDER, creatureByName("core:pikeman"), BattleHex(rightHex), 10);
