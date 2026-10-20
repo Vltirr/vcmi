@@ -1185,10 +1185,25 @@ int CGHeroInstance::getSightRadius() const
 si32 CGHeroInstance::manaRegain() const
 {
 	int percentageRegeneration = valOfBonuses(BonusType::MANA_PERCENTAGE_REGENERATION);
-	int regeneratedByPercentage = manaLimit() * percentageRegeneration / 100;
+	int64_t regeneratedByPercentage = static_cast<int64_t>(manaLimit()) * percentageRegeneration / 100;
 	int regeneratedByValue = valOfBonuses(BonusType::MANA_REGENERATION);
+	if(cb->getSettings().getBoolean(EGameSettings::HEROES_NATURAL_MANA_REGENERATION_USES_KNOWLEDGE))
+	{
+		auto extraRegeneration = getBonuses(Selector::type()(BonusType::MANA_REGENERATION)
+			.And(Selector::sourceTypeSel(BonusSource::HERO_BASE_SKILL)
+				.And(Selector::valueType(BonusValueType::BASE_NUMBER)).Not()));
+		BonusList regeneration = *extraRegeneration;
+		// Keep the base source so source-specific percentage modifiers still apply.
+		auto base = std::make_shared<Bonus>(BonusDuration::PERMANENT, BonusType::MANA_REGENERATION,
+			BonusSource::HERO_BASE_SKILL, std::max(0, getPrimSkillLevel(PrimarySkill::KNOWLEDGE)), BonusSourceID(id));
+		base->valType = BonusValueType::BASE_NUMBER;
+		regeneration.push_back(base);
+		regeneration.stackBonuses();
+		regeneratedByValue = regeneration.totalValue();
+	}
 
-	return std::max(regeneratedByValue, regeneratedByPercentage);
+	return static_cast<si32>(std::clamp<int64_t>(std::max<int64_t>(regeneratedByValue, regeneratedByPercentage),
+		std::numeric_limits<si32>::min(), std::numeric_limits<si32>::max()));
 }
 
 si32 CGHeroInstance::getManaNewTurn() const
@@ -1198,11 +1213,11 @@ si32 CGHeroInstance::getManaNewTurn() const
 		//if hero starts turn in town with mage guild - restore all mana
 		return std::max(mana, manaLimit());
 	}
-	si32 res = mana + manaRegain();
-	res = std::min(res, manaLimit());
-	res = std::max(res, mana);
-	res = std::max(res, 0);
-	return res;
+	int64_t res = static_cast<int64_t>(mana) + manaRegain();
+	res = std::min<int64_t>(res, manaLimit());
+	res = std::max<int64_t>(res, mana);
+	res = std::max<int64_t>(res, 0);
+	return static_cast<si32>(res);
 }
 
 // /**

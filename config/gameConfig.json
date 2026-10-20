@@ -522,6 +522,8 @@
 			"backpackSize"		: -1,
 			// if heroes are invitable in tavern
 			"tavernInvite"            : false,
+			// Replace base mana regeneration with effective Knowledge, keeping other flat bonuses additive.
+			"naturalManaRegenerationUsesKnowledge" : false,
 			// minimal primary skills for heroes
 			"minimalPrimarySkills": [ 0, 0, 1, 1],
 			// maximal primary skills for heroes. Values above this limit have no effect

@@ -82,6 +82,7 @@ const std::vector<GameSettings::SettingOption> GameSettings::settingProperties =
 		{EGameSettings::GENERAL_DAYS_PER_WEEK,                            "general",   "daysPerWeek"                          },
 		{EGameSettings::GENERAL_WEEKS_PER_MONTH,                          "general",   "weeksPerMonth"                        },
 		{EGameSettings::HEROES_BACKPACK_CAP,                              "heroes",    "backpackSize"                         },
+		{EGameSettings::HEROES_NATURAL_MANA_REGENERATION_USES_KNOWLEDGE,   "heroes",    "naturalManaRegenerationUsesKnowledge" },
 		{EGameSettings::HEROES_BASE_SCOUNTING_RANGE,                      "heroes",    "baseScoutingRange"                    },
 		{EGameSettings::HEROES_MAXIMAL_PRIMARY_SKILLS,                    "heroes",    "maximalPrimarySkills"                 },
 		{EGameSettings::HEROES_MINIMAL_PRIMARY_SKILLS,                    "heroes",    "minimalPrimarySkills"                 },
