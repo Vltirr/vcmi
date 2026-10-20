@@ -152,11 +152,12 @@ public:
 	CGHeroInstance * defenderSideHero = nullptr;
 
 protected:
+	void setupBattle(BattleSideArray<const CGHeroInstance *> heroes, BattleSideArray<const CArmedInstance *> armies, const CGTownInstance * town, TerrainId terrain);
+
 	/// A battle runs real game logic, which the mocked services cannot answer.
 	Services * gameServices() override;
 
 private:
 	static void makeNeutral(CGHeroInstance * hero);
-	void setupBattle(BattleSideArray<const CGHeroInstance *> heroes, BattleSideArray<const CArmedInstance *> armies, const CGTownInstance * town, TerrainId terrain);
 	void addObstacle(SpellCreatedObstacle & obstacle);
 };
