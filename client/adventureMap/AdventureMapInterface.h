@@ -85,6 +85,8 @@ private:
 	std::shared_ptr<TurnTimerWidget> watches;
 	std::string movementHoverSummary;
 	std::string manaHoverSummary;
+	std::shared_ptr<Canvas> hoverSummaryBackground;
+	Rect hoverSummaryArea;
 
 private:
 	EAdventureState getState() const;
@@ -145,6 +147,8 @@ protected:
 
 public:
 	AdventureMapInterface();
+	/// Restores transient hover text before the next frame updates the map or windows.
+	void restoreHoverSummary();
 
 	/// Provides access to the shortcut/action registry (callbacks + enabled states)
 	AdventureMapShortcuts & getAdventureShortcuts() const { return *shortcuts; }

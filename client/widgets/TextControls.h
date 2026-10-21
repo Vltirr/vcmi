@@ -160,6 +160,7 @@ public:
 	}
 
 	void show(Canvas & to) override;
+	void showAll(Canvas & to) override;
 	void activate() override;
 	void deactivate() override;
 

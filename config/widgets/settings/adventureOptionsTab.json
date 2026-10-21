@@ -365,7 +365,9 @@
 		},
 /////////////////////////////////////// Bottom section - VCMI Options
 		{
-			"type": "verticalLayout",
+			"type": "layout",
+			"vertical": true,
+			"dynamic": false,
 			"customType": "labelDescription",
 			"position": {"x": 45, "y": 235},
 			"distance": 26,
@@ -393,7 +395,7 @@
 					"text": "vcmi.adventureOptions.infoBarCreatureManagement.hover"
 				},
 				{
-					"text": "vcmi.adventureOptions.leftButtonDrag.hover",
+					"text": "vcmi.adventureOptions.leftButtonDrag.short",
 					"created" : "keyboardMouse"
 				},
 				{
@@ -408,13 +410,15 @@
 			"items":
 			[
 				{
-					"text": "vcmi.adventureOptions.rightButtonDrag.hover",
+					"text": "vcmi.adventureOptions.rightButtonDrag.short",
 					"created" : "keyboardMouse"
 				}
 			]
 		},
 		{
-			"type": "verticalLayout",
+			"type": "layout",
+			"vertical": true,
+			"dynamic": false,
 			"customType": "checkbox",
 			"position": {"x": 10, "y": 233},
 			"distance": 26,

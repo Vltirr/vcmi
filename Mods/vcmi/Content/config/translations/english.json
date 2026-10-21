@@ -1,7 +1,9 @@
 {
 	"vcmi.adventureMap.manaRecovery": "Recovery: {#2864c8|+%GAIN (%POTENTIAL)} · Mana: {#2864c8|%CURRENT/%MAX}",
-	"vcmi.adventureMap.manaRecoveryShort": "+%GAIN (%POTENTIAL) → %CURRENT/%MAX",
-	"vcmi.adventureMap.moveCostShort": "-%TOTAL → %REMAINING",
+	"vcmi.adventureMap.manaRecoveryShort": "+%GAIN (%POTENTIAL), %CURRENT/%MAX",
+	"vcmi.adventureMap.moveCostShort": "-%TOTAL / %REMAINING (%TURNS t)",
+	"vcmi.adventureOptions.leftButtonDrag.short": "Left-button drag",
+	"vcmi.adventureOptions.rightButtonDrag.short": "Right-button drag",
 	"vcmi.adventureOptions.forceManaInfo.hover": "Always Show Mana Recovery",
 	"vcmi.adventureOptions.forceManaInfo.help": "{Always Show Mana Recovery}\n\nShow next-day mana recovery without enabling the aura layer. Blue numbers show effective gain (potential before capacity limits) and final mana. Movement information can be shown alongside it. A compact summary follows the pointer.",
 	"vcmi.keyBindings.keyBinding.adventureToggleManaAura": "Toggle mana aura",

@@ -158,6 +158,7 @@ void AdventureMapInterface::activate()
 
 void AdventureMapInterface::deactivate()
 {
+	restoreHoverSummary();
 	CIntObject::deactivate();
 	movementHoverSummary.clear();
 	manaHoverSummary.clear();
@@ -827,33 +828,28 @@ void AdventureMapInterface::onTileHovered(const int3 &targetPosition)
 			&& pathNode->action != EPathNodeAction::BLOCKING_VISIT
 			&& pathNode->action != EPathNodeAction::TELEPORT_BLOCKING_VISIT
 			&& !(objAtTile && objAtTile->ID == Obj::TOWN && objRelations == PlayerRelations::ENEMIES);
-		if((settings["session"]["showManaAura"].Bool() || settings["gameTweaks"]["forceManaInfo"].Bool())
+		if((ENGINE->isKeyboardAltDown() || settings["session"]["showManaAura"].Bool() || settings["gameTweaks"]["forceManaInfo"].Bool())
 			&& isTargetPositionVisible && peacefulDestination
 			&& (pathNode->reachable() || targetPosition == hero->visitablePos()))
 		{
-			const auto & aura = GAME->interface()->cb->getSettings().getValue(EGameSettings::HEROES_MAGE_GUILD_MANA_AURA);
-			if(aura["enabled"].Bool())
-			{
-				const auto [finalMana, potential] = hero->getManaRecoveryAt(targetPosition);
-				MetaString text;
-				text.appendTextID("vcmi.adventureMap.manaRecovery");
-				text.replaceTokenNumber("%GAIN", finalMana - hero->mana);
-				text.replaceTokenNumber("%POTENTIAL", potential);
-				text.replaceTokenNumber("%CURRENT", finalMana);
-				text.replaceTokenNumber("%MAX", hero->manaLimit());
-				recoveryDetails = text.toString(&GAME->translator());
-				MetaString summary;
-				summary.appendTextID("vcmi.adventureMap.manaRecoveryShort");
-				summary.replaceTokenNumber("%GAIN", finalMana - hero->mana);
-				summary.replaceTokenNumber("%POTENTIAL", potential);
-				summary.replaceTokenNumber("%CURRENT", finalMana);
-				summary.replaceTokenNumber("%MAX", hero->manaLimit());
-				manaHoverSummary = summary.toString(&GAME->translator());
-			}
+			const auto [finalMana, potential] = hero->getManaRecoveryAt(targetPosition);
+			MetaString text;
+			text.appendTextID("vcmi.adventureMap.manaRecovery");
+			text.replaceTokenNumber("%GAIN", finalMana - hero->mana);
+			text.replaceTokenNumber("%POTENTIAL", potential);
+			text.replaceTokenNumber("%CURRENT", finalMana);
+			text.replaceTokenNumber("%MAX", hero->manaLimit());
+			recoveryDetails = text.toString(&GAME->translator());
+			MetaString summary;
+			summary.appendTextID("vcmi.adventureMap.manaRecoveryShort");
+			summary.replaceTokenNumber("%GAIN", finalMana - hero->mana);
+			summary.replaceTokenNumber("%POTENTIAL", potential);
+			summary.replaceTokenNumber("%CURRENT", finalMana);
+			summary.replaceTokenNumber("%MAX", hero->manaLimit());
+			manaHoverSummary = summary.toString(&GAME->translator());
 		}
 		if(!moveDetails.empty() || !recoveryDetails.empty())
-			ENGINE->statusbar()->write(!moveDetails.empty() && !recoveryDetails.empty()
-				? "{yellow|" + movementHoverSummary + "} · " + recoveryDetails : moveDetails + recoveryDetails);
+			ENGINE->statusbar()->write(moveDetails + (!moveDetails.empty() && !recoveryDetails.empty() ? "\n" : "") + recoveryDetails);
 
 		if (objAtTile && pathNode->action == EPathNodeAction::UNKNOWN)
 		{
@@ -971,21 +967,23 @@ std::string AdventureMapInterface::movementDetails(const CGHeroInstance & hero, 
 	summary.appendTextID("vcmi.adventureMap.moveCostShort");
 	summary.replaceTokenNumber("%TOTAL", totalMovementCost);
 	summary.replaceTokenNumber("%REMAINING", remainingPointsAfterMove);
+	summary.replaceTokenNumber("%TURNS", pathNode.turns);
 	movementHoverSummary = summary.toString(&GAME->translator());
 	return result.toString(&GAME->translator());
 }
 
 void AdventureMapInterface::showHoverSummary(Canvas & to)
 {
+	restoreHoverSummary();
 	const auto cursor = ENGINE->getCursorPosition();
 	const auto area = terrainAreaPixels();
 	if(!ENGINE->windows().isTopWindow(this) || !shortcuts->optionMapViewActive() || !area.isInside(cursor)
 		|| (movementHoverSummary.empty() && manaHoverSummary.empty()))
 		return;
 
-	const auto font = ENGINE->renderHandler().loadFont(FONT_MEDIUM);
-	const int rowHeight = static_cast<int>(font->getLineHeight()) + 6;
-	const int width = static_cast<int>(std::max(font->getStringWidth(movementHoverSummary), font->getStringWidth(manaHoverSummary))) + 12;
+	const auto font = ENGINE->renderHandler().loadFont(FONT_TINY);
+	const int rowHeight = static_cast<int>(font->getLineHeight()) + 2;
+	const int width = std::min(area.w, static_cast<int>(std::max(font->getStringWidth(movementHoverSummary), font->getStringWidth(manaHoverSummary))) + 2);
 	const int height = rowHeight * (!movementHoverSummary.empty() + !manaHoverSummary.empty());
 	int x = cursor.x + 24;
 	int y = cursor.y + 28;
@@ -995,17 +993,29 @@ void AdventureMapInterface::showHoverSummary(Canvas & to)
 		y = cursor.y - height - 12;
 	x = std::max(area.x, x);
 	y = std::max(area.y, y);
+	hoverSummaryArea = Rect(x, y, width, height);
+	hoverSummaryBackground = std::make_shared<Canvas>(ENGINE->screenHandler().createOffscreenCanvas(hoverSummaryArea.dimensions()));
+	Canvas source(to, hoverSummaryArea);
+	hoverSummaryBackground->draw(source, Point(0, 0));
+	CanvasClipRectGuard clip(to, hoverSummaryArea);
 	if(!movementHoverSummary.empty())
 	{
-		to.drawColorBlended(Rect(x, y, width, rowHeight), ColorRGBA(24, 16, 8, 240));
-		to.drawText(Point(x + 6, y + 3), FONT_MEDIUM, Colors::YELLOW, ETextAlignment::TOPLEFT, movementHoverSummary);
+		to.drawText(Point(x, y), FONT_TINY, Colors::YELLOW, ETextAlignment::TOPLEFT, movementHoverSummary);
 		y += rowHeight;
 	}
 	if(!manaHoverSummary.empty())
 	{
-		to.drawColorBlended(Rect(x, y, width, rowHeight), ColorRGBA(232, 220, 184, 245));
-		to.drawText(Point(x + 6, y + 3), FONT_MEDIUM, ColorRGBA(32, 80, 176), ETextAlignment::TOPLEFT, manaHoverSummary);
+		to.drawText(Point(x, y), FONT_TINY, ColorRGBA(40, 100, 200), ETextAlignment::TOPLEFT, manaHoverSummary);
 	}
+}
+
+void AdventureMapInterface::restoreHoverSummary()
+{
+	if(!hoverSummaryBackground)
+		return;
+	Canvas target = ENGINE->screenHandler().getScreenCanvas();
+	target.draw(*hoverSummaryBackground, hoverSummaryArea.topLeft());
+	hoverSummaryBackground.reset();
 }
 
 void AdventureMapInterface::onTileRightClicked(const int3 &mapPos)
@@ -1168,6 +1178,7 @@ void AdventureMapInterface::hotkeyScreenshotWholeMap()
 
 void AdventureMapInterface::onScreenResize()
 {
+	hoverSummaryBackground.reset();
 	OBJECT_CONSTRUCTION;
 
 	// remember our activation state and reactive after reconstruction

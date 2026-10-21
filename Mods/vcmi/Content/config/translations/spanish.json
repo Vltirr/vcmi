@@ -1,7 +1,9 @@
 {
 	"vcmi.adventureMap.manaRecovery": "Recuperación: {#2864c8|+%GAIN (%POTENTIAL)} · Maná: {#2864c8|%CURRENT/%MAX}",
-	"vcmi.adventureMap.manaRecoveryShort": "+%GAIN (%POTENTIAL) → %CURRENT/%MAX",
-	"vcmi.adventureMap.moveCostShort": "-%TOTAL → %REMAINING",
+	"vcmi.adventureMap.manaRecoveryShort": "+%GAIN (%POTENTIAL), %CURRENT/%MAX",
+	"vcmi.adventureMap.moveCostShort": "-%TOTAL / %REMAINING (%TURNS t)",
+	"vcmi.adventureOptions.leftButtonDrag.short": "Arrastre izquierdo",
+	"vcmi.adventureOptions.rightButtonDrag.short": "Arrastre derecho",
 	"vcmi.adventureOptions.forceManaInfo.hover": "Mostrar siempre la recuperación de maná",
 	"vcmi.adventureOptions.forceManaInfo.help": "{Mostrar siempre la recuperación de maná}\n\nMuestra la recuperación del próximo día sin activar la capa del aura. Los números azules indican ganancia efectiva (potencial antes de los límites) y saldo final. Puede mostrarse junto al movimiento. Un resumen compacto sigue al puntero.",
 	"vcmi.keyBindings.keyBinding.adventureToggleManaAura": "Mostrar aura de maná",

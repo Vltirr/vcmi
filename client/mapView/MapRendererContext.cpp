@@ -391,7 +391,7 @@ uint8_t MapRendererAdventureContext::manaAuraLevel(const int3 & position) const
 	{
 		const int distance = manaAura->distance(source, position);
 		if(distance >= 0)
-			level = std::max(level, 1 + 6 * (manaAura->radius - distance) / manaAura->radius);
+			level = std::max(level, 1 + 6 * (manaAura->radius - std::max(1, distance)) / (manaAura->radius - 1));
 	}
 	return static_cast<uint8_t>(level);
 }

@@ -564,6 +564,41 @@ void CGStatusBar::show(Canvas & to)
 	showAll(to);
 }
 
+void CGStatusBar::showAll(Canvas & to)
+{
+	if(enteringText || hoverText.find('\n') == std::string::npos)
+	{
+		CLabel::showAll(to);
+		return;
+	}
+
+	CIntObject::showAll(to);
+	std::string combined = hoverText;
+	boost::replace_all(combined, "\n", " · ");
+	const auto originalFont = font;
+	const int availableWidth = std::max(1, pos.w - 10);
+	const auto textWidth = [&]()
+	{
+		return static_cast<int>(ENGINE->renderHandler().loadFont(font)->getStringWidth(combined)) - getDelimitersWidth(font, combined);
+	};
+	if(textWidth() > availableWidth)
+		font = FONT_TINY;
+	const int width = textWidth();
+	if(width <= availableWidth)
+		blitLine(to, pos, combined);
+	else
+	{
+		const int height = static_cast<int>(ENGINE->renderHandler().loadFont(font)->getLineHeight());
+		Canvas textCanvas(Point(width, height), CanvasScalingPolicy::AUTO);
+		blitLine(textCanvas, Rect(0, 0, width, height), combined);
+		const Point scaledSize(availableWidth, std::max(1, height * availableWidth / width));
+		Canvas scaledText(scaledSize, CanvasScalingPolicy::AUTO);
+		scaledText.drawScaled(textCanvas, Point(0, 0), scaledSize);
+		to.drawTransparent(scaledText, Point(pos.x + 5, pos.y + (pos.h - scaledSize.y) / 2), 1.0);
+	}
+	font = originalFont;
+}
+
 void CGStatusBar::clickPressed(const Point & cursorPosition)
 {
 	if(GAME->interface() && GAME->interface()->cingconsole->isActive())

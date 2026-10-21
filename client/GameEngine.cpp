@@ -138,6 +138,8 @@ void GameEngine::fakeMouseMove()
 void GameEngine::updateFrame()
 {
 	std::scoped_lock interfaceLock(ENGINE->interfaceMutex);
+	if(adventureInt)
+		adventureInt->restoreHoverSummary();
 
 	// under the lock: netpacks load and re-cache the same assets from the network thread
 	renderHandler().reclaimEvictedAssets();
