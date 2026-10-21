@@ -368,6 +368,7 @@
 			"type": "verticalLayout",
 			"customType": "labelDescription",
 			"position": {"x": 45, "y": 235},
+			"distance": 26,
 			"items":
 			[
 				{
@@ -375,6 +376,9 @@
 				},
 				{
 					"text": "vcmi.adventureOptions.forceMovementInfo.hover"
+				},
+				{
+					"text": "vcmi.adventureOptions.forceManaInfo.hover"
 				},
 				{
 					"text": "vcmi.adventureOptions.skipAdventureMapAnimations.hover"
@@ -400,7 +404,7 @@
 		{
 			"type": "verticalLayout",
 			"customType": "labelDescription",
-			"position": {"x": 225, "y": 415},
+			"position": {"x": 225, "y": 417},
 			"items":
 			[
 				{
@@ -413,6 +417,7 @@
 			"type": "verticalLayout",
 			"customType": "checkbox",
 			"position": {"x": 10, "y": 233},
+			"distance": 26,
 			"items":
 			[
 				{
@@ -424,6 +429,11 @@
 					"name": "forceMovementInfoCheckbox",
 					"help": "vcmi.adventureOptions.forceMovementInfo",
 					"callback": "forceMovementInfoChanged"
+				},
+				{
+					"name": "forceManaInfoCheckbox",
+					"help": "vcmi.adventureOptions.forceManaInfo",
+					"callback": "forceManaInfoChanged"
 				},
 				{
 					"name": "skipAdventureMapAnimationsCheckbox",
@@ -461,7 +471,7 @@
 		{
 			"type": "verticalLayout",
 			"customType": "checkbox",
-			"position": {"x": 190, "y": 413},
+			"position": {"x": 190, "y": 415},
 			"items":
 			[
 				{

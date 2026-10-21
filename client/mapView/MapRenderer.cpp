@@ -764,9 +764,6 @@ MapRendererOverlay::MapRendererOverlay()
 
 void MapRendererOverlay::renderTile(IMapRendererContext & context, Canvas & target, const int3 & coordinates)
 {
-	const auto auraLevel = context.manaAuraLevel(coordinates);
-	if(auraLevel)
-		target.drawColorBlended(Rect(0, 0, 32, 32), ColorRGBA(40, 120, 255, 20 + 8 * auraLevel));
 	if(context.showGrid())
 		target.draw(imageGrid, Point(0,0));
 
@@ -1029,6 +1026,10 @@ void MapRenderer::renderTile(IMapRendererContext & context, Canvas & target, con
 
 		if(!roadsAboveGround)
 			rendererObjects.renderGround(context, target, coordinates);
+
+		const auto auraLevel = context.manaAuraLevel(coordinates);
+		if(withOverlays && auraLevel)
+			target.drawColorBlended(Rect(0, 0, 32, 32), ColorRGBA(12, 48, 180, 110 + 12 * auraLevel));
 
 		rendererObjects.renderTile(context, target, coordinates);
 		if(withOverlays)

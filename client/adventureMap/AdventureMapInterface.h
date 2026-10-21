@@ -83,6 +83,8 @@ private:
 	std::shared_ptr<AdventureMapWidget> widget;
 	std::shared_ptr<AdventureMapShortcuts> shortcuts;
 	std::shared_ptr<TurnTimerWidget> watches;
+	std::string movementHoverSummary;
+	std::string manaHoverSummary;
 
 private:
 	EAdventureState getState() const;
@@ -94,7 +96,8 @@ private:
 	/// check and if necessary reacts on scrolling by moving cursor to screen edge
 	void handleMapScrollingUpdate(uint32_t msPassed);
 
-	void showMoveDetailsInStatusbar(const CGHeroInstance & hero, const CGPathNode & pathNode);
+	std::string movementDetails(const CGHeroInstance & hero, const CGPathNode & pathNode);
+	void showHoverSummary(Canvas & to);
 
 	const CGObjectInstance *getActiveObject(const int3 &tile);
 

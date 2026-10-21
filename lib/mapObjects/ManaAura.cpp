@@ -34,7 +34,7 @@ void ManaAura::normalize(JsonNode & config)
 	integer("radius", 15, 2, 32767);
 	integer("auraEdgePct", 10, 0, 100);
 	integer("minimumNearPct", 10, 0, 100);
-	integer("minimumEdgePct", 5, 0, 100);
+	integer("minimumEdgePct", 10, 0, 100);
 	for(const auto & key : {"enabled", "mysticismSynergy"})
 	{
 		if(!config[key].isBool())

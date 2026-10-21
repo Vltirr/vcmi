@@ -150,6 +150,7 @@ void MapViewActions::gesture(bool on, const Point & initialPosition, const Point
 void MapViewActions::handleHover(const Point & cursorPosition)
 {
 	int3 tile = model->getTileAtPoint(cursorPosition - pos.topLeft());
+	adventureInt->onTileHovered(tile);
 
 	if(!context->isInMap(tile))
 	{
@@ -157,7 +158,6 @@ void MapViewActions::handleHover(const Point & cursorPosition)
 		return;
 	}
 
-	adventureInt->onTileHovered(tile);
 }
 
 void MapViewActions::hover(bool on)

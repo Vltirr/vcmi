@@ -464,7 +464,7 @@ TEST_F(MageGuildManaAuraTest, bothCurvesUseExactFractionsAndCeiling)
 	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(15)), 10);
 	hero->mana = 90;
 	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(1)), 100);
-	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(15)), 95);
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(15)), 100);
 	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(16)), 91);
 }
 
@@ -507,7 +507,7 @@ TEST_F(MageGuildManaAuraTest, synergyUsesFinalBalancesAndExpertAccumulates)
 	auto * hero = prepareAura(true);
 	hero->setSecSkillLevel(SecondarySkill::MYSTICISM, MasteryLevel::EXPERT, ChangeValueMode::ABSOLUTE);
 	hero->mana = 95;
-	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(1)), 120);
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(1)), 125);
 	hero->mana = 120;
 	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(1)), 125);
 	hero->mana = 130;
@@ -523,20 +523,20 @@ TEST_F(MageGuildManaAuraTest, artifactExtrasAndSkillFractionsStaySeparate)
 	auto * hero = prepareAura(true);
 	add(hero, BonusType::MANA_REGENERATION, 3);
 	hero->setSecSkillLevel(SecondarySkill::MYSTICISM, MasteryLevel::BASIC, ChangeValueMode::ABSOLUTE);
-	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(10)), 48);
-	hero->setSecSkillLevel(SecondarySkill::MYSTICISM, MasteryLevel::ADVANCED, ChangeValueMode::ABSOLUTE);
 	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(10)), 53);
+	hero->setSecSkillLevel(SecondarySkill::MYSTICISM, MasteryLevel::ADVANCED, ChangeValueMode::ABSOLUTE);
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(10)), 66);
 	hero->setSecSkillLevel(SecondarySkill::MYSTICISM, MasteryLevel::EXPERT, ChangeValueMode::ABSOLUTE);
-	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(10)), 63);
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(10)), 83);
 }
 
 TEST_F(MageGuildManaAuraTest, cityPreviewMatchesActualCityAndRoundedOverchargeCeiling)
 {
 	auto * hero = prepareAura(true, 5);
 	hero->setSecSkillLevel(SecondarySkill::MYSTICISM, MasteryLevel::EXPERT, ChangeValueMode::ABSOLUTE);
-	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(0)), 60);
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(0)), 63);
 	hero->setVisitedTown(findFirst<CGTownInstance>(), true);
-	EXPECT_EQ(hero->getManaNewTurn(), 60);
+	EXPECT_EQ(hero->getManaNewTurn(), 63);
 	hero->mana = 60;
 	EXPECT_EQ(hero->getManaNewTurn(), 63);
 }
@@ -568,6 +568,27 @@ TEST_F(MageGuildManaAuraTest, previewDoesNotMoveHeroOrChangeMana)
 	EXPECT_EQ(hero->mana, 0);
 }
 
+TEST_F(MageGuildManaAuraTest, flatMinimumAndPotentialDistinguishCapacityFromRecovery)
+{
+	auto * hero = prepareAura(true);
+	hero->setSecSkillLevel(SecondarySkill::MYSTICISM, MasteryLevel::EXPERT, ChangeValueMode::ABSOLUTE);
+	hero->mana = 72;
+	const auto [edgeMana, edgePotential] = hero->getManaRecoveryAt(atDistance(15));
+	EXPECT_EQ(edgeMana, 122);
+	EXPECT_EQ(edgePotential, 50);
+	const auto [outsideMana, outsidePotential] = hero->getManaRecoveryAt(atDistance(16));
+	EXPECT_EQ(outsideMana, 100);
+	EXPECT_EQ(outsidePotential, 40);
+	hero->mana = 100;
+	for(int distance : {1, 5, 10, 15})
+	{
+		const auto [finalMana, potential] = hero->getManaRecoveryAt(atDistance(distance));
+		EXPECT_EQ(finalMana, 125);
+		EXPECT_EQ(potential, 50);
+	}
+	EXPECT_EQ(hero->mana, 100);
+}
+
 #ifdef ENABLE_NULLKILLER2_AI
 TEST(ManaRestPolicy, needsLowManaAndUsableMagic)
 {
@@ -595,18 +616,18 @@ TEST_F(MageGuildManaAuraTest, newDayMatchesCurrentPositionAndSnapshotPreservesSy
 	hero->mana = 95;
 	hero->setVisitedTown(findFirst<CGTownInstance>(), false);
 	const auto id = hero->id;
-	EXPECT_EQ(hero->getManaNewTurn(), 120);
+	EXPECT_EQ(hero->getManaNewTurn(), 125);
 	auto snapshot = gameState()->saveToMemory();
 	gameState()->loadFromMemory(std::move(snapshot));
 	auto * restored = gameState()->getHero(id);
 	ASSERT_NE(restored, nullptr);
 	EXPECT_EQ(restored->mana, 95);
-	EXPECT_EQ(restored->getManaNewTurn(), 120);
+	EXPECT_EQ(restored->getManaNewTurn(), 125);
 	GameHandlerTestServer server(gameState(), PlayerColor(0));
 	CGameHandler handler(server, gameState());
 	NewTurnProcessor processor(&handler);
 	processor.onNewTurn();
-	EXPECT_EQ(restored->mana, 120);
+	EXPECT_EQ(restored->mana, 125);
 }
 
 TEST_F(MageGuildManaAuraTest, customParametersChangeBothCurvesAndRadius)
@@ -711,7 +732,7 @@ TEST_F(MageGuildManaAuraTest, specialistFractionIncludesPercentageAndFixedRecove
 	auto * hero = prepareAura(true, 5, false, HeroTypeID(HeroTypeID::decode("halon")));
 	hero->setSecSkillLevel(SecondarySkill::MYSTICISM, MasteryLevel::EXPERT, ChangeValueMode::ABSOLUTE);
 	EXPECT_EQ(hero->manaRegain(), 26);
-	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(10)), 33);
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(10)), 46);
 	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(0)), 63);
 }
 
@@ -738,9 +759,9 @@ TEST_F(MageGuildManaAuraTest, sourceModifiersApplyToMysticismAndExtrasSeparately
 	modifier->targetSourceID = BonusSourceID(SecondarySkill(SecondarySkill::MYSTICISM));
 	hero->nodeHasChanged();
 	EXPECT_EQ(hero->manaRegain(), 63);
-	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(10)), 73);
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(10)), 103);
 	add(hero, BonusType::MANA_REGENERATION, 100, BonusSource::ARTIFACT, BonusValueType::PERCENT_TO_SOURCE);
-	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(10)), 76);
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(10)), 106);
 }
 
 TEST_F(HeroManaRegenerationTest, alliedGuildPreviewPreservesTraditionalRefillWithoutEmittingAura)

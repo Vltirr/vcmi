@@ -116,6 +116,10 @@ AdventureOptionsTab::AdventureOptionsTab()
 	{
 		return setBoolSetting("gameTweaks", "forceMovementInfo", value);
 	});
+	addCallback("forceManaInfoChanged", [](bool value)
+	{
+		return setBoolSetting("gameTweaks", "forceManaInfo", value);
+	});
 	addCallback("showGridChanged", [](bool value)
 	{
 		return setBoolSetting("gameTweaks", "showGrid", value);
@@ -195,6 +199,7 @@ AdventureOptionsTab::AdventureOptionsTab()
 
 	std::shared_ptr<CToggleButton> forceMovementInfoCheckbox = widget<CToggleButton>("forceMovementInfoCheckbox");
 	forceMovementInfoCheckbox->setSelected(settings["gameTweaks"]["forceMovementInfo"].Bool());
+	widget<CToggleButton>("forceManaInfoCheckbox")->setSelected(settings["gameTweaks"]["forceManaInfo"].Bool());
 
 	std::shared_ptr<CToggleButton> showGridCheckbox = widget<CToggleButton>("showGridCheckbox");
 	showGridCheckbox->setSelected(settings["gameTweaks"]["showGrid"].Bool());

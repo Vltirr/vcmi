@@ -95,7 +95,7 @@ private:
 		int extras = 0;
 	};
 	ManaRecovery calculateManaRecovery() const;
-	si32 calculateManaNewTurn(const int3 & position, const CGTownInstance * town) const;
+	std::pair<si32, si32> calculateManaNewTurn(const int3 & position, const CGTownInstance * town) const;
 
 public:
 	//////////////////////////////////////////////////////////////////////////
@@ -205,6 +205,8 @@ public:
 	si32 getManaNewTurn() const; //calculate how much mana this hero is going to have the next day
 	/// Predicts next-day mana at a visitable map position without moving the hero.
 	si32 getManaNewTurnAt(const int3 & position) const;
+	/// Returns next-day mana and recovery before capacity limits, using the current mana deficit.
+	std::pair<si32, si32> getManaRecoveryAt(const int3 & position) const;
 	int getCurrentLuck(int stack=-1, bool town=false) const;
 	int32_t getSpellCost(const spells::Spell * sp) const; //do not use during battles -> bonuses from army would be ignored
 

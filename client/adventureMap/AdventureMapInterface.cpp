@@ -34,6 +34,8 @@
 #include "render/Canvas.h"
 #include "render/IImage.h"
 #include "render/IRenderHandler.h"
+#include "render/IFont.h"
+#include "render/Colors.h"
 #include "render/IScreenHandler.h"
 #include "../PlayerLocalState.h"
 #include "../CPlayerInterface.h"
@@ -157,6 +159,8 @@ void AdventureMapInterface::activate()
 void AdventureMapInterface::deactivate()
 {
 	CIntObject::deactivate();
+	movementHoverSummary.clear();
+	manaHoverSummary.clear();
 	heldScrollShortcuts.clear();
 	ENGINE->cursor().set(Cursor::Map::POINTER);
 
@@ -167,6 +171,7 @@ void AdventureMapInterface::deactivate()
 void AdventureMapInterface::showAll(Canvas & to)
 {
 	CIntObject::showAll(to);
+	showHoverSummary(to);
 	dim(to);
 	GAME->interface()->cingconsole->show(to);
 }
@@ -174,6 +179,7 @@ void AdventureMapInterface::showAll(Canvas & to)
 void AdventureMapInterface::show(Canvas & to)
 {
 	CIntObject::show(to);
+	showHoverSummary(to);
 	dim(to);
 	GAME->interface()->cingconsole->show(to);
 }
@@ -704,11 +710,18 @@ void AdventureMapInterface::onTileLeftClicked(const int3 &targetPosition)
 
 void AdventureMapInterface::onTileHovered(const int3 &targetPosition)
 {
+	movementHoverSummary.clear();
+	manaHoverSummary.clear();
 	if(!shortcuts->optionMapViewActive())
 		return;
 	//if the player is not ingame (loser, winner, wrong) we are in a shutdown process
 	if (!GAME->interface()->cb || GAME->interface()->cb->getPlayerStatus(GAME->interface()->playerID) != EPlayerStatus::INGAME)
 		return;
+	if(!GAME->interface()->cb->isInTheMap(targetPosition))
+	{
+		ENGINE->statusbar()->clear();
+		return;
+	}
 	//may occur just at the start of game (fake move before full initialization)
 	if(!GAME->interface()->localState->getCurrentArmy())
 		return;
@@ -805,30 +818,42 @@ void AdventureMapInterface::onTileHovered(const int3 &targetPosition)
 		const CGPathNode * pathNode = GAME->interface()->getPathsInfo(hero)->getPathInfo(targetPosition, destinationLayer);
 		assert(pathNode);
 
-		if((ENGINE->isKeyboardAltDown() || settings["gameTweaks"]["forceMovementInfo"].Bool()) && pathNode->reachable()) //overwrite status bar text with movement info
-		{
-			showMoveDetailsInStatusbar(*hero, *pathNode);
-		}
+		std::string recoveryDetails;
+		std::string moveDetails;
+		if((ENGINE->isKeyboardAltDown() || settings["gameTweaks"]["forceMovementInfo"].Bool()) && pathNode->reachable())
+			moveDetails = movementDetails(*hero, *pathNode);
 		const bool peacefulDestination = pathNode->action != EPathNodeAction::BATTLE
 			&& pathNode->action != EPathNodeAction::TELEPORT_BATTLE
 			&& pathNode->action != EPathNodeAction::BLOCKING_VISIT
 			&& pathNode->action != EPathNodeAction::TELEPORT_BLOCKING_VISIT
 			&& !(objAtTile && objAtTile->ID == Obj::TOWN && objRelations == PlayerRelations::ENEMIES);
-		if(settings["session"]["showManaAura"].Bool() && isTargetPositionVisible && peacefulDestination
+		if((settings["session"]["showManaAura"].Bool() || settings["gameTweaks"]["forceManaInfo"].Bool())
+			&& isTargetPositionVisible && peacefulDestination
 			&& (pathNode->reachable() || targetPosition == hero->visitablePos()))
 		{
 			const auto & aura = GAME->interface()->cb->getSettings().getValue(EGameSettings::HEROES_MAGE_GUILD_MANA_AURA);
 			if(aura["enabled"].Bool())
 			{
-				const int finalMana = hero->getManaNewTurnAt(targetPosition);
+				const auto [finalMana, potential] = hero->getManaRecoveryAt(targetPosition);
 				MetaString text;
 				text.appendTextID("vcmi.adventureMap.manaRecovery");
 				text.replaceTokenNumber("%GAIN", finalMana - hero->mana);
+				text.replaceTokenNumber("%POTENTIAL", potential);
 				text.replaceTokenNumber("%CURRENT", finalMana);
 				text.replaceTokenNumber("%MAX", hero->manaLimit());
-				ENGINE->statusbar()->write(text.toString(&GAME->translator()));
+				recoveryDetails = text.toString(&GAME->translator());
+				MetaString summary;
+				summary.appendTextID("vcmi.adventureMap.manaRecoveryShort");
+				summary.replaceTokenNumber("%GAIN", finalMana - hero->mana);
+				summary.replaceTokenNumber("%POTENTIAL", potential);
+				summary.replaceTokenNumber("%CURRENT", finalMana);
+				summary.replaceTokenNumber("%MAX", hero->manaLimit());
+				manaHoverSummary = summary.toString(&GAME->translator());
 			}
 		}
+		if(!moveDetails.empty() || !recoveryDetails.empty())
+			ENGINE->statusbar()->write(!moveDetails.empty() && !recoveryDetails.empty()
+				? "{yellow|" + movementHoverSummary + "} · " + recoveryDetails : moveDetails + recoveryDetails);
 
 		if (objAtTile && pathNode->action == EPathNodeAction::UNKNOWN)
 		{
@@ -915,7 +940,7 @@ void AdventureMapInterface::onTileHovered(const int3 &targetPosition)
 	}
 }
 
-void AdventureMapInterface::showMoveDetailsInStatusbar(const CGHeroInstance & hero, const CGPathNode & pathNode)
+std::string AdventureMapInterface::movementDetails(const CGHeroInstance & hero, const CGPathNode & pathNode)
 {
 	const int maxMovementPointsAtStartOfLastTurn = pathNode.turns > 0 ? hero.getTurnInfo(0)->getMaxMovePoints(pathNode.layer) : hero.movementPointsRemaining();
 	const int movementPointsLastTurnCost = maxMovementPointsAtStartOfLastTurn - pathNode.moveRemains;
@@ -942,7 +967,45 @@ void AdventureMapInterface::showMoveDetailsInStatusbar(const CGHeroInstance & he
 	result.replaceTokenNumber("%REMAINING", remainingPointsAfterMove);
 	result.replaceTokenNumber("%TOTAL", totalMovementCost);
 
-	ENGINE->statusbar()->write(result.toString(&GAME->translator()));
+	MetaString summary;
+	summary.appendTextID("vcmi.adventureMap.moveCostShort");
+	summary.replaceTokenNumber("%TOTAL", totalMovementCost);
+	summary.replaceTokenNumber("%REMAINING", remainingPointsAfterMove);
+	movementHoverSummary = summary.toString(&GAME->translator());
+	return result.toString(&GAME->translator());
+}
+
+void AdventureMapInterface::showHoverSummary(Canvas & to)
+{
+	const auto cursor = ENGINE->getCursorPosition();
+	const auto area = terrainAreaPixels();
+	if(!ENGINE->windows().isTopWindow(this) || !shortcuts->optionMapViewActive() || !area.isInside(cursor)
+		|| (movementHoverSummary.empty() && manaHoverSummary.empty()))
+		return;
+
+	const auto font = ENGINE->renderHandler().loadFont(FONT_MEDIUM);
+	const int rowHeight = static_cast<int>(font->getLineHeight()) + 6;
+	const int width = static_cast<int>(std::max(font->getStringWidth(movementHoverSummary), font->getStringWidth(manaHoverSummary))) + 12;
+	const int height = rowHeight * (!movementHoverSummary.empty() + !manaHoverSummary.empty());
+	int x = cursor.x + 24;
+	int y = cursor.y + 28;
+	if(x + width > area.x + area.w)
+		x = cursor.x - width - 12;
+	if(y + height > area.y + area.h)
+		y = cursor.y - height - 12;
+	x = std::max(area.x, x);
+	y = std::max(area.y, y);
+	if(!movementHoverSummary.empty())
+	{
+		to.drawColorBlended(Rect(x, y, width, rowHeight), ColorRGBA(24, 16, 8, 240));
+		to.drawText(Point(x + 6, y + 3), FONT_MEDIUM, Colors::YELLOW, ETextAlignment::TOPLEFT, movementHoverSummary);
+		y += rowHeight;
+	}
+	if(!manaHoverSummary.empty())
+	{
+		to.drawColorBlended(Rect(x, y, width, rowHeight), ColorRGBA(232, 220, 184, 245));
+		to.drawText(Point(x + 6, y + 3), FONT_MEDIUM, ColorRGBA(32, 80, 176), ETextAlignment::TOPLEFT, manaHoverSummary);
+	}
 }
 
 void AdventureMapInterface::onTileRightClicked(const int3 &mapPos)

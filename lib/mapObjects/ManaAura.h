@@ -21,7 +21,7 @@ struct DLL_LINKAGE ManaAura
 	int radius = 15;
 	int edgePct = 10;
 	int minimumNearPct = 10;
-	int minimumEdgePct = 5;
+	int minimumEdgePct = 10;
 
 	static void normalize(JsonNode & config);
 	explicit ManaAura(const IGameSettings & settings);
