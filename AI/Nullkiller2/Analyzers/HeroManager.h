@@ -112,4 +112,10 @@ public:
 	void evaluateScore(const CGHeroInstance * hero, SecondarySkill skill, float & score) const override;
 };
 
+class KnowledgeMysticismRule : public ISecondarySkillRule
+{
+public:
+	void evaluateScore(const CGHeroInstance * hero, SecondarySkill skill, float & score) const override;
+};
+
 }

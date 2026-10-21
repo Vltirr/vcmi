@@ -1187,7 +1187,61 @@ si32 CGHeroInstance::manaRegain() const
 	int percentageRegeneration = valOfBonuses(BonusType::MANA_PERCENTAGE_REGENERATION);
 	int64_t regeneratedByPercentage = static_cast<int64_t>(manaLimit()) * percentageRegeneration / 100;
 	int regeneratedByValue = valOfBonuses(BonusType::MANA_REGENERATION);
-	if(cb->getSettings().getBoolean(EGameSettings::HEROES_NATURAL_MANA_REGENERATION_USES_KNOWLEDGE))
+	const bool scaledMysticism = getSecSkillLevel(SecondarySkill::MYSTICISM) > MasteryLevel::NONE
+		&& cb->getSettings().getBoolean(EGameSettings::HEROES_MYSTICISM_USES_KNOWLEDGE);
+	if(scaledMysticism)
+	{
+		auto bonuses = getBonuses(Selector::type()(BonusType::MANA_REGENERATION));
+		const BonusSourceID skillID{SecondarySkill(SecondarySkill::MYSTICISM)};
+		auto isSpecialty = [&](const std::shared_ptr<Bonus> & bonus)
+		{
+			return bonus->source == BonusSource::HERO_SPECIAL
+				&& bonus->valType == BonusValueType::PERCENT_TO_TARGET_TYPE
+				&& bonus->targetSourceType == BonusSource::SECONDARY_SKILL
+				&& bonus->targetSourceID == skillID;
+		};
+		std::vector<BonusSourceID> specialties;
+		for(const auto & bonus : *bonuses)
+		{
+			if(isSpecialty(bonus) && !vstd::contains(specialties, bonus->sid))
+				specialties.push_back(bonus->sid);
+		}
+
+		BonusList regeneration;
+		for(const auto & bonus : *bonuses)
+		{
+			if(isSpecialty(bonus))
+				continue;
+			if(bonus->valType == BonusValueType::BASE_NUMBER
+				&& (bonus->source == BonusSource::HERO_BASE_SKILL
+					|| (bonus->source == BonusSource::SECONDARY_SKILL && bonus->sid == skillID)))
+				continue;
+			if(bonus->source == BonusSource::HERO_SPECIAL
+				&& vstd::contains(specialties, bonus->sid)
+				&& bonus->valType == BonusValueType::ADDITIVE_VALUE && bonus->val == 1)
+				continue;
+			regeneration.push_back(bonus);
+		}
+
+		int64_t skillRecovery = static_cast<int64_t>(getSecSkillLevel(SecondarySkill::MYSTICISM) + 1)
+			* std::max(0, getPrimSkillLevel(PrimarySkill::KNOWLEDGE));
+		if(!specialties.empty())
+			skillRecovery = (skillRecovery * (40 + static_cast<int64_t>(level)) + 20) / 40;
+		auto base = std::make_shared<Bonus>(BonusDuration::PERMANENT, BonusType::MANA_REGENERATION,
+			BonusSource::SECONDARY_SKILL, static_cast<int>(std::min<int64_t>(skillRecovery, std::numeric_limits<int>::max())), skillID);
+		base->valType = BonusValueType::BASE_NUMBER;
+		regeneration.push_back(base);
+		for(const auto & specialty : specialties)
+		{
+			auto extra = std::make_shared<Bonus>(BonusDuration::PERMANENT, BonusType::MANA_REGENERATION,
+				BonusSource::HERO_SPECIAL, 5, specialty);
+			extra->valType = BonusValueType::ADDITIVE_VALUE;
+			regeneration.push_back(extra);
+		}
+		regeneration.stackBonuses();
+		regeneratedByValue = regeneration.totalValue();
+	}
+	else if(cb->getSettings().getBoolean(EGameSettings::HEROES_NATURAL_MANA_REGENERATION_USES_KNOWLEDGE))
 	{
 		auto extraRegeneration = getBonuses(Selector::type()(BonusType::MANA_REGENERATION)
 			.And(Selector::sourceTypeSel(BonusSource::HERO_BASE_SKILL)

@@ -94,7 +94,7 @@ CExchangeWindow::CExchangeWindow(ObjectInstanceID hero1, ObjectInstanceID hero2,
 		expValues[leftRight] = std::make_shared<CLabel>(119 + 490 * leftRight, qeLayout ? 66 : 71, FONT_SMALL, ETextAlignment::CENTER, Colors::WHITE);
 
 		manaImages[leftRight] = std::make_shared<CAnimImage>(AnimationPath::builtin("PSKIL32"), 5, 0, 139 + 490 * leftRight, qeLayout ? 41 : 45);
-		manaValues[leftRight] = std::make_shared<CLabel>(155 + 490 * leftRight, qeLayout ? 66 : 71, FONT_SMALL, ETextAlignment::CENTER, Colors::WHITE);
+		manaValues[leftRight] = std::make_shared<CLabel>(155 + 490 * leftRight, qeLayout ? 66 : 71, FONT_TINY, ETextAlignment::CENTER, Colors::WHITE);
 	}
 
 	artifs[0] = std::make_shared<CArtifactsOfHeroMain>(Point(-334, 151));
@@ -431,7 +431,7 @@ void CExchangeWindow::updateArtifacts()
 		}
 
 		expValues[leftRight]->setText(TextOperations::formatMetric(hero->exp, 3));
-		manaValues[leftRight]->setText(TextOperations::formatMetric(hero->mana, 3));
+		manaValues[leftRight]->setText(std::to_string(hero->mana) + '/' + std::to_string(hero->manaLimit()));
 
 		morale[leftRight]->set(hero);
 		luck[leftRight]->set(hero);

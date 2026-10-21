@@ -19,6 +19,10 @@
 #include "../../lib/mapObjects/CGTownInstance.h"
 #include "../../server/CGameHandler.h"
 #include "../../server/processors/NewTurnProcessor.h"
+#ifdef ENABLE_NULLKILLER2_AI
+#include "../../AI/Nullkiller2/Analyzers/HeroManager.h"
+#include "../../AI/Nullkiller2/Engine/Nullkiller.h"
+#endif
 
 class HeroManaRegenerationTest : public TinyMapGameTest
 {
@@ -29,12 +33,12 @@ protected:
 		settings.bonus = PlayerStartingBonus::GOLD;
 	}
 
-	CGHeroInstance * prepare(bool enabled = true, int knowledge = 5)
+	CGHeroInstance * prepare(bool enabled = true, int knowledge = 5, HeroTypeID type = HeroTypeID(0))
 	{
 		overrideSettingBeforeInit(EGameSettings::HEROES_NATURAL_MANA_REGENERATION_USES_KNOWLEDGE, enabled);
 		TinyH3M::TinyH3MBuilder builder(EMapFormat::SOD);
 		builder.size(36, false).playerActive(PlayerColor(0))
-			.hero(int3(5, 5, 0), HeroTypeID(0), PlayerColor(0))
+			.hero(int3(5, 5, 0), type, PlayerColor(0))
 			.heroPrimary(1, 1, 1, static_cast<uint8_t>(knowledge)).heroSecondarySkills({});
 		startWithMap(std::move(builder));
 		auto * hero = findHeroByOwner(PlayerColor(0));
@@ -242,3 +246,159 @@ TEST_F(HeroManaRegenerationTest, aiHeroUsesSameServerRecovery)
 	processor.onNewTurn();
 	EXPECT_EQ(hero->mana, 5);
 }
+
+class KnowledgeMysticismTest : public HeroManaRegenerationTest
+{
+protected:
+	CGHeroInstance * prepareRework(bool natural = false, int knowledge = 5, HeroTypeID type = HeroTypeID(0))
+	{
+		overrideSettingBeforeInit(EGameSettings::HEROES_MYSTICISM_USES_KNOWLEDGE, true);
+		return prepare(natural, knowledge, type);
+	}
+};
+
+TEST_F(KnowledgeMysticismTest, independentRecoveryReplacesNaturalBase)
+{
+	auto * hero = prepareRework();
+	EXPECT_EQ(hero->manaRegain(), 1);
+	for(int mastery = MasteryLevel::BASIC; mastery <= MasteryLevel::EXPERT; ++mastery)
+	{
+		hero->setSecSkillLevel(SecondarySkill::MYSTICISM, mastery, ChangeValueMode::ABSOLUTE);
+		EXPECT_EQ(hero->manaRegain(), (mastery + 1) * 5);
+	}
+	add(hero, BonusType::MANA_REGENERATION, 3);
+	EXPECT_EQ(hero->manaRegain(), 23);
+	hero->setSecSkillLevel(SecondarySkill::MYSTICISM, MasteryLevel::NONE, ChangeValueMode::ABSOLUTE);
+	EXPECT_EQ(hero->manaRegain(), 4);
+}
+
+TEST_F(KnowledgeMysticismTest, naturalKnowledgeDoesNotStackWithSkill)
+{
+	auto * hero = prepareRework(true, 10);
+	EXPECT_EQ(hero->manaRegain(), 10);
+	hero->setSecSkillLevel(SecondarySkill::MYSTICISM, MasteryLevel::EXPERT, ChangeValueMode::ABSOLUTE);
+	EXPECT_EQ(hero->manaRegain(), 40);
+	add(hero, BonusType::MANA_REGENERATION, 3);
+	EXPECT_EQ(hero->manaRegain(), 43);
+	hero->setSecSkillLevel(SecondarySkill::INTELLIGENCE, MasteryLevel::EXPERT, ChangeValueMode::ABSOLUTE);
+	EXPECT_EQ(hero->manaLimit(), 200);
+	EXPECT_EQ(hero->manaRegain(), 43);
+	hero->setPrimarySkill(PrimarySkill::KNOWLEDGE, 6, ChangeValueMode::ABSOLUTE);
+	EXPECT_EQ(hero->manaRegain(), 27);
+}
+
+TEST_F(KnowledgeMysticismTest, sourceModifiersAndPercentageKeepTheirTargets)
+{
+	auto * hero = prepareRework();
+	hero->setSecSkillLevel(SecondarySkill::MYSTICISM, MasteryLevel::EXPERT, ChangeValueMode::ABSOLUTE);
+	add(hero, BonusType::MANA_REGENERATION, 3);
+	auto modifier = add(hero, BonusType::MANA_REGENERATION, 50, BonusSource::OTHER, BonusValueType::PERCENT_TO_TARGET_TYPE);
+	modifier->targetSourceType = BonusSource::SECONDARY_SKILL;
+	modifier->targetSourceID = BonusSourceID(SecondarySkill(SecondarySkill::MYSTICISM));
+	hero->nodeHasChanged();
+	EXPECT_EQ(hero->manaRegain(), 33);
+	add(hero, BonusType::MANA_REGENERATION, 100, BonusSource::ARTIFACT, BonusValueType::PERCENT_TO_SOURCE);
+	EXPECT_EQ(hero->manaRegain(), 36);
+	auto percentage = add(hero, BonusType::MANA_PERCENTAGE_REGENERATION, 50);
+	EXPECT_EQ(hero->manaRegain(), 36);
+	percentage->val = 100;
+	hero->nodeHasChanged();
+	EXPECT_EQ(hero->manaRegain(), 50);
+}
+
+class KnowledgeMysticismSpecialistTest : public KnowledgeMysticismTest, public ::testing::WithParamInterface<int>
+{
+};
+
+TEST_P(KnowledgeMysticismSpecialistTest, specialtyScalesOnlySkillAndRoundsHalvesUp)
+{
+	auto * hero = prepareRework(false, 5, HeroTypeID(GetParam()));
+	hero->setSecSkillLevel(SecondarySkill::MYSTICISM, MasteryLevel::EXPERT, ChangeValueMode::ABSOLUTE);
+	for(auto [heroLevel, expected] : std::vector<std::pair<int, int>>{{1, 26}, {2, 26}, {10, 30}, {20, 35}})
+	{
+		hero->level = heroLevel;
+		hero->nodeHasChanged();
+		EXPECT_EQ(hero->manaRegain(), expected) << heroLevel;
+	}
+	add(hero, BonusType::MANA_REGENERATION, 3);
+	EXPECT_EQ(hero->manaRegain(), 38);
+	hero->setPrimarySkill(PrimarySkill::KNOWLEDGE, 10, ChangeValueMode::ABSOLUTE);
+	EXPECT_EQ(hero->manaRegain(), 68);
+}
+
+INSTANTIATE_TEST_SUITE_P(BaseSpecialists, KnowledgeMysticismSpecialistTest, ::testing::Values(41, 58, 89, 121));
+
+TEST_F(KnowledgeMysticismTest, gameSnapshotPreservesModeAndServerRecovery)
+{
+	auto * hero = prepareRework(false, 5, HeroTypeID(41));
+	hero->setSecSkillLevel(SecondarySkill::MYSTICISM, MasteryLevel::EXPERT, ChangeValueMode::ABSOLUTE);
+	const auto id = hero->id;
+	gameState()->players.at(PlayerColor(0)).human = false;
+	auto snapshot = gameState()->saveToMemory();
+	gameState()->loadFromMemory(std::move(snapshot));
+	auto * restored = gameState()->getHero(id);
+	ASSERT_NE(restored, nullptr);
+	EXPECT_TRUE(gameState()->getSettings().getBoolean(EGameSettings::HEROES_MYSTICISM_USES_KNOWLEDGE));
+	EXPECT_EQ(restored->manaRegain(), 26);
+	GameHandlerTestServer server(gameState(), PlayerColor(0));
+	CGameHandler handler(server, gameState());
+	NewTurnProcessor processor(&handler);
+	processor.onNewTurn();
+	EXPECT_EQ(restored->mana, 26);
+	restored->mana = restored->manaLimit() + 10;
+	EXPECT_EQ(restored->getManaNewTurn(), restored->mana);
+}
+
+TEST_F(KnowledgeMysticismTest, zeroKnowledgeDoesNotProduceNegativeRecovery)
+{
+	auto * hero = prepareRework();
+	hero->setSecSkillLevel(SecondarySkill::MYSTICISM, MasteryLevel::EXPERT, ChangeValueMode::ABSOLUTE);
+	auto settings = LIBRARY->settingsHandler->getFullConfig();
+	auto restore = settings;
+	settings["heroes"]["minimalPrimarySkills"][PrimarySkill::KNOWLEDGE.getNum()].Integer() = -10;
+	LIBRARY->settingsHandler->loadBase(settings);
+	for(int value : {0, -5})
+	{
+		hero->setPrimarySkill(PrimarySkill::KNOWLEDGE, value, ChangeValueMode::ABSOLUTE);
+		hero->nodeHasChanged();
+		EXPECT_EQ(hero->manaRegain(), 0);
+	}
+	LIBRARY->settingsHandler->loadBase(restore);
+}
+
+#ifdef ENABLE_NULLKILLER2_AI
+TEST_F(KnowledgeMysticismTest, mainRuleUsesKnowledgeTiersWithoutNewSkillBoost)
+{
+	auto * hero = prepareRework();
+	NK2AI::SecondarySkillEvaluator evaluator({
+		std::make_shared<NK2AI::SecondarySkillScoreMap>(std::map<SecondarySkill, float>{{SecondarySkill::MYSTICISM, -1}}),
+		std::make_shared<NK2AI::ExistingSkillRule>(),
+		std::make_shared<NK2AI::KnowledgeMysticismRule>()});
+	for(auto [knowledge, expected] : std::vector<std::pair<int, float>>{{5, 1}, {10, 1}, {11, 2}, {15, 2}, {16, 2.5f}})
+	{
+		hero->setPrimarySkill(PrimarySkill::KNOWLEDGE, knowledge, ChangeValueMode::ABSOLUTE);
+		EXPECT_FLOAT_EQ(evaluator.evaluateSecSkill(hero, SecondarySkill::MYSTICISM), expected);
+		hero->setSecSkillLevel(SecondarySkill::MYSTICISM, MasteryLevel::BASIC, ChangeValueMode::ABSOLUTE);
+		EXPECT_FLOAT_EQ(evaluator.evaluateSecSkill(hero, SecondarySkill::MYSTICISM), expected);
+		hero->setSecSkillLevel(SecondarySkill::MYSTICISM, MasteryLevel::NONE, ChangeValueMode::ABSOLUTE);
+	}
+	auto callback = makeCallback(PlayerColor(0));
+	NK2AI::Nullkiller ai;
+	ai.cc = callback;
+	NK2AI::HeroManager manager(callback.get(), &ai);
+	EXPECT_FLOAT_EQ(manager.evaluateSecSkill(SecondarySkill::MYSTICISM, hero), 0);
+	hero->patrol.patrolling = true;
+	manager.update();
+	EXPECT_FLOAT_EQ(manager.evaluateSecSkill(SecondarySkill::MYSTICISM, hero), 2.5f);
+	EXPECT_EQ(manager.selectBestSkillIndex(NK2AI::HeroPtr(hero, callback.get()),
+		{SecondarySkill::SORCERY, SecondarySkill::MYSTICISM}), 1);
+}
+
+TEST_F(HeroManaRegenerationTest, classicMainRuleRemainsUnchangedWithNaturalKnowledge)
+{
+	auto * hero = prepare(true, 20);
+	float score = -1;
+	NK2AI::KnowledgeMysticismRule().evaluateScore(hero, SecondarySkill::MYSTICISM, score);
+	EXPECT_FLOAT_EQ(score, -1);
+}
+#endif

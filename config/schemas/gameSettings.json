@@ -53,6 +53,7 @@
 				"backpackSize" :                  { "type" : "number" },
 				"tavernInvite" :                  { "type" : "boolean" },
 				"naturalManaRegenerationUsesKnowledge" : { "type" : "boolean" },
+				"mysticismUsesKnowledge" : { "type" : "boolean" },
 				"maximalPrimarySkills" :          { "type" : "array" },
 				"minimalPrimarySkills" :          { "type" : "array" },
 				"movementCostBase"  :             { "type" : "number" },

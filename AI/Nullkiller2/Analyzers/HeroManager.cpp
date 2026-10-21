@@ -58,7 +58,8 @@ const SecondarySkillEvaluator HeroManager::mainSkillsEvaluator = SecondarySkillE
 		std::make_shared<ExistingSkillRule>(),
 		std::make_shared<WisdomRule>(),
 		std::make_shared<AtLeastOneMagicRule>(),
-		std::make_shared<LevelUpGrantingSkillRule>()
+		std::make_shared<LevelUpGrantingSkillRule>(),
+		std::make_shared<KnowledgeMysticismRule>()
 	});
 
 const SecondarySkillEvaluator HeroManager::scoutSkillsEvaluator = SecondarySkillEvaluator(
@@ -415,6 +416,16 @@ void LevelUpGrantingSkillRule::evaluateScore(const CGHeroInstance * hero, Second
 SecondarySkillEvaluator::SecondarySkillEvaluator(std::vector<std::shared_ptr<ISecondarySkillRule>> evaluationRules)
 	: evaluationRules(evaluationRules)
 {
+}
+
+void KnowledgeMysticismRule::evaluateScore(const CGHeroInstance * hero, SecondarySkill skill, float & score) const
+{
+	if(skill != SecondarySkill::MYSTICISM
+		|| !hero->cb->getSettings().getBoolean(EGameSettings::HEROES_MYSTICISM_USES_KNOWLEDGE))
+		return;
+
+	const int knowledge = hero->getPrimSkillLevel(PrimarySkill::KNOWLEDGE);
+	score = knowledge > 15 ? 2.5f : knowledge > 10 ? 2.0f : 1.0f;
 }
 
 float SecondarySkillEvaluator::evaluateSecSkills(const CGHeroInstance * hero) const

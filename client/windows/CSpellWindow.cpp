@@ -273,7 +273,7 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 		schoolTabCustom.push_back(std::make_shared<CAnimImage>(LIBRARY->spellSchoolHandler->getById(customSpellSchools[i])->getSchoolBookmarkPath(), i == 0 ? 0 : 1, 0, isBigSpellbook ? 0 : 15, yStart + ((yEnd - yStart) * i) / denom));
 	schoolPicture = std::make_shared<CAnimImage>(AnimationPath::builtin("Schools"), 0, 0, 117 + offL, 74 + offT);
 
-	mana = std::make_shared<CLabel>(435 + (isBigSpellbook ? 159 : 0), 426 + offB, FONT_SMALL, ETextAlignment::CENTER, Colors::YELLOW, std::to_string(myHero->mana));
+	mana = std::make_shared<CLabel>(435 + (isBigSpellbook ? 159 : 0), 426 + offB, FONT_TINY, ETextAlignment::CENTER, Colors::YELLOW, std::to_string(myHero->mana) + '/' + std::to_string(myHero->manaLimit()));
 
 	if(isBigSpellbook)
 		statusBar = CGStatusBar::create(400, 587);
@@ -692,7 +692,7 @@ void CSpellWindow::setCurrentPage(int value)
 
 	ENGINE->fakeMouseMove(); // refresh hover state so a stale page-turn hint clears when the corner is disabled under the cursor
 
-	mana->setText(std::to_string(myHero->mana));//just in case, it will be possible to cast spell without closing book
+	mana->setText(std::to_string(myHero->mana) + '/' + std::to_string(myHero->manaLimit()));
 }
 
 void CSpellWindow::turnPageLeft()
