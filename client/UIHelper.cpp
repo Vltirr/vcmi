@@ -18,6 +18,15 @@
 #include "../lib/CRandomGenerator.h"
 #include "GameInstance.h"
 
+std::string UIHelper::getHeroManaDescription(const CGHeroInstance & hero)
+{
+	auto text = MetaString::createFromTextID("vcmi.hero.manaSummary");
+	text.replaceNumber(hero.mana);
+	text.replaceNumber(hero.manaLimit());
+	text.replaceNumber(hero.manaRegain());
+	return text.toString(&GAME->translator());
+}
+
 std::vector<Component> UIHelper::getArtifactsComponents(const CArtifactSet & artSet, const std::vector<MoveArtifactInfo> & movedPack)
 {
 	std::vector<Component> components;

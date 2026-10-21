@@ -17,6 +17,7 @@
 #include "CExchangeWindow.h"
 
 #include "../CPlayerInterface.h"
+#include "../UIHelper.h"
 
 #include "../GameEngine.h"
 #include "../GameInstance.h"
@@ -306,12 +307,8 @@ void CHeroWindow::updateArtifacts()
 
 	expArea->text = curHero->getExperienceDescription().toString(&GAME->translator());
 
-	MetaString spellPointsText;
-	spellPointsText.appendTextID("core.genrltxt.205");
-	spellPointsText.replaceTextID(curHero->getNameTextID());
-	spellPointsText.replaceNumber(curHero->mana);
-	spellPointsText.replaceNumber(curHero->manaLimit());
-	spellPointsArea->text = spellPointsText.toString(&GAME->translator());
+	spellPointsArea->text = UIHelper::getHeroManaDescription(*curHero);
+	spellPointsArea->hoverText = spellPointsArea->text;
 
 	//if we have exchange window with this curHero open
 	bool noDismiss=false;

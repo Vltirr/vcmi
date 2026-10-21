@@ -17,6 +17,7 @@
 #include "CCastleInterface.h"
 
 #include "../CPlayerInterface.h"
+#include "../UIHelper.h"
 #include "../PlayerLocalState.h"
 
 #include "../battle/BattleInterface.h"
@@ -274,7 +275,7 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 	schoolPicture = std::make_shared<CAnimImage>(AnimationPath::builtin("Schools"), 0, 0, 117 + offL, 74 + offT);
 
 	const Point manaPosition = isBigSpellbook ? Point(592, 485) : Point(434, 426);
-	mana = std::make_shared<CLabel>(manaPosition.x, manaPosition.y, FONT_TINY, ETextAlignment::CENTER, Colors::YELLOW, std::to_string(myHero->mana) + '/' + std::to_string(myHero->manaLimit()));
+	mana = std::make_shared<CLabel>(manaPosition.x, manaPosition.y, FONT_SMALL, ETextAlignment::CENTER, Colors::YELLOW, std::to_string(myHero->mana));
 
 	if(isBigSpellbook)
 		statusBar = CGStatusBar::create(400, 587);
@@ -285,7 +286,7 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 	interactiveAreas.push_back(std::make_shared<InteractiveArea>( Rect( 479 + pos.x + (isBigSpellbook ? 175 : 0), 405 + pos.y + offB, isBigSpellbook ? 60 : 36, 56), std::bind(&CSpellWindow::fexitb,         this),    460, this));
 	interactiveAreas.push_back(std::make_shared<InteractiveArea>( Rect( 221 + pos.x + (isBigSpellbook ? 43 : 0), 405 + pos.y + offB, isBigSpellbook ? 60 : 36, 56), std::bind(&CSpellWindow::fbattleSpellsb, this),    453, this));
 	interactiveAreas.push_back(std::make_shared<InteractiveArea>( Rect( 355 + pos.x + (isBigSpellbook ? 110 : 0), 405 + pos.y + offB, isBigSpellbook ? 60 : 36, 56), std::bind(&CSpellWindow::fadvSpellsb,    this),    452, this));
-	interactiveAreas.push_back(std::make_shared<InteractiveArea>( Rect( 418 + pos.x + (isBigSpellbook ? 142 : 0), 405 + pos.y + offB, isBigSpellbook ? 60 : 36, 56), std::bind(&CSpellWindow::fmanaPtsb,      this),    459, this));
+	manaArea = std::make_shared<InteractiveArea>(Rect(418 + pos.x + (isBigSpellbook ? 142 : 0), 405 + pos.y + offB, isBigSpellbook ? 60 : 36, 56), std::bind(&CSpellWindow::fmanaPtsb, this), this);
 	interactiveAreas.push_back(std::make_shared<InteractiveArea>( schoolRect + Point(0, 0),   std::bind(&CSpellWindow::selectSchool,   this, SpellSchool::AIR), 454, this));
 	interactiveAreas.push_back(std::make_shared<InteractiveArea>( schoolRect + Point(0, 57),  std::bind(&CSpellWindow::selectSchool,   this, SpellSchool::EARTH), 457, this));
 	interactiveAreas.push_back(std::make_shared<InteractiveArea>( schoolRect + Point(0, 116), std::bind(&CSpellWindow::selectSchool,   this, SpellSchool::FIRE), 455, this));
@@ -691,9 +692,10 @@ void CSpellWindow::setCurrentPage(int value)
 	leftCornerArea->setEnabled(canTurnLeft);
 	rightCornerArea->setEnabled(canTurnRight);
 
-	ENGINE->fakeMouseMove(); // refresh hover state so a stale page-turn hint clears when the corner is disabled under the cursor
-
-	mana->setText(std::to_string(myHero->mana) + '/' + std::to_string(myHero->manaLimit()));
+	mana->setText(std::to_string(myHero->mana));
+	const auto manaDescription = UIHelper::getHeroManaDescription(*myHero);
+	manaArea->setHelp(manaDescription, manaDescription);
+	ENGINE->fakeMouseMove(); // refresh hover text after updating page controls and mana
 }
 
 void CSpellWindow::turnPageLeft()

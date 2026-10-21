@@ -15,6 +15,7 @@
 #include "InfoWindows.h"
 
 #include "../CPlayerInterface.h"
+#include "../UIHelper.h"
 #include "../PlayerLocalState.h"
 #include "../adventureMap/CResDataBar.h"
 #include "../GameEngine.h"
@@ -358,7 +359,7 @@ std::string InfoBoxHeroData::getHoverText()
 		return hoverText.toString(&GAME->translator());
 	}
 	case HERO_MANA:
-		return GAME->translator().translate("core.heroscrn.22");
+		return UIHelper::getHeroManaDescription(*hero);
 	case HERO_EXPERIENCE:
 		return GAME->translator().translate("core.heroscrn.9");
 	case HERO_SPECIAL:
@@ -404,12 +405,7 @@ void InfoBoxHeroData::prepareMessage(std::string & text, std::shared_ptr<CCompon
 	{
 	case HERO_MANA:
 	{
-		MetaString message;
-		message.appendTextID("core.genrltxt.205");
-		message.replaceTextID(hero->getNameTextID());
-		message.replaceNumber(hero->mana);
-		message.replaceNumber(hero->manaLimit());
-		text = message.toString(&GAME->translator());
+		text = UIHelper::getHeroManaDescription(*hero);
 		break;
 	}
 	case HERO_EXPERIENCE:

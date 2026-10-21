@@ -13,6 +13,7 @@
 #include "CHeroBackpackWindow.h"
 
 #include "../CPlayerInterface.h"
+#include "../UIHelper.h"
 
 #include "../GameEngine.h"
 #include "../GameInstance.h"
@@ -152,12 +153,6 @@ CExchangeWindow::CExchangeWindow(ObjectInstanceID hero1, ObjectInstanceID hero2,
 
 		spellPointsAreas[b] = std::make_shared<LRClickableAreaWText>();
 		spellPointsAreas[b]->pos = Rect(Point(pos.x + 141 + 490 * b, pos.y + (qeLayout ? 41 : 45)), Point(32, 32));
-		spellPointsAreas[b]->hoverText = LIBRARY->generaltexth->translate("core.heroscrn.22");
-		MetaString spellPointsText = MetaString::createFromTextID("core.genrltxt.205");
-		spellPointsText.replaceTextID(hero->getNameTextID());
-		spellPointsText.replaceNumber(hero->mana);
-		spellPointsText.replaceNumber(hero->manaLimit());
-		spellPointsAreas[b]->text = spellPointsText.toString(&GAME->translator());
 
 		morale[b] = std::make_shared<MoraleLuckBox>(true, Rect(Point(176 + 490 * b, 39), Point(32, 32)), true);
 		luck[b] = std::make_shared<MoraleLuckBox>(false,  Rect(Point(212 + 490 * b, 39), Point(32, 32)), true);
@@ -432,6 +427,8 @@ void CExchangeWindow::updateArtifacts()
 
 		expValues[leftRight]->setText(TextOperations::formatMetric(hero->exp, 3));
 		manaValues[leftRight]->setText(std::to_string(hero->mana) + '/' + std::to_string(hero->manaLimit()));
+		spellPointsAreas[leftRight]->text = UIHelper::getHeroManaDescription(*hero);
+		spellPointsAreas[leftRight]->hoverText = spellPointsAreas[leftRight]->text;
 
 		morale[leftRight]->set(hero);
 		luck[leftRight]->set(hero);

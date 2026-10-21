@@ -84,6 +84,7 @@ class CSpellWindow : public CWindowObject, public IVideoHolder
 
 	std::array<std::shared_ptr<SpellArea>, 24> spellAreas;
 	std::shared_ptr<CLabel> mana;
+	std::shared_ptr<InteractiveArea> manaArea;
 	std::shared_ptr<CGStatusBar> statusBar;
 
 	std::vector<std::shared_ptr<InteractiveArea>> interactiveAreas;

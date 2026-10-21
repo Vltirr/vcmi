@@ -1,4 +1,5 @@
 {
+	"vcmi.hero.manaSummary": "Maná: %d/%d. Regeneración ordinaria: %d/día.",
 	"artifact.core.orbOfVulnerability.bonus.noResistance": "{Orb of Vulnerability}\nAnula la resistencia mágica natural de todas las criaturas en el campo de batalla.",
 	"core.bonus.ADDITIONAL_ATTACK.description": "{Ataque adicional}\nEsta unidad puede atacar ${var} veces adicionales.",
 	"core.bonus.ADDITIONAL_RETALIATION.description": "{Contraataques adicionales}\nEsta unidad puede contraatacar ${val} veces adicionales.",

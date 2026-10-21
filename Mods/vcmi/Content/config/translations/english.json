@@ -1,4 +1,5 @@
 {
+	"vcmi.hero.manaSummary": "Mana: %d/%d. Ordinary regeneration: %d/day.",
 	"vcmi.controllerPrompt.move": "Move",
 	"vcmi.controllerPrompt.attack": "Attack",
 	"vcmi.controllerPrompt.shoot": "Shoot",

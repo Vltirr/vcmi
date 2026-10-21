@@ -22,6 +22,7 @@ class CStackBasicDescriptor;
 
 namespace UIHelper
 {
+    std::string getHeroManaDescription(const CGHeroInstance & hero);
     std::vector<Component> getArtifactsComponents(const CArtifactSet & artSet, const std::vector<MoveArtifactInfo> & movedPack);
     std::vector<Component> getSpellsComponents(const std::set<SpellID> & spells);
     soundBase::soundID getNecromancyInfoWindowSound();
