@@ -52,6 +52,21 @@
 static const std::string OVERVIEW_BACKGROUND = "OvCast.pcx";
 static const size_t OVERVIEW_SIZE = 4;
 
+class InfoBoxHover : public CHoverableArea
+{
+	std::shared_ptr<IInfoBoxData> data;
+
+public:
+	explicit InfoBoxHover(std::shared_ptr<IInfoBoxData> data) : data(std::move(data)) {}
+
+	void hover(bool on) override
+	{
+		if(on)
+			hoverText = data->getHoverText();
+		CHoverableArea::hover(on);
+	}
+};
+
 InfoBox::InfoBox(Point position, InfoPos Pos, InfoSize Size, std::shared_ptr<IInfoBoxData> Data):
 	size(Size),
 	infoPos(Pos),
@@ -94,8 +109,7 @@ InfoBox::InfoBox(Point position, InfoPos Pos, InfoSize Size, std::shared_ptr<IIn
 	if(value)
 		pos = pos.include(value->pos);
 
-	hover = std::make_shared<CHoverableArea>();
-	hover->hoverText = data->getHoverText();
+	hover = std::make_shared<InfoBoxHover>(data);
 	hover->pos = pos;
 }
 
