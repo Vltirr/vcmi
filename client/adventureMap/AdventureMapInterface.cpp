@@ -158,7 +158,6 @@ void AdventureMapInterface::activate()
 
 void AdventureMapInterface::deactivate()
 {
-	restoreHoverSummary();
 	CIntObject::deactivate();
 	movementHoverSummary.clear();
 	manaHoverSummary.clear();
