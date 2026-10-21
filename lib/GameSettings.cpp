@@ -10,6 +10,7 @@
 #include "StdInc.h"
 #include "GameSettings.h"
 #include "json/JsonUtils.h"
+#include "mapObjects/ManaAura.h"
 
 bool IGameSettings::getBoolean(EGameSettings option) const
 {
@@ -84,6 +85,7 @@ const std::vector<GameSettings::SettingOption> GameSettings::settingProperties =
 		{EGameSettings::HEROES_BACKPACK_CAP,                              "heroes",    "backpackSize"                         },
 		{EGameSettings::HEROES_NATURAL_MANA_REGENERATION_USES_KNOWLEDGE,   "heroes",    "naturalManaRegenerationUsesKnowledge" },
 		{EGameSettings::HEROES_MYSTICISM_USES_KNOWLEDGE,                  "heroes",    "mysticismUsesKnowledge"               },
+		{EGameSettings::HEROES_MAGE_GUILD_MANA_AURA,                     "heroes",    "mageGuildManaAura"                    },
 		{EGameSettings::HEROES_BASE_SCOUNTING_RANGE,                      "heroes",    "baseScoutingRange"                    },
 		{EGameSettings::HEROES_MAXIMAL_PRIMARY_SKILLS,                    "heroes",    "maximalPrimarySkills"                 },
 		{EGameSettings::HEROES_MINIMAL_PRIMARY_SKILLS,                    "heroes",    "minimalPrimarySkills"                 },
@@ -161,6 +163,8 @@ void GameSettings::loadBase(const JsonNode & input)
 			continue;
 
 		JsonUtils::mergeCopy(baseSettings[index], optionValue);
+		if(option.setting == EGameSettings::HEROES_MAGE_GUILD_MANA_AURA)
+			ManaAura::normalize(baseSettings[index]);
 	}
 	actualSettings = baseSettings;
 }
@@ -182,6 +186,8 @@ void GameSettings::addOverride(EGameSettings option, const JsonNode & input)
 	overridenSettings[index] = input;
 	JsonNode newValue = baseSettings[index];
 	JsonUtils::mergeCopy(newValue, input);
+	if(option == EGameSettings::HEROES_MAGE_GUILD_MANA_AURA)
+		ManaAura::normalize(newValue);
 	actualSettings[index] = newValue;
 }
 

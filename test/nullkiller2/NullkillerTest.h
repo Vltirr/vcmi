@@ -23,6 +23,10 @@ public:
 	{
 		return ai.executeTask(task);
 	}
+	static bool tryRestForMana(Nullkiller & ai, const Goals::TTask & task, int tier)
+	{
+		return ai.tryRestForMana(task, tier);
+	}
 
 	static void prepareState(Nullkiller & ai)
 	{

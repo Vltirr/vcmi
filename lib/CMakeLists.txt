@@ -165,6 +165,7 @@ set(lib_MAIN_SRCS
 	mapObjects/CGCreature.cpp
 	mapObjects/CGDwelling.cpp
 	mapObjects/CGHeroInstance.cpp
+	mapObjects/ManaAura.cpp
 	mapObjects/CGMarket.cpp
 	mapObjects/CGObjectInstance.cpp
 	mapObjects/CGPandoraBox.cpp
@@ -611,6 +612,7 @@ set(lib_MAIN_HEADERS
 	mapObjects/CGCreature.h
 	mapObjects/CGDwelling.h
 	mapObjects/CGHeroInstance.h
+	mapObjects/ManaAura.h
 	mapObjects/CGMarket.h
 	mapObjects/CGObjectInstance.h
 	mapObjects/MapObjectDrawOrder.h

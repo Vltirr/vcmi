@@ -36,6 +36,7 @@
 #include "../replay/ReplaySelectionWindow.h"
 
 #include "../../lib/CConfigHandler.h"
+#include "../../lib/IGameSettings.h"
 #include "../../lib/CPlayerState.h"
 #include "../../lib/callback/CCallback.h"
 #include "../../lib/gameState/QuestInfo.h"
@@ -84,6 +85,7 @@ std::vector<AdventureMapShortcutState> AdventureMapShortcuts::getShortcuts()
 		{ EShortcut::ADVENTURE_QUEST_LOG,        optionCanViewJournal(), [this]() { this->showQuestlog(); } },
 		{ EShortcut::ADVENTURE_TOGGLE_SLEEP,     optionHeroSelected(),   [this]() { this->toggleSleepWake(); } },
 		{ EShortcut::ADVENTURE_TOGGLE_GRID,      optionInMapView(),      [this]() { this->toggleGrid(); } },
+		{ EShortcut::ADVENTURE_TOGGLE_MANA_AURA, optionInMapView() && GAME->interface()->cb->getSettings().getValue(EGameSettings::HEROES_MAGE_GUILD_MANA_AURA)["enabled"].Bool(), [this]() { this->toggleManaAura(); } },
 		{ EShortcut::ADVENTURE_TOGGLE_VISITABLE, optionInMapView(),      [this]() { this->toggleVisitable(); } },
 		{ EShortcut::ADVENTURE_TOGGLE_BLOCKED,   optionInMapView(),      [this]() { this->toggleBlocked(); } },
 		{ EShortcut::ADVENTURE_SCREENSHOT_WHOLE_MAP, optionInMapView(),   [this]() { this->screenshotWholeMap(); } },
@@ -196,6 +198,12 @@ void AdventureMapShortcuts::toggleGrid()
 {
 	Settings s = settings.write["gameTweaks"];
 	s["showGrid"].Bool() = !settings["gameTweaks"]["showGrid"].Bool();
+}
+
+void AdventureMapShortcuts::toggleManaAura()
+{
+	Settings s = settings.write["session"];
+	s["showManaAura"].Bool() = !settings["session"]["showManaAura"].Bool();
 }
 
 void AdventureMapShortcuts::toggleVisitable()

@@ -1,4 +1,6 @@
 {
+	"vcmi.adventureMap.manaRecovery": "Recovery: +%GAIN · Mana: %CURRENT/%MAX",
+	"vcmi.keyBindings.keyBinding.adventureToggleManaAura": "Toggle mana aura",
 	"vcmi.hero.manaSummary": "Mana: %d/%d. Ordinary regeneration: %d/day.",
 	"vcmi.controllerPrompt.move": "Move",
 	"vcmi.controllerPrompt.attack": "Attack",

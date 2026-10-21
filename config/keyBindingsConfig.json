@@ -43,6 +43,7 @@
 		"adventureSetHeroAwake":    "W",
 		"adventureThievesGuild":    "G",
 		"adventureToggleGrid":      "F6",
+		"adventureToggleManaAura":  "Shift+M",
 		"adventureToggleVisitable": [],
 		"adventureToggleBlocked":   [],
 		"adventureToggleMapLevel":  "U",

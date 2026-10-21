@@ -29,6 +29,13 @@
 #include "../Goals/Invalid.h"
 #include "Goals/RecruitHero.h"
 #include "ResourceTrader.h"
+#include "../Helpers/ManaRest.h"
+#include "../Goals/ExecuteHeroChain.h"
+#include "../../../lib/mapObjects/ManaAura.h"
+#include "../../../lib/spells/CSpell.h"
+#include "../../../lib/spells/CSpellHandler.h"
+#include "../../../lib/GameLibrary.h"
+#include "../../../lib/IGameSettings.h"
 
 namespace NK2AI
 {
@@ -47,6 +54,8 @@ const char * heroLockReasonName(HeroLockedReason reason)
 		return "defence";
 	case HeroLockedReason::HERO_CHAIN:
 		return "hero chain";
+	case HeroLockedReason::MANA_REST:
+		return "mana rest";
 	case HeroLockedReason::NOT_LOCKED:
 		return "not locked";
 	}
@@ -607,6 +616,161 @@ HeroLockedReason Nullkiller::getHeroLockedReason(const CGHeroInstance * hero) co
 	return found != lockedHeroes.end() ? found->second : HeroLockedReason::NOT_LOCKED;
 }
 
+bool Nullkiller::tryRestForMana(const Goals::TTask & normalTask, int priorityTier)
+{
+	if(priorityTier != PriorityEvaluator::EXPLORE_AND_GATHER)
+		return false;
+	const ManaAura aura(cc->getSettings());
+	const auto * move = dynamic_cast<const Goals::ExecuteHeroChain *>(normalTask.get());
+	if(!aura.enabled || !move || move->getHeroExchangeCount() != 1)
+		return false;
+	if(std::ranges::any_of(move->getPath().nodes, [](const auto & node) { return node.specialAction != nullptr; }))
+		return false;
+	const auto * hero = move->getHero();
+	if(!hero || isHeroLocked(hero))
+		return false;
+	int combatSpells = 0;
+	if(hero->hasSpellbook())
+		for(const auto & spell : LIBRARY->spellh->objects)
+		{
+			if(spell->isCombat() && hero->canCastThisSpell(spell.get()))
+				++combatSpells;
+			if(combatSpells >= 3)
+				break;
+		}
+	if(!manaRestNeeded(hero->mana, hero->manaLimit(), hero->hasSpellbook(), hero->getPrimSkillLevel(PrimarySkill::KNOWLEDGE), combatSpells))
+		return false;
+
+	const int3 origin = hero->visitablePos();
+	int3 normalEnd = origin;
+	float normalCost = 0;
+	for(const auto & node : move->getPath().nodes)
+	{
+		if(node.targetHero == hero && node.turns == 0 && node.cost >= normalCost)
+		{
+			normalEnd = node.coord;
+			normalCost = node.cost;
+		}
+	}
+	if(normalEnd.z != origin.z)
+		return false;
+	const int normalMana = hero->getManaNewTurnAt(normalEnd);
+	std::vector<const CGTownInstance *> sources;
+	for(const auto * town : cc->getTownsInfo())
+		if(town->getOwner() == hero->getOwner() && town->hasBuilt(BuildingID::MAGES_GUILD_1) && town->visitablePos().z == origin.z)
+			sources.push_back(town);
+	if(sources.empty())
+		return false;
+	auto distanceSquared = [](const int3 & left, const int3 & right)
+	{
+		const int64_t dx = static_cast<int64_t>(left.x) - right.x;
+		const int64_t dy = static_cast<int64_t>(left.y) - right.y;
+		return dx * dx + dy * dy;
+	};
+	std::ranges::sort(sources, [&](const auto * left, const auto * right)
+	{
+		const auto leftDistance = distanceSquared(left->visitablePos(), normalEnd);
+		const auto rightDistance = distanceSquared(right->visitablePos(), normalEnd);
+		return leftDistance == rightDistance ? left->id < right->id : leftDistance < rightDistance;
+	});
+	std::vector<int3> candidates;
+	for(const auto * source : sources)
+		if(aura.distance(source->visitablePos(), origin) >= 0)
+		{
+			candidates.push_back(origin);
+			break;
+		}
+	const auto entrance = sources.front()->visitablePos();
+	candidates.push_back(entrance);
+	// A short step towards the source keeps the normal destination nearby.
+	const int dx = entrance.x - normalEnd.x;
+	const int dy = entrance.y - normalEnd.y;
+	const int scale = std::max(std::abs(dx), std::abs(dy));
+	if(scale > 0)
+		candidates.emplace_back(normalEnd.x + dx * std::min(3, scale) / scale,
+			normalEnd.y + dy * std::min(3, scale) / scale, normalEnd.z);
+	if(sources.size() > 1 && candidates.size() < 4)
+		candidates.push_back(sources.at(1)->visitablePos());
+
+	const int daily = hero->movementPointsLimit();
+	std::optional<AIPath> bestPath;
+	int bestCost = std::numeric_limits<int>::max();
+	int bestMana = 0;
+	int3 bestPosition(-1);
+	auto movementDistance = [](const int3 & from, const int3 & to)
+	{
+		const int x = std::abs(from.x - to.x);
+		const int y = std::abs(from.y - to.y);
+		return 100 * std::max(x, y) + 41 * std::min(x, y);
+	};
+	for(const auto & position : candidates)
+	{
+		if(!cc->isInTheMap(position) || !cc->isVisible(position))
+			continue;
+		bool inAura = false;
+		for(const auto * source : sources)
+			inAura |= aura.distance(source->visitablePos(), position) >= 0;
+		if(!inAura)
+			continue;
+		if(std::ranges::any_of(sources, [&](const auto * town)
+		{
+			return town->visitablePos() == position && town->getVisitingHero() && town->getVisitingHero() != hero;
+		}))
+			continue;
+		const auto & threat = dangerHitMap->getTileThreat(position).maximumDanger;
+		if(threat.turn <= 1 && threat.danger > 0)
+			continue;
+		const int finalMana = hero->getManaNewTurnAt(position);
+		std::vector<AIPath> paths;
+		if(position != origin)
+			pathfinder->calculatePathInfo(paths, position);
+		std::optional<AIPath> candidatePath;
+		int spent = 0;
+		if(position != origin)
+		{
+			for(const auto & path : paths)
+			{
+				if(path.targetHero != hero || path.exchangeCount != 1 || path.turn() != 0 || path.getTotalDanger()
+					|| path.getFirstBlockedAction() || arePathHeroesLocked(path))
+					continue;
+				if(std::ranges::any_of(path.nodes, [](const auto & node) { return node.specialAction != nullptr; }))
+					continue;
+				if(!candidatePath || path.movementCost() < candidatePath->movementCost())
+					candidatePath = path;
+			}
+			if(!candidatePath)
+				continue;
+			spent = static_cast<int>(candidatePath->movementCost() * daily);
+		}
+		const int unused = std::max(0, hero->movementPointsRemaining() - spent);
+		const int detour = std::max(0, movementDistance(origin, position) + movementDistance(position, normalEnd) - movementDistance(origin, normalEnd));
+		const int sacrificed = unused + detour;
+		if(!manaRestWorthwhile(hero->manaLimit(), normalMana, finalMana, sacrificed, daily))
+			continue;
+		const float restPriority = static_cast<float>(std::min(hero->manaLimit(), finalMana) - std::min(hero->manaLimit(), normalMana)) / hero->manaLimit()
+			- static_cast<float>(sacrificed) / daily;
+		if(normalTask->priority >= restPriority)
+			continue;
+		if(sacrificed < bestCost || (sacrificed == bestCost && finalMana > bestMana))
+		{
+			bestPosition = position;
+			bestCost = sacrificed;
+			bestMana = finalMana;
+			bestPath = std::move(candidatePath);
+		}
+	}
+	if(bestPosition == int3(-1))
+		return false;
+	const auto restingHeroID = hero->id;
+	if(bestPath && !executeTask(taskptr(Goals::ExecuteHeroChain(*bestPath))))
+		return true; // Replan after a failed or interrupted movement.
+	if(const auto * currentHero = cc->getHero(restingHeroID); currentHero && currentHero->visitablePos() == bestPosition)
+	{
+		lockHero(currentHero, HeroLockedReason::MANA_REST);
+		logAi->debug("Hero %s rests for mana at %s, predicted %d, sacrificed movement %d", currentHero->getNameTextID(), bestPosition.toString(), bestMana, bestCost);
+	}
+	return true;
+}
 void Nullkiller::makeTurn()
 {
 	pathfinderTurnStorageMisses.store(0);
@@ -747,6 +911,11 @@ void Nullkiller::makeTurn()
 			}
 			else
 			{
+				if(tryRestForMana(selectedTask, prioOfTask))
+				{
+					hasAnySuccess = true;
+					break;
+				}
 				if(!executeTask(selectedTask))
 				{
 					if(!lastTaskFailureHadPath)

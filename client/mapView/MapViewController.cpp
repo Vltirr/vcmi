@@ -29,6 +29,7 @@
 #include "../../lib/UnlockGuard.h"
 #include "../../lib/callback/CCallback.h"
 #include "../../lib/mapObjects/CGHeroInstance.h"
+#include "../../lib/mapObjects/CGTownInstance.h"
 #include "../../lib/mapObjects/MiscObjects.h"
 #include "../../lib/pathfinder/CGPathNode.h"
 #include "../../lib/spells/ViewSpellInt.h"
@@ -233,6 +234,16 @@ void MapViewController::updateState()
 		adventureContext->settingsAdventureObjectAnimation = settings["adventure"]["objectAnimation"].Bool();
 		adventureContext->settingsAdventureTerrainAnimation = settings["adventure"]["terrainAnimation"].Bool();
 		adventureContext->settingShowGrid = settings["gameTweaks"]["showGrid"].Bool();
+		adventureContext->manaAura.reset();
+		adventureContext->manaAuraSources.clear();
+		if(settings["session"]["showManaAura"].Bool())
+		{
+			adventureContext->manaAura.emplace(GAME->interface()->cb->getSettings());
+			if(adventureContext->manaAura->enabled)
+				for(const auto * town : GAME->interface()->cb->getTownsInfo())
+					if(town->getOwner() == GAME->interface()->playerID && town->hasBuilt(BuildingID::MAGES_GUILD_1))
+						adventureContext->manaAuraSources.push_back(town->visitablePos());
+		}
 		adventureContext->settingShowVisitable = settings["session"]["showVisitable"].Bool();
 		adventureContext->settingShowBlocked = settings["session"]["showBlocked"].Bool();
 		adventureContext->settingShowInvisible = settings["session"]["showInvisible"].Bool();

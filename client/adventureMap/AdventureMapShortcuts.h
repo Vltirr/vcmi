@@ -46,6 +46,7 @@ class AdventureMapShortcuts
 	void showQuestlog();
 	void toggleTrackHero();
 	void toggleGrid();
+	void toggleManaAura();
 	void toggleVisitable();
 	void toggleBlocked();
 	void screenshotWholeMap();

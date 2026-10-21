@@ -9,6 +9,7 @@
 	//   "shortcut"        - Shortcut identifier string (see ShortcutHandler). Used to look up
 	//                       the callback and enabled-state from AdventureMapShortcuts::getShortcuts().
 	"buttons" : [
+		{ "legacyAnimation" : "ADVVIEW.DEF", "label" : "vcmi.keyBindings.keyBinding.adventureToggleManaAura", "shortcut" : "adventureToggleManaAura" },
 		{ "legacyAnimation" : "ADVVIEW.DEF",      "label" : "core.help.370.hover",             "shortcut" : "adventureViewWorld"     },
 		{ "legacyAnimation" : "ADVPUZ.DEF",       "label" : "core.help.371.hover",             "shortcut" : "adventureViewPuzzle"    },
 		{ "legacyAnimation" : "ADVDIG.DEF",       "label" : "core.help.373.hover",             "shortcut" : "adventureDigGrail"      },

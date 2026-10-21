@@ -1,4 +1,6 @@
 {
+	"vcmi.adventureMap.manaRecovery": "Recuperación: +%GAIN · Maná: %CURRENT/%MAX",
+	"vcmi.keyBindings.keyBinding.adventureToggleManaAura": "Mostrar aura de maná",
 	"vcmi.hero.manaSummary": "Maná: %d/%d. Regeneración ordinaria: %d/día.",
 	"artifact.core.orbOfVulnerability.bonus.noResistance": "{Orb of Vulnerability}\nAnula la resistencia mágica natural de todas las criaturas en el campo de batalla.",
 	"core.bonus.ADDITIONAL_ATTACK.description": "{Ataque adicional}\nEsta unidad puede atacar ${var} veces adicionales.",

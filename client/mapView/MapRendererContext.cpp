@@ -382,6 +382,20 @@ MapTextOverlay MapRendererAdventureContext::overlayText(const int3 & coordinates
 	return { object->getObjectName().toString(&GAME->translator()), getObjectOverlayColor(object) };
 }
 
+uint8_t MapRendererAdventureContext::manaAuraLevel(const int3 & position) const
+{
+	if(!manaAura || !isInMap(position) || !isVisible(position))
+		return 0;
+	int level = 0;
+	for(const auto & source : manaAuraSources)
+	{
+		const int distance = manaAura->distance(source, position);
+		if(distance >= 0)
+			level = std::max(level, 1 + 6 * (manaAura->radius - distance) / manaAura->radius);
+	}
+	return static_cast<uint8_t>(level);
+}
+
 bool MapRendererAdventureContext::showBorder() const
 {
 	return true;

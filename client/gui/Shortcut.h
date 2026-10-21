@@ -132,6 +132,7 @@ enum class EShortcut
 	// Adventure map screen
 	ADVENTURE_GAME_OPTIONS, // 'o', Open CAdventureOptions window
 	ADVENTURE_TOGGLE_GRID,  // F6, Toggles map grid
+	ADVENTURE_TOGGLE_MANA_AURA,
 	ADVENTURE_TOGGLE_VISITABLE,  // Toggles visitable tiles overlay
 	ADVENTURE_TOGGLE_BLOCKED,  // Toggles blocked tiles overlay
 	ADVENTURE_SCREENSHOT_WHOLE_MAP,  // Shift+F3, Screenshot of the whole map without overlays like paths

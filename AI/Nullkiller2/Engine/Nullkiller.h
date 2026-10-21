@@ -39,7 +39,8 @@ enum class HeroLockedReason
 
 	DEFENCE = 2,
 
-	HERO_CHAIN = 3
+	HERO_CHAIN = 3,
+	MANA_REST = 4
 };
 
 enum class ScanDepth
@@ -109,6 +110,7 @@ private:
 	bool useObjectGraph;
 	bool pathfinderInvalidated;
 	bool lastTaskFailureHadPath;
+	bool tryRestForMana(const Goals::TTask & normalTask, int priorityTier);
 
 public:
 	static std::unique_ptr<ObjectGraph> baseGraph;

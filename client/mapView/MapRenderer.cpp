@@ -764,6 +764,9 @@ MapRendererOverlay::MapRendererOverlay()
 
 void MapRendererOverlay::renderTile(IMapRendererContext & context, Canvas & target, const int3 & coordinates)
 {
+	const auto auraLevel = context.manaAuraLevel(coordinates);
+	if(auraLevel)
+		target.drawColorBlended(Rect(0, 0, 32, 32), ColorRGBA(40, 120, 255, 20 + 8 * auraLevel));
 	if(context.showGrid())
 		target.draw(imageGrid, Point(0,0));
 
@@ -817,6 +820,7 @@ uint8_t MapRendererOverlay::checksum(IMapRendererContext & context, const int3 &
 
 	if (context.showInvisible())
 		result += 16;
+	result += context.manaAuraLevel(coordinates) << 5;
 
 	return result;
 }

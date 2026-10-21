@@ -13,6 +13,7 @@
 
 #include "../../lib/GameConstants.h"
 #include "../../lib/int3.h"
+#include "../../lib/mapObjects/ManaAura.h"
 #include "../../lib/spells/ViewSpellInt.h"
 
 struct MapRendererContextState;
@@ -74,8 +75,11 @@ public:
 	bool settingShowAiHeroOverlay = false;
 	bool settingsAdventureObjectAnimation = true;
 	bool settingsAdventureTerrainAnimation = true;
+	std::optional<ManaAura> manaAura;
+	std::vector<int3> manaAuraSources;
 
 	explicit MapRendererAdventureContext(const MapRendererContextState & viewState);
+	uint8_t manaAuraLevel(const int3 & position) const override;
 
 	const CGPath * currentPath() const override;
 	size_t objectImageIndex(ObjectInstanceID objectID, size_t groupSize) const override;

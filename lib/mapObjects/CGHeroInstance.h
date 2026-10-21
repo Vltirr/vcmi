@@ -88,6 +88,14 @@ private:
 	bool cannotGainExperience = false; ///< hero receives no experience and gains no levels
 
 	IGameInfoCallback * getCallback() const final { return cb; }
+	struct ManaRecovery
+	{
+		int ordinary = 0;
+		int mysticism = 0;
+		int extras = 0;
+	};
+	ManaRecovery calculateManaRecovery() const;
+	si32 calculateManaNewTurn(const int3 & position, const CGTownInstance * town) const;
 
 public:
 	//////////////////////////////////////////////////////////////////////////
@@ -195,6 +203,8 @@ public:
 	int getLowestCreatureSpeed() const;
 	si32 manaRegain() const; //how many points of mana can hero regain "naturally" in one day
 	si32 getManaNewTurn() const; //calculate how much mana this hero is going to have the next day
+	/// Predicts next-day mana at a visitable map position without moving the hero.
+	si32 getManaNewTurnAt(const int3 & position) const;
 	int getCurrentLuck(int stack=-1, bool town=false) const;
 	int32_t getSpellCost(const spells::Spell * sp) const; //do not use during battles -> bonuses from army would be ignored
 

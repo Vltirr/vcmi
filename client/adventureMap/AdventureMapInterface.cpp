@@ -809,6 +809,26 @@ void AdventureMapInterface::onTileHovered(const int3 &targetPosition)
 		{
 			showMoveDetailsInStatusbar(*hero, *pathNode);
 		}
+		const bool peacefulDestination = pathNode->action != EPathNodeAction::BATTLE
+			&& pathNode->action != EPathNodeAction::TELEPORT_BATTLE
+			&& pathNode->action != EPathNodeAction::BLOCKING_VISIT
+			&& pathNode->action != EPathNodeAction::TELEPORT_BLOCKING_VISIT
+			&& !(objAtTile && objAtTile->ID == Obj::TOWN && objRelations == PlayerRelations::ENEMIES);
+		if(settings["session"]["showManaAura"].Bool() && isTargetPositionVisible && peacefulDestination
+			&& (pathNode->reachable() || targetPosition == hero->visitablePos()))
+		{
+			const auto & aura = GAME->interface()->cb->getSettings().getValue(EGameSettings::HEROES_MAGE_GUILD_MANA_AURA);
+			if(aura["enabled"].Bool())
+			{
+				const int finalMana = hero->getManaNewTurnAt(targetPosition);
+				MetaString text;
+				text.appendTextID("vcmi.adventureMap.manaRecovery");
+				text.replaceTokenNumber("%GAIN", finalMana - hero->mana);
+				text.replaceTokenNumber("%CURRENT", finalMana);
+				text.replaceTokenNumber("%MAX", hero->manaLimit());
+				ENGINE->statusbar()->write(text.toString(&GAME->translator()));
+			}
+		}
 
 		if (objAtTile && pathNode->action == EPathNodeAction::UNKNOWN)
 		{

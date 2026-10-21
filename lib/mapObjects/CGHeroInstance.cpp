@@ -10,6 +10,8 @@
 
 #include "StdInc.h"
 #include "CGHeroInstance.h"
+#include "ManaAura.h"
+#include "../CPlayerState.h"
 
 #include <vcmi/ServerCallback.h>
 #include <vcmi/spells/Spell.h>
@@ -29,6 +31,7 @@
 #include "../gameState/UpgradeInfo.h"
 #include "../CCreatureHandler.h"
 #include "../mapping/CMap.h"
+#include "../mapping/TerrainTile.h"
 #include "../StartInfo.h"
 #include "../GameSettings.h"
 #include "CGTownInstance.h"
@@ -1182,8 +1185,9 @@ int CGHeroInstance::getSightRadius() const
 	return applyBonuses(BonusType::SIGHT_RADIUS, baseValue);
 }
 
-si32 CGHeroInstance::manaRegain() const
+CGHeroInstance::ManaRecovery CGHeroInstance::calculateManaRecovery() const
 {
+	ManaRecovery result;
 	int percentageRegeneration = valOfBonuses(BonusType::MANA_PERCENTAGE_REGENERATION);
 	int64_t regeneratedByPercentage = static_cast<int64_t>(manaLimit()) * percentageRegeneration / 100;
 	int regeneratedByValue = valOfBonuses(BonusType::MANA_REGENERATION);
@@ -1223,6 +1227,9 @@ si32 CGHeroInstance::manaRegain() const
 			regeneration.push_back(bonus);
 		}
 
+		BonusList extras = regeneration;
+		extras.stackBonuses();
+		result.extras = extras.totalValue();
 		int64_t skillRecovery = static_cast<int64_t>(getSecSkillLevel(SecondarySkill::MYSTICISM) + 1)
 			* std::max(0, getPrimSkillLevel(PrimarySkill::KNOWLEDGE));
 		if(!specialties.empty())
@@ -1230,6 +1237,12 @@ si32 CGHeroInstance::manaRegain() const
 		auto base = std::make_shared<Bonus>(BonusDuration::PERMANENT, BonusType::MANA_REGENERATION,
 			BonusSource::SECONDARY_SKILL, static_cast<int>(std::min<int64_t>(skillRecovery, std::numeric_limits<int>::max())), skillID);
 		base->valType = BonusValueType::BASE_NUMBER;
+		BonusList ownRecovery;
+		for(const auto & bonus : regeneration)
+			if(bonus->valType == BonusValueType::PERCENT_TO_ALL || bonus->valType == BonusValueType::PERCENT_TO_BASE
+				|| bonus->valType == BonusValueType::PERCENT_TO_SOURCE || bonus->valType == BonusValueType::PERCENT_TO_TARGET_TYPE)
+				ownRecovery.push_back(bonus);
+		ownRecovery.push_back(base);
 		regeneration.push_back(base);
 		for(const auto & specialty : specialties)
 		{
@@ -1237,7 +1250,10 @@ si32 CGHeroInstance::manaRegain() const
 				BonusSource::HERO_SPECIAL, 5, specialty);
 			extra->valType = BonusValueType::ADDITIVE_VALUE;
 			regeneration.push_back(extra);
+			ownRecovery.push_back(extra);
 		}
+		ownRecovery.stackBonuses();
+		result.mysticism = std::max(0, ownRecovery.totalValue());
 		regeneration.stackBonuses();
 		regeneratedByValue = regeneration.totalValue();
 	}
@@ -1256,22 +1272,81 @@ si32 CGHeroInstance::manaRegain() const
 		regeneratedByValue = regeneration.totalValue();
 	}
 
-	return static_cast<si32>(std::clamp<int64_t>(std::max<int64_t>(regeneratedByValue, regeneratedByPercentage),
+	result.ordinary = static_cast<si32>(std::clamp<int64_t>(std::max<int64_t>(regeneratedByValue, regeneratedByPercentage),
 		std::numeric_limits<si32>::min(), std::numeric_limits<si32>::max()));
+	return result;
+}
+
+si32 CGHeroInstance::manaRegain() const
+{
+	return calculateManaRecovery().ordinary;
 }
 
 si32 CGHeroInstance::getManaNewTurn() const
 {
-	if(getVisitedTown() && getVisitedTown()->hasBuilt(BuildingID::MAGES_GUILD_1))
+	const auto * town = getVisitedTown();
+	return calculateManaNewTurn(town ? town->visitablePos() : visitablePos(), town);
+}
+
+si32 CGHeroInstance::getManaNewTurnAt(const int3 & position) const
+{
+	const CGTownInstance * town = nullptr;
+	if(getOwner().isValidPlayer() && cb->isInTheMap(position))
 	{
-		//if hero starts turn in town with mage guild - restore all mana
-		return std::max(mana, manaLimit());
+		if(const auto * tile = cb->tryGetTile(position))
+			for(const auto object : tile->visitableObjects)
+			{
+				const auto * candidate = cb->getTown(object);
+				if(candidate && candidate->visitablePos() == position && candidate->getOwner().isValidPlayer()
+					&& cb->getPlayerRelations(getOwner(), candidate->getOwner()) != PlayerRelations::ENEMIES)
+				{
+					town = candidate;
+					break;
+				}
+			}
 	}
-	int64_t res = static_cast<int64_t>(mana) + manaRegain();
-	res = std::min<int64_t>(res, manaLimit());
-	res = std::max<int64_t>(res, mana);
-	res = std::max<int64_t>(res, 0);
-	return static_cast<si32>(res);
+	return calculateManaNewTurn(position, town);
+}
+
+si32 CGHeroInstance::calculateManaNewTurn(const int3 & position, const CGTownInstance * town) const
+{
+	const auto recovery = calculateManaRecovery();
+	const int64_t maximum = std::max(0, manaLimit());
+	int64_t result = std::max<int64_t>(mana, std::min(maximum, static_cast<int64_t>(mana) + recovery.ordinary));
+	const bool inGuild = town && town->hasBuilt(BuildingID::MAGES_GUILD_1);
+	if(inGuild)
+		result = std::max(result, maximum);
+
+	const ManaAura aura(cb->getSettings());
+	// Tavern heroes may retain valid coordinates after leaving the map.
+	if(!aura.enabled || !cb->isInTheMap(position) || cb->getHero(id) != this)
+		return static_cast<si32>(std::max<int64_t>(0, result));
+	const auto * player = cb->tryGetPlayerState(getOwner());
+	if(!player)
+		return static_cast<si32>(std::max<int64_t>(0, result));
+
+	const int mastery = getSecSkillLevel(SecondarySkill::MYSTICISM);
+	const bool synergy = aura.mysticismSynergy && mastery > MasteryLevel::NONE
+		&& cb->getSettings().getBoolean(EGameSettings::HEROES_MYSTICISM_USES_KNOWLEDGE);
+	const int divisor = 5 - mastery;
+	const int64_t contribution = synergy ? (static_cast<int64_t>(recovery.mysticism) * 2 + divisor) / (2 * divisor) : 0;
+	const int64_t ceiling = synergy && mastery == MasteryLevel::EXPERT ? (maximum * 5 + 2) / 4 : maximum;
+	for(const auto * source : player->getTowns())
+	{
+		if(source->getOwner() != getOwner() || !source->hasBuilt(BuildingID::MAGES_GUILD_1))
+			continue;
+		const int distance = aura.distance(source->visitablePos(), position);
+		if(distance < 0)
+			continue;
+		const int missing = static_cast<int>(std::max<int64_t>(0, maximum - mana));
+		const int recovered = inGuild && source == town ? missing : aura.recovery(missing, static_cast<int>(maximum), std::max(1, distance));
+		int64_t candidate = std::min(maximum, static_cast<int64_t>(mana) + recovered + (synergy ? recovery.extras : 0));
+		// Existing excess survives and can accumulate further through Expert alone.
+		candidate = std::max<int64_t>(candidate, mana);
+		candidate = std::min(ceiling, candidate + contribution);
+		result = std::max(result, candidate);
+	}
+	return static_cast<si32>(std::clamp<int64_t>(result, 0, std::numeric_limits<si32>::max()));
 }
 
 // /**

@@ -12,6 +12,8 @@
 #include "../mock/GameHandlerTestServer.h"
 #include "../../lib/GameLibrary.h"
 #include "../../lib/GameSettings.h"
+#include "../../lib/mapObjects/ManaAura.h"
+#include "../../lib/mapping/CMap.h"
 #include "../../lib/CPlayerState.h"
 #include "../../lib/gameState/TavernHeroesPool.h"
 #include "../../lib/mapObjects/army/CSimpleArmy.h"
@@ -19,8 +21,12 @@
 #include "../../lib/mapObjects/CGTownInstance.h"
 #include "../../server/CGameHandler.h"
 #include "../../server/processors/NewTurnProcessor.h"
+#include "../../lib/networkPacks/PacksForClient.h"
 #ifdef ENABLE_NULLKILLER2_AI
 #include "../../AI/Nullkiller2/Analyzers/HeroManager.h"
+#include "../../AI/Nullkiller2/Helpers/ManaRest.h"
+#include "../nullkiller2/NullkillerTest.h"
+#include "../../AI/Nullkiller2/Goals/ExecuteHeroChain.h"
 #include "../../AI/Nullkiller2/Engine/Nullkiller.h"
 #endif
 
@@ -400,5 +406,386 @@ TEST_F(HeroManaRegenerationTest, classicMainRuleRemainsUnchangedWithNaturalKnowl
 	float score = -1;
 	NK2AI::KnowledgeMysticismRule().evaluateScore(hero, SecondarySkill::MYSTICISM, score);
 	EXPECT_FLOAT_EQ(score, -1);
+}
+#endif
+
+class MageGuildManaAuraTest : public HeroManaRegenerationTest
+{
+protected:
+	CGHeroInstance * prepareAura(bool synergy = false, int knowledge = 10, bool secondTown = false, HeroTypeID type = HeroTypeID(0))
+	{
+		overrideSettingBeforeInit(EGameSettings::HEROES_MYSTICISM_USES_KNOWLEDGE, synergy);
+		TinyH3M::TinyH3MBuilder builder(EMapFormat::SOD);
+		builder.size(36, true).playerActive(PlayerColor(0))
+			.town(int3(18, 18, 0), FactionID::CASTLE, PlayerColor(0))
+			.hero(int3(5, 5, 0), type, PlayerColor(0))
+			.heroPrimary(1, 1, 1, static_cast<uint8_t>(knowledge)).heroSecondarySkills({});
+		if(secondTown)
+			builder.town(int3(26, 18, 0), FactionID::CASTLE, PlayerColor(0));
+		startWithMap(std::move(builder));
+		JsonNode settings;
+		settings["enabled"].Bool() = true;
+		settings["mysticismSynergy"].Bool() = synergy;
+		map()->overrideGameSetting(EGameSettings::HEROES_MAGE_GUILD_MANA_AURA, settings);
+		for(auto * town : findAll<CGTownInstance>())
+			town->addBuilding(BuildingID::MAGES_GUILD_1);
+		auto * hero = findHeroByOwner(PlayerColor(0));
+		hero->mana = 0;
+		return hero;
+	}
+
+	int3 atDistance(int distance) const
+	{
+		return findFirst<CGTownInstance>()->visitablePos() + int3(-distance, 0, 0);
+	}
+};
+
+TEST_F(MageGuildManaAuraTest, circleAndRoundedDistanceRespectRealBoundary)
+{
+	prepareAura();
+	ManaAura aura(gameState()->getSettings());
+	for(int radius : {10, 15, 20})
+	{
+		aura.radius = radius;
+		EXPECT_EQ(aura.distance(int3(0), int3(radius, 0, 0)), radius);
+		EXPECT_EQ(aura.distance(int3(0), int3(radius, 1, 0)), -1);
+		EXPECT_EQ(aura.distance(int3(0), int3(radius - 1, 1, 0)), radius);
+		EXPECT_EQ(aura.distance(int3(0), int3(1, 1, 0)), 2);
+		EXPECT_EQ(aura.distance(int3(0), int3(1, 0, 1)), -1);
+	}
+}
+
+TEST_F(MageGuildManaAuraTest, bothCurvesUseExactFractionsAndCeiling)
+{
+	auto * hero = prepareAura();
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(1)), 94);
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(5)), 70);
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(10)), 40);
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(15)), 10);
+	hero->mana = 90;
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(1)), 100);
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(15)), 95);
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(16)), 91);
+}
+
+TEST_F(MageGuildManaAuraTest, ownershipGuildAndLevelFilterSources)
+{
+	auto * hero = prepareAura();
+	auto * town = findFirst<CGTownInstance>();
+	const auto target = atDistance(5);
+	EXPECT_EQ(hero->getManaNewTurnAt(target), 70);
+	town->addBuilding(BuildingID::MAGES_GUILD_2);
+	EXPECT_EQ(hero->getManaNewTurnAt(target), 70);
+	SetObjectProperty ownership;
+	ownership.id = town->id;
+	ownership.what = ObjProperty::OWNER;
+	ownership.identifier = ObjPropertyID(PlayerColor::NEUTRAL);
+	gameState()->apply(ownership);
+	EXPECT_EQ(hero->getManaNewTurnAt(target), 1);
+	ownership.identifier = ObjPropertyID(PlayerColor(0));
+	gameState()->apply(ownership);
+	town->removeBuilding(BuildingID::MAGES_GUILD_2);
+	town->removeBuilding(BuildingID::MAGES_GUILD_1);
+	EXPECT_EQ(hero->getManaNewTurnAt(target), 1);
+	town->addBuilding(BuildingID::MAGES_GUILD_1);
+	EXPECT_EQ(hero->getManaNewTurnAt(target + int3(0, 0, 1)), 1);
+}
+
+TEST_F(MageGuildManaAuraTest, ordinaryBonusCanWinAndExcessSurvives)
+{
+	auto * hero = prepareAura();
+	add(hero, BonusType::MANA_REGENERATION, 50);
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(15)), 51);
+	hero->mana = 130;
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(1)), 130);
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(16)), 130);
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(0)), 130);
+}
+
+TEST_F(MageGuildManaAuraTest, synergyUsesFinalBalancesAndExpertAccumulates)
+{
+	auto * hero = prepareAura(true);
+	hero->setSecSkillLevel(SecondarySkill::MYSTICISM, MasteryLevel::EXPERT, ChangeValueMode::ABSOLUTE);
+	hero->mana = 95;
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(1)), 120);
+	hero->mana = 120;
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(1)), 125);
+	hero->mana = 130;
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(1)), 130);
+	hero->setSecSkillLevel(SecondarySkill::MYSTICISM, MasteryLevel::BASIC, ChangeValueMode::ABSOLUTE);
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(1)), 130);
+	hero->mana = 95;
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(1)), 100);
+}
+
+TEST_F(MageGuildManaAuraTest, artifactExtrasAndSkillFractionsStaySeparate)
+{
+	auto * hero = prepareAura(true);
+	add(hero, BonusType::MANA_REGENERATION, 3);
+	hero->setSecSkillLevel(SecondarySkill::MYSTICISM, MasteryLevel::BASIC, ChangeValueMode::ABSOLUTE);
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(10)), 48);
+	hero->setSecSkillLevel(SecondarySkill::MYSTICISM, MasteryLevel::ADVANCED, ChangeValueMode::ABSOLUTE);
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(10)), 53);
+	hero->setSecSkillLevel(SecondarySkill::MYSTICISM, MasteryLevel::EXPERT, ChangeValueMode::ABSOLUTE);
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(10)), 63);
+}
+
+TEST_F(MageGuildManaAuraTest, cityPreviewMatchesActualCityAndRoundedOverchargeCeiling)
+{
+	auto * hero = prepareAura(true, 5);
+	hero->setSecSkillLevel(SecondarySkill::MYSTICISM, MasteryLevel::EXPERT, ChangeValueMode::ABSOLUTE);
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(0)), 60);
+	hero->setVisitedTown(findFirst<CGTownInstance>(), true);
+	EXPECT_EQ(hero->getManaNewTurn(), 60);
+	hero->mana = 60;
+	EXPECT_EQ(hero->getManaNewTurn(), 63);
+}
+
+TEST_F(MageGuildManaAuraTest, disabledAndInvalidConfigurationHaveSafeDefaults)
+{
+	auto * hero = prepareAura();
+	JsonNode config;
+	config["enabled"].Bool() = false;
+	config["radius"].Integer() = 1;
+	config["auraEdgePct"].Integer() = -5;
+	config["minimumNearPct"].String() = "invalid";
+	map()->overrideGameSetting(EGameSettings::HEROES_MAGE_GUILD_MANA_AURA, config);
+	const ManaAura aura(gameState()->getSettings());
+	EXPECT_EQ(aura.radius, 15);
+	EXPECT_EQ(aura.edgePct, 10);
+	EXPECT_EQ(aura.minimumNearPct, 10);
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(5)), 1);
+}
+
+TEST_F(MageGuildManaAuraTest, previewDoesNotMoveHeroOrChangeMana)
+{
+	auto * hero = prepareAura();
+	const auto position = hero->visitablePos();
+	const auto visited = hero->getVisitedTown();
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(5)), 70);
+	EXPECT_EQ(hero->visitablePos(), position);
+	EXPECT_EQ(hero->getVisitedTown(), visited);
+	EXPECT_EQ(hero->mana, 0);
+}
+
+#ifdef ENABLE_NULLKILLER2_AI
+TEST(ManaRestPolicy, needsLowManaAndUsableMagic)
+{
+	EXPECT_TRUE(NK2AI::manaRestNeeded(39, 100, true, 5, 3));
+	EXPECT_FALSE(NK2AI::manaRestNeeded(40, 100, true, 5, 3));
+	EXPECT_FALSE(NK2AI::manaRestNeeded(10, 100, false, 5, 3));
+	EXPECT_FALSE(NK2AI::manaRestNeeded(10, 100, true, 4, 3));
+	EXPECT_FALSE(NK2AI::manaRestNeeded(10, 100, true, 5, 2));
+}
+
+TEST(ManaRestPolicy, comparesIncrementalGainAndMovementWithoutOverchargeIncentive)
+{
+	EXPECT_TRUE(NK2AI::manaRestWorthwhile(100, 30, 60, 500, 2000));
+	EXPECT_FALSE(NK2AI::manaRestWorthwhile(100, 60, 65, 0, 2000));
+	EXPECT_FALSE(NK2AI::manaRestWorthwhile(100, 30, 60, 501, 2000));
+	EXPECT_FALSE(NK2AI::manaRestWorthwhile(100, 100, 125, 0, 2000));
+	EXPECT_FALSE(NK2AI::manaRestWorthwhile(20, 0, 4, 0, 2000));
+}
+#endif
+
+TEST_F(MageGuildManaAuraTest, newDayMatchesCurrentPositionAndSnapshotPreservesSynergy)
+{
+	auto * hero = prepareAura(true);
+	hero->setSecSkillLevel(SecondarySkill::MYSTICISM, MasteryLevel::EXPERT, ChangeValueMode::ABSOLUTE);
+	hero->mana = 95;
+	hero->setVisitedTown(findFirst<CGTownInstance>(), false);
+	const auto id = hero->id;
+	EXPECT_EQ(hero->getManaNewTurn(), 120);
+	auto snapshot = gameState()->saveToMemory();
+	gameState()->loadFromMemory(std::move(snapshot));
+	auto * restored = gameState()->getHero(id);
+	ASSERT_NE(restored, nullptr);
+	EXPECT_EQ(restored->mana, 95);
+	EXPECT_EQ(restored->getManaNewTurn(), 120);
+	GameHandlerTestServer server(gameState(), PlayerColor(0));
+	CGameHandler handler(server, gameState());
+	NewTurnProcessor processor(&handler);
+	processor.onNewTurn();
+	EXPECT_EQ(restored->mana, 120);
+}
+
+TEST_F(MageGuildManaAuraTest, customParametersChangeBothCurvesAndRadius)
+{
+	auto * hero = prepareAura();
+	JsonNode config;
+	config["enabled"].Bool() = true;
+	config["radius"].Integer() = 10;
+	config["auraEdgePct"].Integer() = 20;
+	config["minimumNearPct"].Integer() = 30;
+	config["minimumEdgePct"].Integer() = 15;
+	map()->overrideGameSetting(EGameSettings::HEROES_MAGE_GUILD_MANA_AURA, config);
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(10)), 20);
+	hero->mana = 90;
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(10)), 100);
+	hero->mana = 0;
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(11)), 1);
+}
+
+#ifdef ENABLE_NULLKILLER2_AI
+class ManaRestIntegrationTest : public NullkillerTest
+{
+protected:
+	Services * gameServices() override { return LIBRARY; }
+	void configurePlayer(PlayerSettings & settings) const override { settings.bonus = PlayerStartingBonus::GOLD; }
+	CGHeroInstance * prepareRest()
+	{
+		TinyH3M::TinyH3MBuilder builder(EMapFormat::SOD);
+		builder.size(36, false).playerActive(PlayerColor(0))
+			.town(int3(18, 18, 0), FactionID::CASTLE, PlayerColor(0))
+			.hero(int3(10, 18, 0), HeroTypeID(HeroTypeID::decode("halon")), PlayerColor(0))
+			.heroPrimary(1, 1, 1, 10).heroSecondarySkills({});
+		startWithMap(std::move(builder));
+		findFirst<CGTownInstance>()->addBuilding(BuildingID::MAGES_GUILD_1);
+		JsonNode config;
+		config["enabled"].Bool() = true;
+		config["radius"].Integer() = 10;
+		map()->overrideGameSetting(EGameSettings::HEROES_MAGE_GUILD_MANA_AURA, config);
+		auto * hero = findHeroByOwner(PlayerColor(0));
+		hero->mana = 0;
+		hero->setMovementPoints(hero->movementPointsLimit() / 5);
+		for(const auto spell : {SpellID::MAGIC_ARROW, SpellID::HASTE, SpellID::SLOW})
+			hero->addSpellToSpellbook(SpellID(spell));
+		revealMap(PlayerColor(0));
+		return hero;
+	}
+
+	std::shared_ptr<NK2AI::Goals::ExecuteHeroChain> normalTask(CGHeroInstance * hero)
+	{
+		NK2AI::AIPath path;
+		path.targetHero = hero;
+		path.heroArmy = hero;
+		path.exchangeCount = 1;
+		const auto entrance = findFirst<CGTownInstance>()->visitablePos();
+		auto node = pathNode(*hero, entrance + int3(-10, 0, 0));
+		node.cost = 0.2f;
+		path.nodes.push_back(node);
+		auto task = std::make_shared<NK2AI::Goals::ExecuteHeroChain>(path);
+		task->setpriority(0.01f);
+		return task;
+	}
+};
+
+TEST_F(ManaRestIntegrationTest, choosesCurrentAuraPositionAndLocksHeroUntilNextTurn)
+{
+	std::shared_lock stateLock(CGameState::mutex);
+	auto * hero = prepareRest();
+	const auto position = hero->visitablePos();
+	const auto gateway = makeGateway(PlayerColor(0));
+	NK2AI::NullkillerTestAccess::prepareState(*gateway->nullkiller);
+	ASSERT_TRUE(hero->hasSpellbook());
+	ASSERT_EQ(gateway->nullkiller->getHeroLockedReason(hero), NK2AI::HeroLockedReason::NOT_LOCKED);
+	EXPECT_TRUE(NK2AI::NullkillerTestAccess::tryRestForMana(*gateway->nullkiller, normalTask(hero), NK2AI::PriorityEvaluator::EXPLORE_AND_GATHER));
+	EXPECT_EQ(hero->visitablePos(), position);
+	EXPECT_EQ(hero->mana, 0);
+	EXPECT_EQ(gateway->nullkiller->getHeroLockedReason(hero), NK2AI::HeroLockedReason::MANA_REST);
+}
+
+TEST_F(ManaRestIntegrationTest, urgentOrMoreValuableNormalActionPreventsRest)
+{
+	std::shared_lock stateLock(CGameState::mutex);
+	auto * hero = prepareRest();
+	const auto gateway = makeGateway(PlayerColor(0));
+	NK2AI::NullkillerTestAccess::prepareState(*gateway->nullkiller);
+	auto task = normalTask(hero);
+	EXPECT_FALSE(NK2AI::NullkillerTestAccess::tryRestForMana(*gateway->nullkiller, task, NK2AI::PriorityEvaluator::KILL));
+	task->setpriority(1.0f);
+	EXPECT_FALSE(NK2AI::NullkillerTestAccess::tryRestForMana(*gateway->nullkiller, task, NK2AI::PriorityEvaluator::EXPLORE_AND_GATHER));
+	EXPECT_EQ(gateway->nullkiller->getHeroLockedReason(hero), NK2AI::HeroLockedReason::NOT_LOCKED);
+}
+#endif
+
+TEST_F(MageGuildManaAuraTest, overlappingSourcesChooseBestWithoutAdding)
+{
+	auto * hero = prepareAura(false, 10, true);
+	const auto target = findFirst<CGTownInstance>()->visitablePos() + int3(5, 0, 0);
+	EXPECT_EQ(hero->getManaNewTurnAt(target), 82);
+}
+
+TEST_F(MageGuildManaAuraTest, specialistFractionIncludesPercentageAndFixedRecovery)
+{
+	auto * hero = prepareAura(true, 5, false, HeroTypeID(HeroTypeID::decode("halon")));
+	hero->setSecSkillLevel(SecondarySkill::MYSTICISM, MasteryLevel::EXPERT, ChangeValueMode::ABSOLUTE);
+	EXPECT_EQ(hero->manaRegain(), 26);
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(10)), 33);
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(0)), 63);
+}
+
+TEST_F(MageGuildManaAuraTest, tavernHeroDoesNotReceiveAuraFromRetainedCoordinates)
+{
+	prepareAura();
+	auto unused = gameState()->heroesPool->unusedHeroesFromPool();
+	ASSERT_FALSE(unused.empty());
+	auto * hero = unused.begin()->second;
+	hero->setPrimarySkill(PrimarySkill::KNOWLEDGE, 10, ChangeValueMode::ABSOLUTE);
+	hero->setSecSkillLevel(SecondarySkill::MYSTICISM, MasteryLevel::NONE, ChangeValueMode::ABSOLUTE);
+	hero->mana = 0;
+	hero->setAnchorPos(hero->convertFromVisitablePos(atDistance(5)));
+	EXPECT_EQ(hero->getManaNewTurn(), hero->manaRegain());
+}
+
+TEST_F(MageGuildManaAuraTest, sourceModifiersApplyToMysticismAndExtrasSeparately)
+{
+	auto * hero = prepareAura(true);
+	hero->setSecSkillLevel(SecondarySkill::MYSTICISM, MasteryLevel::EXPERT, ChangeValueMode::ABSOLUTE);
+	add(hero, BonusType::MANA_REGENERATION, 3);
+	auto modifier = add(hero, BonusType::MANA_REGENERATION, 50, BonusSource::OTHER, BonusValueType::PERCENT_TO_TARGET_TYPE);
+	modifier->targetSourceType = BonusSource::SECONDARY_SKILL;
+	modifier->targetSourceID = BonusSourceID(SecondarySkill(SecondarySkill::MYSTICISM));
+	hero->nodeHasChanged();
+	EXPECT_EQ(hero->manaRegain(), 63);
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(10)), 73);
+	add(hero, BonusType::MANA_REGENERATION, 100, BonusSource::ARTIFACT, BonusValueType::PERCENT_TO_SOURCE);
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(10)), 76);
+}
+
+TEST_F(HeroManaRegenerationTest, alliedGuildPreviewPreservesTraditionalRefillWithoutEmittingAura)
+{
+	const PlayerColor player(0);
+	const PlayerColor ally(1);
+	TinyH3M::TinyH3MBuilder builder(EMapFormat::SOD);
+	builder.size(36, false).playerActive(player).playerActive(ally)
+		.town(int3(18, 18, 0), FactionID::CASTLE, ally)
+		.hero(int3(5, 5, 0), HeroTypeID(0), player)
+		.heroPrimary(1, 1, 1, 10).heroSecondarySkills({});
+	startWithMap(std::move(builder));
+	auto * hero = findHeroByOwner(player);
+	auto * town = findFirst<CGTownInstance>();
+	hero->mana = 0;
+	town->addBuilding(BuildingID::MAGES_GUILD_1);
+	EXPECT_EQ(hero->getManaNewTurnAt(town->visitablePos()), hero->manaRegain());
+	auto & team = gameState()->teams.at(gameState()->players.at(player).team);
+	gameState()->teams.at(gameState()->players.at(ally).team).players.erase(ally);
+	team.players.insert(ally);
+	gameState()->players.at(ally).team = team.id;
+	revealMap(player);
+	EXPECT_EQ(hero->getManaNewTurnAt(town->visitablePos()), hero->manaLimit());
+	hero->setVisitedTown(town, false);
+	EXPECT_EQ(hero->getManaNewTurnAt(town->visitablePos()), hero->getManaNewTurn());
+	hero->setVisitedTown(nullptr, false);
+	JsonNode config;
+	config["enabled"].Bool() = true;
+	map()->overrideGameSetting(EGameSettings::HEROES_MAGE_GUILD_MANA_AURA, config);
+	EXPECT_EQ(hero->getManaNewTurnAt(town->visitablePos()), hero->manaLimit());
+	EXPECT_EQ(hero->getManaNewTurnAt(town->visitablePos() + int3(-1, 0, 0)), hero->manaRegain());
+}
+
+#ifdef ENABLE_NULLKILLER2_AI
+TEST_F(ManaRestIntegrationTest, artifactGrantedCombatSpellsCountWithoutLearnedSpells)
+{
+	std::shared_lock stateLock(CGameState::mutex);
+	auto * hero = prepareRest();
+	hero->removeAllSpells();
+	hero->putArtifact(ArtifactPosition::MISC1, map()->createArtifact(ArtifactID(ArtifactID::decode("tomeOfAirMagic"))));
+	ASSERT_TRUE(hero->getSpellsInSpellbook().empty());
+	ASSERT_TRUE(hero->hasSpellbook());
+	const auto gateway = makeGateway(PlayerColor(0));
+	NK2AI::NullkillerTestAccess::prepareState(*gateway->nullkiller);
+	EXPECT_TRUE(NK2AI::NullkillerTestAccess::tryRestForMana(*gateway->nullkiller, normalTask(hero), NK2AI::PriorityEvaluator::EXPLORE_AND_GATHER));
+	EXPECT_EQ(gateway->nullkiller->getHeroLockedReason(hero), NK2AI::HeroLockedReason::MANA_REST);
 }
 #endif

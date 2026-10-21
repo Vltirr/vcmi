@@ -103,5 +103,6 @@ public:
 
 	/// if true, spell range for teleport / scuttle boat will be visible
 	virtual bool showSpellRange(const int3 & position) const = 0;
+	virtual uint8_t manaAuraLevel(const int3 &) const { return 0; }
 
 };
