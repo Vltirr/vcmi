@@ -273,7 +273,8 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 		schoolTabCustom.push_back(std::make_shared<CAnimImage>(LIBRARY->spellSchoolHandler->getById(customSpellSchools[i])->getSchoolBookmarkPath(), i == 0 ? 0 : 1, 0, isBigSpellbook ? 0 : 15, yStart + ((yEnd - yStart) * i) / denom));
 	schoolPicture = std::make_shared<CAnimImage>(AnimationPath::builtin("Schools"), 0, 0, 117 + offL, 74 + offT);
 
-	mana = std::make_shared<CLabel>(435 + (isBigSpellbook ? 159 : 0), 426 + offB, FONT_TINY, ETextAlignment::CENTER, Colors::YELLOW, std::to_string(myHero->mana) + '/' + std::to_string(myHero->manaLimit()));
+	const Point manaPosition = isBigSpellbook ? Point(592, 485) : Point(434, 426);
+	mana = std::make_shared<CLabel>(manaPosition.x, manaPosition.y, FONT_TINY, ETextAlignment::CENTER, Colors::YELLOW, std::to_string(myHero->mana) + '/' + std::to_string(myHero->manaLimit()));
 
 	if(isBigSpellbook)
 		statusBar = CGStatusBar::create(400, 587);

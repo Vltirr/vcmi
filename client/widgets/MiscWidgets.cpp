@@ -368,7 +368,7 @@ void CHeroTooltip::init(const InfoAboutHero & hero)
 		labels.push_back(std::make_shared<CLabel>(132, 60, FONT_SMALL, ETextAlignment::CENTER, Colors::WHITE, std::to_string(hero.details->primskills[2]), 25));
 		labels.push_back(std::make_shared<CLabel>(160, 60, FONT_SMALL, ETextAlignment::CENTER, Colors::WHITE, std::to_string(hero.details->primskills[3]), 25));
 
-		labels.push_back(std::make_shared<CLabel>(151, 100, FONT_TINY, ETextAlignment::CENTER, Colors::WHITE, std::to_string(hero.details->mana) + '/' + std::to_string(hero.details->manaLimit), 54));
+		labels.push_back(std::make_shared<CLabel>(158, 100, FONT_TINY, ETextAlignment::CENTER, Colors::WHITE, std::to_string(hero.details->mana), 30));
 
 		morale = std::make_shared<CAnimImage>(AnimationPath::builtin("IMRL22"), std::clamp(hero.details->morale + 3, 0 , 6), 0, 5, 74);
 		luck = std::make_shared<CAnimImage>(AnimationPath::builtin("ILCK22"), std::clamp(hero.details->luck + 3, 0, 6), 0, 5, 91);
@@ -410,7 +410,7 @@ void CInteractableHeroTooltip::init(const InfoAboutHero & hero)
 		labels.push_back(std::make_shared<CLabel>(132, 59, FONT_SMALL, ETextAlignment::CENTER, Colors::WHITE, std::to_string(hero.details->primskills[2]), 25));
 		labels.push_back(std::make_shared<CLabel>(160, 59, FONT_SMALL, ETextAlignment::CENTER, Colors::WHITE, std::to_string(hero.details->primskills[3]), 25));
 
-		labels.push_back(std::make_shared<CLabel>(151, 99, FONT_TINY, ETextAlignment::CENTER, Colors::WHITE, std::to_string(hero.details->mana) + '/' + std::to_string(hero.details->manaLimit), 54));
+		labels.push_back(std::make_shared<CLabel>(158, 99, FONT_TINY, ETextAlignment::CENTER, Colors::WHITE, std::to_string(hero.details->mana), 30));
 
 		morale = std::make_shared<CAnimImage>(AnimationPath::builtin("IMRL22"), std::clamp(hero.details->morale + 3, 0 ,6), 0, 5, 74);
 		luck = std::make_shared<CAnimImage>(AnimationPath::builtin("ILCK22"), std::clamp(hero.details->luck + 3, 0, 6), 0, 5, 91);
