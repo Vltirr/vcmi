@@ -485,6 +485,7 @@ void CPlayerInterface::heroManaPointsChanged(const CGHeroInstance * hero)
 	adventureInt->onHeroChanged(hero);
 	if (makingTurn && hero->tempOwner == playerID)
 		adventureInt->onHeroChanged(hero);
+	ENGINE->windows().totalRedraw();
 }
 void CPlayerInterface::heroMovePointsChanged(const CGHeroInstance * hero)
 {
