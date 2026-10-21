@@ -479,6 +479,9 @@ void CPlayerInterface::heroSecondarySkillChanged(const CGHeroInstance * hero, in
 void CPlayerInterface::heroManaPointsChanged(const CGHeroInstance * hero)
 {
 	EVENT_HANDLER_CALLED_BY_CLIENT;
+	for(auto window : ENGINE->windows().findWindows<CHeroWindow>())
+		if(window->curHero == hero)
+			window->updateArtifacts();
 	adventureInt->onHeroChanged(hero);
 	if (makingTurn && hero->tempOwner == playerID)
 		adventureInt->onHeroChanged(hero);
