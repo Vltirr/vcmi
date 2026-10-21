@@ -204,6 +204,14 @@ void Canvas::copyFromCanvas(const Canvas & image, const Rect & targetArea, uint3
 		return;
 	}
 
+	// The source may be a screen layer used again during frame composition.
+	SDL_BlendMode originalBlendMode;
+	Uint8 originalAlpha;
+	SDL_ScaleMode originalScaleMode;
+	SDL_GetTextureBlendMode(image.renderTarget, &originalBlendMode);
+	SDL_GetTextureAlphaMod(image.renderTarget, &originalAlpha);
+	SDL_GetTextureScaleMode(image.renderTarget, &originalScaleMode);
+
 	SDL_SetTextureBlendMode(image.renderTarget, static_cast<SDL_BlendMode>(blendMode));
 	SDL_SetTextureAlphaMod(image.renderTarget, alpha);
 	// matches SDL_BlitSurfaceScaled on the surface path; see the note in SDLImageShared
@@ -212,7 +220,9 @@ void Canvas::copyFromCanvas(const Canvas & image, const Rect & targetArea, uint3
 	if(!SDL_RenderTexture(renderer, image.renderTarget, &source, &target))
 		logGpuIssueOnce(std::string("SDL_RenderTexture failed: ") + SDL_GetError());
 
-	SDL_SetTextureAlphaMod(image.renderTarget, SDL_ALPHA_OPAQUE);
+	SDL_SetTextureBlendMode(image.renderTarget, originalBlendMode);
+	SDL_SetTextureAlphaMod(image.renderTarget, originalAlpha);
+	SDL_SetTextureScaleMode(image.renderTarget, originalScaleMode);
 }
 
 void Canvas::applyTransparency(bool on)
