@@ -77,7 +77,7 @@ int ManaAura::distance(const int3 & source, const int3 & position) const
 	return low;
 }
 
-int ManaAura::recovery(int maximumMana, int distance) const
+int ManaAura::recovery(int baseMana, int distance) const
 {
 	if(distance < 0 || distance > radius || radius < 2)
 		return 0;
@@ -90,6 +90,6 @@ int ManaAura::recovery(int maximumMana, int distance) const
 		numerator = 2LL * edgePct * radius * radius + 3LL * (100 - edgePct) * remaining * remaining;
 	}
 	// The maximum supported radius and mana require more than 64 bits for this product.
-	const boost::multiprecision::int128_t scaled = boost::multiprecision::int128_t(std::max(0, maximumMana)) * numerator;
+	const boost::multiprecision::int128_t scaled = boost::multiprecision::int128_t(std::max(0, baseMana)) * numerator;
 	return static_cast<int>((scaled + denominator - 1) / denominator);
 }

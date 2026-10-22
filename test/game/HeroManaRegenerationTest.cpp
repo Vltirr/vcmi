@@ -455,7 +455,7 @@ TEST_F(MageGuildManaAuraTest, circleAndRoundedDistanceRespectRealBoundary)
 	}
 }
 
-TEST_F(MageGuildManaAuraTest, maximumBasedCurveMatchesKnowledgeTenAndFive)
+TEST_F(MageGuildManaAuraTest, knowledgeBasedCurveMatchesKnowledgeTenAndFive)
 {
 	auto * hero = prepareAura();
 	const std::vector<int> knowledgeTen{94, 88, 82, 76, 70, 59, 49, 40, 32, 25, 20, 16, 13, 11, 10};
@@ -470,6 +470,45 @@ TEST_F(MageGuildManaAuraTest, maximumBasedCurveMatchesKnowledgeTenAndFive)
 	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(1)), 100);
 	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(15)), 100);
 	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(16)), 91);
+}
+
+TEST_F(MageGuildManaAuraTest, intelligenceChangesCapacityButNotAuraRecovery)
+{
+	auto * hero = prepareAura(true);
+	for(const auto & values : std::vector<std::array<int, 3>>{
+		{MasteryLevel::NONE, 100, 125}, {MasteryLevel::BASIC, 125, 156},
+		{MasteryLevel::ADVANCED, 150, 188}, {MasteryLevel::EXPERT, 200, 240}})
+	{
+		hero->setSecSkillLevel(SecondarySkill::INTELLIGENCE, values[0], ChangeValueMode::ABSOLUTE);
+		hero->setSecSkillLevel(SecondarySkill::MYSTICISM, MasteryLevel::NONE, ChangeValueMode::ABSOLUTE);
+		hero->mana = 0;
+		ASSERT_EQ(hero->manaLimit(), values[1]);
+		EXPECT_EQ(hero->getManaRecoveryAt(atDistance(15)).second, 10);
+		EXPECT_EQ(hero->getManaRecoveryAt(atDistance(1)).second, 94);
+		EXPECT_EQ(hero->getManaNewTurnAt(atDistance(0)), values[1]);
+		hero->setSecSkillLevel(SecondarySkill::MYSTICISM, MasteryLevel::EXPERT, ChangeValueMode::ABSOLUTE);
+		hero->mana = 48;
+		const auto [balance, potential] = hero->getManaRecoveryAt(atDistance(15));
+		EXPECT_EQ(balance, 98);
+		EXPECT_EQ(potential, 50);
+		EXPECT_EQ(hero->getManaRecoveryAt(atDistance(0)).second, values[2]);
+	}
+}
+
+TEST_F(MageGuildManaAuraTest, auraUsesEffectiveKnowledgeWithoutOtherCapacityBonuses)
+{
+	auto * hero = prepareAura(true);
+	add(hero, BonusType::MANA_PER_KNOWLEDGE_PERCENTAGE, 500);
+	ASSERT_EQ(hero->manaLimit(), 150);
+	EXPECT_EQ(hero->getManaRecoveryAt(atDistance(15)).second, 10);
+	auto knowledge = add(hero, BonusType::PRIMARY_SKILL, 2);
+	knowledge->subtype = BonusSubtypeID(PrimarySkill::KNOWLEDGE);
+	hero->nodeHasChanged();
+	ASSERT_EQ(hero->getPrimSkillLevel(PrimarySkill::KNOWLEDGE), 12);
+	ASSERT_EQ(hero->manaLimit(), 180);
+	EXPECT_EQ(hero->getManaRecoveryAt(atDistance(15)).second, 12);
+	hero->setSecSkillLevel(SecondarySkill::MYSTICISM, MasteryLevel::EXPERT, ChangeValueMode::ABSOLUTE);
+	EXPECT_EQ(hero->getManaRecoveryAt(atDistance(15)).second, 60);
 }
 
 TEST_F(MageGuildManaAuraTest, curveScalesWithRadiusAndStaysBoundedAtSupportedLimits)

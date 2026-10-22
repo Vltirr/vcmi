@@ -25,5 +25,5 @@ struct DLL_LINKAGE ManaAura
 	explicit ManaAura(const IGameSettings & settings);
 	/// Returns the rounded-up Euclidean distance, or -1 outside the circle.
 	int distance(const int3 & source, const int3 & position) const;
-	int recovery(int maximumMana, int distance) const;
+	int recovery(int baseMana, int distance) const;
 };

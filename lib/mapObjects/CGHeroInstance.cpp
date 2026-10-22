@@ -1344,6 +1344,9 @@ std::pair<si32, si32> CGHeroInstance::calculateManaNewTurn(const int3 & position
 		&& cb->getSettings().getBoolean(EGameSettings::HEROES_MYSTICISM_USES_KNOWLEDGE);
 	const int64_t contribution = synergy ? (static_cast<int64_t>(recovery.mysticism) * (mastery + 1) + 2) / 4 : 0;
 	const int64_t ceiling = synergy && mastery == MasteryLevel::EXPERT ? (maximum * 5 + 2) / 4 : maximum;
+	constexpr int auraManaPerKnowledge = 10;
+	const int auraBase = static_cast<int>(std::min<int64_t>(
+		static_cast<int64_t>(auraManaPerKnowledge) * std::max(0, getPrimSkillLevel(PrimarySkill::KNOWLEDGE)), std::numeric_limits<int>::max()));
 	for(const auto * source : player->getTowns())
 	{
 		if(source->getOwner() != getOwner() || !source->hasBuilt(BuildingID::MAGES_GUILD_1))
@@ -1351,7 +1354,7 @@ std::pair<si32, si32> CGHeroInstance::calculateManaNewTurn(const int3 & position
 		const int distance = aura.distance(source->visitablePos(), position);
 		if(distance < 0)
 			continue;
-		const int recovered = inGuild && source == town ? static_cast<int>(maximum) : aura.recovery(static_cast<int>(maximum), std::max(1, distance));
+		const int recovered = inGuild && source == town ? static_cast<int>(maximum) : aura.recovery(auraBase, std::max(1, distance));
 		const auto candidate = [&](int64_t startingMana)
 		{
 			int64_t balance = std::min(maximum, startingMana + recovered + (synergy ? recovery.extras : 0));
