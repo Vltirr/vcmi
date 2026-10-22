@@ -982,11 +982,11 @@ void AdventureMapInterface::showHoverSummary(Canvas & to)
 
 	constexpr auto summaryFont = FONT_VERD;
 	const auto font = ENGINE->renderHandler().loadFont(summaryFont);
-	const int rowHeight = static_cast<int>(font->getLineHeight()) + 3;
+	const int rowHeight = static_cast<int>(font->getLineHeight());
 	const int width = std::min(area.w, static_cast<int>(std::max(font->getStringWidth(movementHoverSummary), font->getStringWidth(manaHoverSummary))) + 4);
 	const int height = rowHeight * (!movementHoverSummary.empty() + !manaHoverSummary.empty());
 	int x = cursor.x + 12;
-	int y = cursor.y + 14;
+	int y = cursor.y + 15;
 	if(x + width > area.x + area.w)
 		x = cursor.x - width - 6;
 	if(y + height > area.y + area.h)

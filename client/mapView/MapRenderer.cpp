@@ -1029,7 +1029,7 @@ void MapRenderer::renderTile(IMapRendererContext & context, Canvas & target, con
 
 		const auto auraLevel = context.manaAuraLevel(coordinates);
 		if(withOverlays && auraLevel)
-			target.drawColorBlended(Rect(0, 0, 32, 32), ColorRGBA(12, 48, 180, 110 + 20 * auraLevel));
+			target.drawColorBlended(Rect(0, 0, 32, 32), ColorRGBA(120 - 15 * auraLevel, 174 - 19 * auraLevel, 248 - 13 * auraLevel, 245));
 
 		rendererObjects.renderTile(context, target, coordinates);
 		if(withOverlays)
