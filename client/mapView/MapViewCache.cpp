@@ -144,7 +144,7 @@ static constexpr size_t terrainChecksumIndex = 1;
 static constexpr size_t riverChecksumIndex = 2;
 
 /// Whether the two checksums differ in nothing but the terrain animation
-static bool differsOnlyInTerrainAnimation(const std::array<uint8_t, 8> & before, const std::array<uint8_t, 8> & after)
+static bool differsOnlyInTerrainAnimation(const MapRenderer::TileChecksum & before, const MapRenderer::TileChecksum & after)
 {
 	for(size_t i = 0; i < before.size(); ++i)
 		if(before[i] != after[i] && i != terrainChecksumIndex && i != riverChecksumIndex)

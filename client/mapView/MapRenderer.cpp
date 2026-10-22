@@ -21,6 +21,7 @@
 #include "../GameEngine.h"
 #include "render/CAnimation.h"
 #include "render/Canvas.h"
+#include "render/CanvasImage.h"
 #include "render/IImage.h"
 #include "render/IRenderHandler.h"
 #include "render/Colors.h"
@@ -817,7 +818,6 @@ uint8_t MapRendererOverlay::checksum(IMapRendererContext & context, const int3 &
 
 	if (context.showInvisible())
 		result += 16;
-	result += context.manaAuraLevel(coordinates) << 5;
 
 	return result;
 }
@@ -984,6 +984,8 @@ MapRenderer::TileChecksum MapRenderer::getTileChecksum(IMapRendererContext & con
 		result[4] = rendererObjects.checksum(context, coordinates);
 		result[5] = rendererPath.checksum(context, coordinates);
 		result[6] = rendererOverlay.checksum(context, coordinates);
+		const auto auraLevels = context.manaAuraLevels(coordinates);
+		std::copy(auraLevels.begin(), auraLevels.end(), result.begin() + 8);
 
 		if(!visible)
 			result[7] = rendererFow.checksum(context, coordinates, *neighborInfo);
@@ -1027,9 +1029,41 @@ void MapRenderer::renderTile(IMapRendererContext & context, Canvas & target, con
 		if(!roadsAboveGround)
 			rendererObjects.renderGround(context, target, coordinates);
 
-		const auto auraLevel = context.manaAuraLevel(coordinates);
-		if(withOverlays && auraLevel)
-			target.drawColorBlended(Rect(0, 0, 32, 32), ColorRGBA(120 - 15 * auraLevel, 174 - 19 * auraLevel, 248 - 13 * auraLevel, 245));
+		const auto auraLevels = context.manaAuraLevels(coordinates);
+		if(withOverlays && auraLevels[0])
+		{
+			const int scalingFactor = target.getScalingFactor();
+			if(manaAuraScalingFactor != scalingFactor || (manaAuraTiles.size() >= 512 && !manaAuraTiles.contains(auraLevels)))
+			{
+				manaAuraTiles.clear();
+				manaAuraScalingFactor = scalingFactor;
+			}
+			auto & image = manaAuraTiles[auraLevels];
+			if(!image)
+			{
+				const int size = 32 * scalingFactor;
+				auto gradient = ENGINE->renderHandler().createImage(Point(size, size), CanvasScalingPolicy::IGNORE);
+				auto canvas = gradient->getCanvas();
+				for(int y = 0; y < size; ++y)
+					for(int x = 0; x < size; ++x)
+					{
+						const int left = 2 * size - 2 * x - 1;
+						const int top = 2 * size - 2 * y - 1;
+						const int right = 2 * x + 1;
+						const int bottom = 2 * y + 1;
+						const int64_t level = static_cast<int64_t>(auraLevels[0]) * left * top + static_cast<int64_t>(auraLevels[1]) * right * top
+							+ static_cast<int64_t>(auraLevels[2]) * left * bottom + static_cast<int64_t>(auraLevels[3]) * right * bottom - 4LL * size * size;
+						const int64_t denominator = 254 * 4LL * size * size;
+						const auto channel = [&](int edge, int center)
+						{
+							return static_cast<uint8_t>(edge - ((edge - center) * level + denominator / 2) / denominator);
+						};
+						canvas.drawPoint(Point(x, y), ColorRGBA(channel(105, 15), channel(155, 41), channel(235, 157), 217));
+					}
+				image = std::move(gradient);
+			}
+			target.draw(image, Point(0, 0));
+		}
 
 		rendererObjects.renderTile(context, target, coordinates);
 		if(withOverlays)

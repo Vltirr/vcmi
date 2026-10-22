@@ -29,7 +29,7 @@ class MapViewCache
 	{
 		int tileX = std::numeric_limits<int>::min();
 		int tileY = std::numeric_limits<int>::min();
-		std::array<uint8_t, 8> checksum{};
+		std::array<uint8_t, 12> checksum{};
 
 		bool operator==(const TileChecksum & other) const
 		{

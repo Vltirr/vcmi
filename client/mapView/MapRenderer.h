@@ -225,9 +225,11 @@ class MapRenderer
 	MapRendererObjects rendererObjects;
 	MapRendererPath rendererPath;
 	MapRendererOverlay rendererOverlay;
+	std::map<std::array<uint8_t, 4>, std::shared_ptr<IImage>> manaAuraTiles;
+	int manaAuraScalingFactor = 0;
 
 public:
-	using TileChecksum = std::array<uint8_t, 8>;
+	using TileChecksum = std::array<uint8_t, 12>;
 
 	/// Refreshes state that is constant for the whole frame. Must be called before the
 	/// per-tile getTileChecksum() / renderTile() calls of that frame.

@@ -79,7 +79,7 @@ public:
 	std::vector<int3> manaAuraSources;
 
 	explicit MapRendererAdventureContext(const MapRendererContextState & viewState);
-	uint8_t manaAuraLevel(const int3 & position) const override;
+	std::array<uint8_t, 4> manaAuraLevels(const int3 & position) const override;
 
 	const CGPath * currentPath() const override;
 	size_t objectImageIndex(ObjectInstanceID objectID, size_t groupSize) const override;
