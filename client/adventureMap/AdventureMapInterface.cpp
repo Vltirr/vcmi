@@ -982,15 +982,15 @@ void AdventureMapInterface::showHoverSummary(Canvas & to)
 
 	constexpr auto summaryFont = FONT_VERD;
 	const auto font = ENGINE->renderHandler().loadFont(summaryFont);
-	const int rowHeight = static_cast<int>(font->getLineHeight()) + 4;
+	const int rowHeight = static_cast<int>(font->getLineHeight()) + 3;
 	const int width = std::min(area.w, static_cast<int>(std::max(font->getStringWidth(movementHoverSummary), font->getStringWidth(manaHoverSummary))) + 4);
 	const int height = rowHeight * (!movementHoverSummary.empty() + !manaHoverSummary.empty());
-	int x = cursor.x + 24;
-	int y = cursor.y + 28;
+	int x = cursor.x + 12;
+	int y = cursor.y + 14;
 	if(x + width > area.x + area.w)
-		x = cursor.x - width - 12;
+		x = cursor.x - width - 6;
 	if(y + height > area.y + area.h)
-		y = cursor.y - height - 12;
+		y = cursor.y - height - 6;
 	x = std::max(area.x, x);
 	y = std::max(area.y, y);
 	hoverSummaryArea = Rect(x, y, width, height);
@@ -1009,12 +1009,12 @@ void AdventureMapInterface::showHoverSummary(Canvas & to)
 	};
 	if(!movementHoverSummary.empty())
 	{
-		drawSummary(movementHoverSummary, Colors::YELLOW, Colors::BLACK);
+		drawSummary(movementHoverSummary, ColorRGBA(255, 235, 0), Colors::BLACK);
 		y += rowHeight;
 	}
 	if(!manaHoverSummary.empty())
 	{
-		drawSummary(manaHoverSummary, ColorRGBA(40, 100, 200), ColorRGBA(235, 240, 255));
+		drawSummary(manaHoverSummary, ColorRGBA(20, 55, 220), ColorRGBA(225, 235, 255));
 	}
 }
 
