@@ -828,12 +828,12 @@ void AdventureMapInterface::onTileHovered(const int3 &targetPosition)
 			&& pathNode->action != EPathNodeAction::TELEPORT_BLOCKING_VISIT
 			&& !(objAtTile && objAtTile->ID == Obj::TOWN && objRelations == PlayerRelations::ENEMIES);
 		if((ENGINE->isKeyboardAltDown() || settings["session"]["showManaAura"].Bool() || settings["gameTweaks"]["forceManaInfo"].Bool())
-			&& isTargetPositionVisible && peacefulDestination
+			&& isTargetPositionVisible
 			&& (pathNode->reachable() || targetPosition == hero->visitablePos()))
 		{
 			const auto [finalMana, potential] = hero->getManaRecoveryAt(targetPosition);
 			MetaString text;
-			text.appendTextID("vcmi.adventureMap.manaRecovery");
+			text.appendTextID(peacefulDestination ? "vcmi.adventureMap.manaRecovery" : "vcmi.adventureMap.manaRecoveryBeforeInteraction");
 			text.replaceTokenNumber("%GAIN", finalMana - hero->mana);
 			text.replaceTokenNumber("%POTENTIAL", potential);
 			text.replaceTokenNumber("%CURRENT", finalMana);
@@ -982,8 +982,8 @@ void AdventureMapInterface::showHoverSummary(Canvas & to)
 
 	constexpr auto summaryFont = FONT_VERD;
 	const auto font = ENGINE->renderHandler().loadFont(summaryFont);
-	const int rowHeight = static_cast<int>(font->getLineHeight()) + 2;
-	const int width = std::min(area.w, static_cast<int>(std::max(font->getStringWidth(movementHoverSummary), font->getStringWidth(manaHoverSummary))) + 2);
+	const int rowHeight = static_cast<int>(font->getLineHeight()) + 4;
+	const int width = std::min(area.w, static_cast<int>(std::max(font->getStringWidth(movementHoverSummary), font->getStringWidth(manaHoverSummary))) + 4);
 	const int height = rowHeight * (!movementHoverSummary.empty() + !manaHoverSummary.empty());
 	int x = cursor.x + 24;
 	int y = cursor.y + 28;
@@ -998,14 +998,23 @@ void AdventureMapInterface::showHoverSummary(Canvas & to)
 	Canvas source(to, hoverSummaryArea);
 	hoverSummaryBackground->draw(source, Point(0, 0));
 	CanvasClipRectGuard clip(to, hoverSummaryArea);
+	const auto drawSummary = [&](const std::string & text, const ColorRGBA & color, const ColorRGBA & outline)
+	{
+		const Point position(x + 1, y + 1);
+		for(int dy = -1; dy <= 1; ++dy)
+			for(int dx = -1; dx <= 1; ++dx)
+				if(dx != 0 || dy != 0)
+					to.drawText(position + Point(dx, dy), summaryFont, outline, ETextAlignment::TOPLEFT, text);
+		to.drawText(position, summaryFont, color, ETextAlignment::TOPLEFT, text);
+	};
 	if(!movementHoverSummary.empty())
 	{
-		to.drawText(Point(x, y), summaryFont, Colors::YELLOW, ETextAlignment::TOPLEFT, movementHoverSummary);
+		drawSummary(movementHoverSummary, Colors::YELLOW, Colors::BLACK);
 		y += rowHeight;
 	}
 	if(!manaHoverSummary.empty())
 	{
-		to.drawText(Point(x, y), summaryFont, ColorRGBA(40, 100, 200), ETextAlignment::TOPLEFT, manaHoverSummary);
+		drawSummary(manaHoverSummary, ColorRGBA(40, 100, 200), ColorRGBA(235, 240, 255));
 	}
 }
 

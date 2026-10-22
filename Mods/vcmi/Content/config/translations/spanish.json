@@ -1,5 +1,6 @@
 {
 	"vcmi.adventureMap.manaRecovery": "Recuperación: {#2864c8|+%GAIN (%POTENTIAL)} · Maná: {#2864c8|%CURRENT/%MAX}",
+	"vcmi.adventureMap.manaRecoveryBeforeInteraction": "Recuperación en destino (maná actual): {#2864c8|+%GAIN (%POTENTIAL)} · Maná: {#2864c8|%CURRENT/%MAX}",
 	"vcmi.adventureMap.manaRecoveryShort": "+%GAIN (%POTENTIAL), %CURRENT/%MAX",
 	"vcmi.adventureMap.moveCostShort": "-%TOTAL / %REMAINING (%TURNS t)",
 	"vcmi.adventureOptions.leftButtonDrag.short": "Arrastre izquierdo",
