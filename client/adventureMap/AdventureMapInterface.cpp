@@ -980,7 +980,8 @@ void AdventureMapInterface::showHoverSummary(Canvas & to)
 		|| (movementHoverSummary.empty() && manaHoverSummary.empty()))
 		return;
 
-	const auto font = ENGINE->renderHandler().loadFont(FONT_TINY);
+	constexpr auto summaryFont = FONT_VERD;
+	const auto font = ENGINE->renderHandler().loadFont(summaryFont);
 	const int rowHeight = static_cast<int>(font->getLineHeight()) + 2;
 	const int width = std::min(area.w, static_cast<int>(std::max(font->getStringWidth(movementHoverSummary), font->getStringWidth(manaHoverSummary))) + 2);
 	const int height = rowHeight * (!movementHoverSummary.empty() + !manaHoverSummary.empty());
@@ -999,12 +1000,12 @@ void AdventureMapInterface::showHoverSummary(Canvas & to)
 	CanvasClipRectGuard clip(to, hoverSummaryArea);
 	if(!movementHoverSummary.empty())
 	{
-		to.drawText(Point(x, y), FONT_TINY, Colors::YELLOW, ETextAlignment::TOPLEFT, movementHoverSummary);
+		to.drawText(Point(x, y), summaryFont, Colors::YELLOW, ETextAlignment::TOPLEFT, movementHoverSummary);
 		y += rowHeight;
 	}
 	if(!manaHoverSummary.empty())
 	{
-		to.drawText(Point(x, y), FONT_TINY, ColorRGBA(40, 100, 200), ETextAlignment::TOPLEFT, manaHoverSummary);
+		to.drawText(Point(x, y), summaryFont, ColorRGBA(40, 100, 200), ETextAlignment::TOPLEFT, manaHoverSummary);
 	}
 }
 
