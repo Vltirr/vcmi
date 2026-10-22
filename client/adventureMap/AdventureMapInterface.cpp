@@ -822,14 +822,13 @@ void AdventureMapInterface::onTileHovered(const int3 &targetPosition)
 		std::string moveDetails;
 		if((ENGINE->isKeyboardAltDown() || settings["gameTweaks"]["forceMovementInfo"].Bool()) && pathNode->reachable())
 			moveDetails = movementDetails(*hero, *pathNode);
-		const bool peacefulDestination = pathNode->action != EPathNodeAction::BATTLE
+		const bool peacefulDestination = pathNode->reachable() && pathNode->action != EPathNodeAction::BATTLE
 			&& pathNode->action != EPathNodeAction::TELEPORT_BATTLE
 			&& pathNode->action != EPathNodeAction::BLOCKING_VISIT
 			&& pathNode->action != EPathNodeAction::TELEPORT_BLOCKING_VISIT
 			&& !(objAtTile && objAtTile->ID == Obj::TOWN && objRelations == PlayerRelations::ENEMIES);
 		if((ENGINE->isKeyboardAltDown() || settings["session"]["showManaAura"].Bool() || settings["gameTweaks"]["forceManaInfo"].Bool())
-			&& isTargetPositionVisible
-			&& (pathNode->reachable() || targetPosition == hero->visitablePos()))
+			&& isTargetPositionVisible)
 		{
 			const auto [finalMana, potential] = hero->getManaRecoveryAt(targetPosition);
 			MetaString text;
