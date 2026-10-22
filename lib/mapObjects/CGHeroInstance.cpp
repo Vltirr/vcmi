@@ -1317,14 +1317,13 @@ std::pair<si32, si32> CGHeroInstance::calculateManaNewTurn(const int3 & position
 {
 	const auto recovery = calculateManaRecovery();
 	const int64_t maximum = std::max(0, manaLimit());
-	const int missing = static_cast<int>(std::max<int64_t>(0, maximum - mana));
-	int64_t potential = std::max(0, recovery.ordinary);
+	int64_t potential = std::clamp<int64_t>(recovery.ordinary, 0, maximum);
 	int64_t result = std::max<int64_t>(mana, std::min(maximum, static_cast<int64_t>(mana) + recovery.ordinary));
 	const bool inGuild = town && town->hasBuilt(BuildingID::MAGES_GUILD_1);
 	if(inGuild)
 	{
 		result = std::max(result, maximum);
-		potential = std::max<int64_t>(potential, missing);
+		potential = maximum;
 	}
 	const auto preview = [&]() -> std::pair<si32, si32>
 	{
@@ -1352,13 +1351,16 @@ std::pair<si32, si32> CGHeroInstance::calculateManaNewTurn(const int3 & position
 		const int distance = aura.distance(source->visitablePos(), position);
 		if(distance < 0)
 			continue;
-		const int recovered = inGuild && source == town ? missing : aura.recovery(missing, static_cast<int>(maximum), std::max(1, distance));
-		potential = std::max(potential, static_cast<int64_t>(recovered) + (synergy ? recovery.extras : 0) + contribution);
-		int64_t candidate = std::min(maximum, static_cast<int64_t>(mana) + recovered + (synergy ? recovery.extras : 0));
-		// Existing excess survives and can accumulate further through Expert alone.
-		candidate = std::max<int64_t>(candidate, mana);
-		candidate = std::min(ceiling, candidate + contribution);
-		result = std::max(result, candidate);
+		const int recovered = inGuild && source == town ? static_cast<int>(maximum) : aura.recovery(static_cast<int>(maximum), std::max(1, distance));
+		const auto candidate = [&](int64_t startingMana)
+		{
+			int64_t balance = std::min(maximum, startingMana + recovered + (synergy ? recovery.extras : 0));
+			// Existing excess survives and can accumulate further through Expert alone.
+			balance = std::max(balance, startingMana);
+			return std::min(ceiling, balance + contribution);
+		};
+		potential = std::max(potential, candidate(0));
+		result = std::max(result, candidate(mana));
 	}
 	return preview();
 }

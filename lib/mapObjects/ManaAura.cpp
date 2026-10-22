@@ -12,6 +12,7 @@
 
 #include "../IGameSettings.h"
 #include "../json/JsonNode.h"
+#include <boost/multiprecision/cpp_int.hpp>
 
 void ManaAura::normalize(JsonNode & config)
 {
@@ -33,8 +34,6 @@ void ManaAura::normalize(JsonNode & config)
 	};
 	integer("radius", 15, 2, 32767);
 	integer("auraEdgePct", 10, 0, 100);
-	integer("minimumNearPct", 10, 0, 100);
-	integer("minimumEdgePct", 10, 0, 100);
 	for(const auto & key : {"enabled", "mysticismSynergy"})
 	{
 		if(!config[key].isBool())
@@ -52,8 +51,6 @@ ManaAura::ManaAura(const IGameSettings & settings)
 	mysticismSynergy = config["mysticismSynergy"].Bool();
 	radius = config["radius"].Integer();
 	edgePct = config["auraEdgePct"].Integer();
-	minimumNearPct = config["minimumNearPct"].Integer();
-	minimumEdgePct = config["minimumEdgePct"].Integer();
 }
 
 int ManaAura::distance(const int3 & source, const int3 & position) const
@@ -80,17 +77,19 @@ int ManaAura::distance(const int3 & source, const int3 & position) const
 	return low;
 }
 
-int ManaAura::recovery(int missingMana, int maximumMana, int distance) const
+int ManaAura::recovery(int maximumMana, int distance) const
 {
 	if(distance < 0 || distance > radius || radius < 2)
 		return 0;
-	if(distance == 0)
-		return std::max(0, missingMana);
-	const int64_t mainNumerator = static_cast<int64_t>(std::max(0, missingMana)) * (100LL * radius - (100 - edgePct) * distance);
-	const int64_t mainDenominator = 100LL * radius;
-	const int64_t minimumNumerator = static_cast<int64_t>(std::max(0, maximumMana))
-		* (static_cast<int64_t>(minimumNearPct) * (radius - distance) + static_cast<int64_t>(minimumEdgePct) * (distance - 1));
-	const int64_t minimumDenominator = 100LL * (radius - 1);
-	return static_cast<int>(std::max((mainNumerator + mainDenominator - 1) / mainDenominator,
-		(minimumNumerator + minimumDenominator - 1) / minimumDenominator));
+	int64_t denominator = 100LL * radius;
+	int64_t numerator = denominator - static_cast<int64_t>(100 - edgePct) * distance;
+	if(3 * distance > radius)
+	{
+		const int64_t remaining = radius - distance;
+		denominator = 200LL * radius * radius;
+		numerator = 2LL * edgePct * radius * radius + 3LL * (100 - edgePct) * remaining * remaining;
+	}
+	// The maximum supported radius and mana require more than 64 bits for this product.
+	const boost::multiprecision::int128_t scaled = boost::multiprecision::int128_t(std::max(0, maximumMana)) * numerator;
+	return static_cast<int>((scaled + denominator - 1) / denominator);
 }

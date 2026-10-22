@@ -455,17 +455,47 @@ TEST_F(MageGuildManaAuraTest, circleAndRoundedDistanceRespectRealBoundary)
 	}
 }
 
-TEST_F(MageGuildManaAuraTest, bothCurvesUseExactFractionsAndCeiling)
+TEST_F(MageGuildManaAuraTest, maximumBasedCurveMatchesKnowledgeTenAndFive)
 {
 	auto * hero = prepareAura();
-	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(1)), 94);
-	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(5)), 70);
-	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(10)), 40);
-	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(15)), 10);
+	const std::vector<int> knowledgeTen{94, 88, 82, 76, 70, 59, 49, 40, 32, 25, 20, 16, 13, 11, 10};
+	const std::vector<int> knowledgeFive{47, 44, 41, 38, 35, 30, 25, 20, 16, 13, 10, 8, 7, 6, 5};
+	for(int distance = 1; distance <= 15; ++distance)
+		EXPECT_EQ(hero->getManaNewTurnAt(atDistance(distance)), knowledgeTen.at(distance - 1)) << distance;
+	hero->setPrimarySkill(PrimarySkill::KNOWLEDGE, 5, ChangeValueMode::ABSOLUTE);
+	for(int distance = 1; distance <= 15; ++distance)
+		EXPECT_EQ(hero->getManaNewTurnAt(atDistance(distance)), knowledgeFive.at(distance - 1)) << distance;
+	hero->setPrimarySkill(PrimarySkill::KNOWLEDGE, 10, ChangeValueMode::ABSOLUTE);
 	hero->mana = 90;
 	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(1)), 100);
 	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(15)), 100);
 	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(16)), 91);
+}
+
+TEST_F(MageGuildManaAuraTest, curveScalesWithRadiusAndStaysBoundedAtSupportedLimits)
+{
+	prepareAura();
+	ManaAura aura(gameState()->getSettings());
+	for(int radius : {2, 10, 15, 20, 32767})
+	{
+		aura.radius = radius;
+		for(int edge : {0, 10, 100})
+		{
+			aura.edgePct = edge;
+			int previous = std::numeric_limits<int>::max();
+			for(int distance = 0; distance <= radius; ++distance)
+			{
+				const int recovered = aura.recovery(std::numeric_limits<int>::max(), distance);
+				EXPECT_GE(recovered, 0);
+				EXPECT_LE(recovered, previous);
+				previous = recovered;
+			}
+			EXPECT_EQ(aura.recovery(100, 0), 100);
+			EXPECT_EQ(aura.recovery(100, radius), edge);
+			EXPECT_EQ(aura.recovery(100, radius + 1), 0);
+			EXPECT_EQ(aura.recovery(0, 1), 0);
+		}
+	}
 }
 
 TEST_F(MageGuildManaAuraTest, ownershipGuildAndLevelFilterSources)
@@ -523,11 +553,11 @@ TEST_F(MageGuildManaAuraTest, artifactExtrasAndSkillFractionsStaySeparate)
 	auto * hero = prepareAura(true);
 	add(hero, BonusType::MANA_REGENERATION, 3);
 	hero->setSecSkillLevel(SecondarySkill::MYSTICISM, MasteryLevel::BASIC, ChangeValueMode::ABSOLUTE);
-	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(10)), 53);
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(10)), 38);
 	hero->setSecSkillLevel(SecondarySkill::MYSTICISM, MasteryLevel::ADVANCED, ChangeValueMode::ABSOLUTE);
-	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(10)), 66);
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(10)), 51);
 	hero->setSecSkillLevel(SecondarySkill::MYSTICISM, MasteryLevel::EXPERT, ChangeValueMode::ABSOLUTE);
-	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(10)), 83);
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(10)), 68);
 }
 
 TEST_F(MageGuildManaAuraTest, cityPreviewMatchesActualCityAndRoundedOverchargeCeiling)
@@ -548,12 +578,10 @@ TEST_F(MageGuildManaAuraTest, disabledAndInvalidConfigurationHaveSafeDefaults)
 	config["enabled"].Bool() = false;
 	config["radius"].Integer() = 1;
 	config["auraEdgePct"].Integer() = -5;
-	config["minimumNearPct"].String() = "invalid";
 	map()->overrideGameSetting(EGameSettings::HEROES_MAGE_GUILD_MANA_AURA, config);
 	const ManaAura aura(gameState()->getSettings());
 	EXPECT_EQ(aura.radius, 15);
 	EXPECT_EQ(aura.edgePct, 10);
-	EXPECT_EQ(aura.minimumNearPct, 10);
 	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(5)), 1);
 }
 
@@ -568,7 +596,7 @@ TEST_F(MageGuildManaAuraTest, previewDoesNotMoveHeroOrChangeMana)
 	EXPECT_EQ(hero->mana, 0);
 }
 
-TEST_F(MageGuildManaAuraTest, flatMinimumAndPotentialDistinguishCapacityFromRecovery)
+TEST_F(MageGuildManaAuraTest, potentialUsesZeroManaAndHeroSpecificLimits)
 {
 	auto * hero = prepareAura(true);
 	hero->setSecSkillLevel(SecondarySkill::MYSTICISM, MasteryLevel::EXPERT, ChangeValueMode::ABSOLUTE);
@@ -579,14 +607,24 @@ TEST_F(MageGuildManaAuraTest, flatMinimumAndPotentialDistinguishCapacityFromReco
 	const auto [outsideMana, outsidePotential] = hero->getManaRecoveryAt(atDistance(16));
 	EXPECT_EQ(outsideMana, 100);
 	EXPECT_EQ(outsidePotential, 40);
-	hero->mana = 100;
-	for(int distance : {1, 5, 10, 15})
+	for(int mana : {0, 1, 72, 100, 125, 130})
 	{
-		const auto [finalMana, potential] = hero->getManaRecoveryAt(atDistance(distance));
-		EXPECT_EQ(finalMana, 125);
-		EXPECT_EQ(potential, 50);
+		hero->mana = mana;
+		for(const auto & point : std::vector<std::pair<int, int>>{{0, 125}, {1, 125}, {5, 110}, {10, 65}, {15, 50}, {16, 40}})
+		{
+			const auto [finalMana, potential] = hero->getManaRecoveryAt(atDistance(point.first));
+			EXPECT_EQ(potential, point.second) << mana << ":" << point.first;
+			EXPECT_GE(finalMana, mana);
+			if(mana >= 125)
+				EXPECT_EQ(finalMana, mana);
+		}
+		EXPECT_EQ(hero->mana, mana);
 	}
-	EXPECT_EQ(hero->mana, 100);
+	hero->setSecSkillLevel(SecondarySkill::MYSTICISM, MasteryLevel::NONE, ChangeValueMode::ABSOLUTE);
+	EXPECT_EQ(hero->getManaRecoveryAt(atDistance(0)).second, 100);
+	EXPECT_EQ(hero->getManaRecoveryAt(atDistance(10)).second, 25);
+	add(hero, BonusType::MANA_REGENERATION, 200);
+	EXPECT_EQ(hero->getManaRecoveryAt(atDistance(16)).second, 100);
 }
 
 #ifdef ENABLE_NULLKILLER2_AI
@@ -630,17 +668,17 @@ TEST_F(MageGuildManaAuraTest, newDayMatchesCurrentPositionAndSnapshotPreservesSy
 	EXPECT_EQ(restored->mana, 125);
 }
 
-TEST_F(MageGuildManaAuraTest, customParametersChangeBothCurvesAndRadius)
+TEST_F(MageGuildManaAuraTest, customParametersChangeCurveAndRadius)
 {
 	auto * hero = prepareAura();
 	JsonNode config;
 	config["enabled"].Bool() = true;
 	config["radius"].Integer() = 10;
 	config["auraEdgePct"].Integer() = 20;
-	config["minimumNearPct"].Integer() = 30;
-	config["minimumEdgePct"].Integer() = 15;
 	map()->overrideGameSetting(EGameSettings::HEROES_MAGE_GUILD_MANA_AURA, config);
 	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(10)), 20);
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(3)), 76);
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(5)), 50);
 	hero->mana = 90;
 	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(10)), 100);
 	hero->mana = 0;
@@ -658,7 +696,7 @@ protected:
 		TinyH3M::TinyH3MBuilder builder(EMapFormat::SOD);
 		builder.size(36, false).playerActive(PlayerColor(0))
 			.town(int3(18, 18, 0), FactionID::CASTLE, PlayerColor(0))
-			.hero(int3(10, 18, 0), HeroTypeID(HeroTypeID::decode("halon")), PlayerColor(0))
+			.hero(int3(12, 18, 0), HeroTypeID(HeroTypeID::decode("halon")), PlayerColor(0))
 			.heroPrimary(1, 1, 1, 10).heroSecondarySkills({});
 		startWithMap(std::move(builder));
 		findFirst<CGTownInstance>()->addBuilding(BuildingID::MAGES_GUILD_1);
@@ -732,7 +770,7 @@ TEST_F(MageGuildManaAuraTest, specialistFractionIncludesPercentageAndFixedRecove
 	auto * hero = prepareAura(true, 5, false, HeroTypeID(HeroTypeID::decode("halon")));
 	hero->setSecSkillLevel(SecondarySkill::MYSTICISM, MasteryLevel::EXPERT, ChangeValueMode::ABSOLUTE);
 	EXPECT_EQ(hero->manaRegain(), 26);
-	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(10)), 46);
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(10)), 39);
 	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(0)), 63);
 }
 
@@ -759,9 +797,9 @@ TEST_F(MageGuildManaAuraTest, sourceModifiersApplyToMysticismAndExtrasSeparately
 	modifier->targetSourceID = BonusSourceID(SecondarySkill(SecondarySkill::MYSTICISM));
 	hero->nodeHasChanged();
 	EXPECT_EQ(hero->manaRegain(), 63);
-	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(10)), 103);
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(10)), 88);
 	add(hero, BonusType::MANA_REGENERATION, 100, BonusSource::ARTIFACT, BonusValueType::PERCENT_TO_SOURCE);
-	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(10)), 106);
+	EXPECT_EQ(hero->getManaNewTurnAt(atDistance(10)), 91);
 }
 
 TEST_F(HeroManaRegenerationTest, alliedGuildPreviewPreservesTraditionalRefillWithoutEmittingAura)

@@ -20,12 +20,10 @@ struct DLL_LINKAGE ManaAura
 	bool mysticismSynergy = false;
 	int radius = 15;
 	int edgePct = 10;
-	int minimumNearPct = 10;
-	int minimumEdgePct = 10;
 
 	static void normalize(JsonNode & config);
 	explicit ManaAura(const IGameSettings & settings);
 	/// Returns the rounded-up Euclidean distance, or -1 outside the circle.
 	int distance(const int3 & source, const int3 & position) const;
-	int recovery(int missingMana, int maximumMana, int distance) const;
+	int recovery(int maximumMana, int distance) const;
 };

@@ -531,9 +531,7 @@
 				"enabled" : false,
 				"mysticismSynergy" : false,
 				"radius" : 15,
-				"auraEdgePct" : 10,
-				"minimumNearPct" : 10,
-				"minimumEdgePct" : 10
+				"auraEdgePct" : 10
 			},
 			// minimal primary skills for heroes
 			"minimalPrimarySkills": [ 0, 0, 1, 1],

@@ -60,9 +60,7 @@
 						"enabled" : { "type" : "boolean" },
 						"mysticismSynergy" : { "type" : "boolean" },
 						"radius" : { "type" : "integer", "minimum" : 2, "maximum" : 32767 },
-						"auraEdgePct" : { "type" : "integer", "minimum" : 0, "maximum" : 100 },
-						"minimumNearPct" : { "type" : "integer", "minimum" : 0, "maximum" : 100 },
-						"minimumEdgePct" : { "type" : "integer", "minimum" : 0, "maximum" : 100 }
+						"auraEdgePct" : { "type" : "integer", "minimum" : 0, "maximum" : 100 }
 					}
 				},
 				"maximalPrimarySkills" :          { "type" : "array" },
