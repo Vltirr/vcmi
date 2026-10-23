@@ -384,7 +384,7 @@ MapTextOverlay MapRendererAdventureContext::overlayText(const int3 & coordinates
 
 std::array<uint8_t, 4> MapRendererAdventureContext::manaAuraLevels(const int3 & position) const
 {
-	if(!manaAura || !isInMap(position) || !isVisible(position))
+	if(!manaAura || !isInMap(position))
 		return {};
 	bool covered = false;
 	for(const auto & source : manaAuraSources)
