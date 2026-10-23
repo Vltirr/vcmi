@@ -31,6 +31,7 @@
 #include "ResourceTrader.h"
 #include "../Helpers/ManaRest.h"
 #include "../Goals/ExecuteHeroChain.h"
+#include "../Goals/Composition.h"
 #include "../../../lib/mapObjects/ManaAura.h"
 #include "../../../lib/spells/CSpell.h"
 #include "../../../lib/spells/CSpellHandler.h"
@@ -624,21 +625,45 @@ bool Nullkiller::tryRestForMana(const Goals::TTask & normalTask, int priorityTie
 		logAi->trace("MGMA rest: rejected reason=%s", reason);
 		return false;
 	};
-	if(priorityTier != PriorityEvaluator::EXPLORE_AND_GATHER)
-		return reject("not-explore-and-gather");
+	if(priorityTier != PriorityEvaluator::ESCAPE && priorityTier != PriorityEvaluator::EXPLORE_AND_GATHER)
+		return reject("urgent-or-unsupported-priority-tier");
 	const ManaAura aura(cc->getSettings());
 	const auto * move = dynamic_cast<const Goals::ExecuteHeroChain *>(normalTask.get());
 	if(!aura.enabled)
 		return reject("aura-disabled");
+	Goals::TGoalVec parts;
+	if(const auto * composition = dynamic_cast<const Goals::Composition *>(normalTask.get()))
+	{
+		parts = composition->decompose(this);
+		for(const auto & part : parts)
+		{
+			if(const auto * chain = dynamic_cast<const Goals::ExecuteHeroChain *>(part.get()))
+			{
+				if(move)
+					return reject("compound-multiple-movements");
+				move = chain;
+			}
+			else if(part->goalType != Goals::EXPLORATION_POINT && part->goalType != Goals::UNLOCK_CLUSTER
+				&& part->goalType != Goals::EXPLORE_NEIGHBOUR_TILE)
+				return reject("compound-special-action");
+		}
+	}
 	if(!move)
-		return reject("not-direct-hero-chain");
+		return reject("no-supported-hero-chain");
 	if(move->getHeroExchangeCount() != 1)
 		return reject("multiple-heroes");
+	if(move->getPath().getTotalDanger() > 0)
+		return reject("normal-path-combat");
 	if(std::ranges::any_of(move->getPath().nodes, [](const auto & node) { return node.specialAction != nullptr; }))
 		return reject("normal-path-special-action");
 	const auto * hero = move->getHero();
 	if(!hero)
 		return reject("no-hero");
+	if(std::ranges::any_of(parts, [&](const auto & part)
+	{
+		return part->goalType == Goals::EXPLORE_NEIGHBOUR_TILE && part->hero != hero;
+	}))
+		return reject("compound-multiple-heroes");
 	logAi->trace("MGMA rest: hero=%s position=%s mana=%d maximum=%d knowledge=%d spellbook=%d movement=%d daily=%d lock=%d",
 		hero->getNameTextID(), hero->visitablePos().toString(), hero->mana, hero->manaLimit(), hero->getPrimSkillLevel(PrimarySkill::KNOWLEDGE),
 		hero->hasSpellbook(), hero->movementPointsRemaining(), hero->movementPointsLimit(), static_cast<int>(getHeroLockedReason(hero)));
@@ -656,8 +681,14 @@ bool Nullkiller::tryRestForMana(const Goals::TTask & normalTask, int priorityTie
 	logAi->trace("MGMA rest: usable-combat-spells=%d (count capped at 3)", combatSpells);
 	if(!manaRestNeeded(hero->mana, hero->manaLimit(), hero->hasSpellbook(), hero->getPrimSkillLevel(PrimarySkill::KNOWLEDGE), combatSpells))
 		return reject("needs-mana-below-40-percent-book-knowledge-5-and-three-combat-spells");
+	const auto normalContext = priorityEvaluator->buildEvaluationContext(sptr(*move));
+	if(normalContext.isDefend || normalContext.isEnemy || normalContext.conquestValue > 0)
+		return reject("defence-or-conquest");
 
 	const int3 origin = hero->visitablePos();
+	const auto & originThreat = dangerHitMap->getTileThreat(origin).maximumDanger;
+	if(originThreat.turn <= 1 && originThreat.danger > 0)
+		return reject("threatened-hero-must-continue");
 	int3 normalEnd = origin;
 	float normalCost = 0;
 	for(const auto & node : move->getPath().nodes)
@@ -795,8 +826,16 @@ bool Nullkiller::tryRestForMana(const Goals::TTask & normalTask, int priorityTie
 			rejectCandidate("gain-below-5-or-15-percent-or-sacrifice-above-25-percent");
 			continue;
 		}
-		const float restPriority = static_cast<float>(std::min(hero->manaLimit(), finalMana) - std::min(hero->manaLimit(), normalMana)) / hero->manaLimit()
+		EvaluationContext restContext(this);
+		restContext.strategicalValue = static_cast<float>(std::min(hero->manaLimit(), finalMana) - std::min(hero->manaLimit(), normalMana)) / hero->manaLimit()
 			- static_cast<float>(sacrificed) / daily;
+		if(restContext.strategicalValue <= 0)
+		{
+			rejectCandidate("movement-cost-outweighs-mana-gain");
+			continue;
+		}
+		restContext.movementCost = static_cast<float>(spent + unused) / daily;
+		const float restPriority = priorityEvaluator->evaluate(sptr(*move), PriorityEvaluator::EXPLORE_AND_GATHER, restContext);
 		logAi->trace("MGMA rest: candidate=%s rest-priority=%f normal-priority=%f", position.toString(), restPriority, normalTask->priority);
 		if(normalTask->priority >= restPriority)
 		{

@@ -33,6 +33,18 @@ public:
 		ai.resetState();
 		ai.updateState();
 	}
+
+	static std::pair<Goals::TTask, int> selectTask(Nullkiller & ai, Goals::TGoalVec tasks)
+	{
+		const auto contexts = ai.buildEvaluationContexts(tasks);
+		for(int tier = PriorityEvaluator::INSTAKILL; tier <= PriorityEvaluator::MAX_PRIORITY_TIER; ++tier)
+		{
+			const auto plan = ai.buildPlanAndFilter(tasks, contexts, tier);
+			if(!plan.empty())
+				return {plan.front(), tier};
+		}
+		return {nullptr, -1};
+	}
 };
 }
 

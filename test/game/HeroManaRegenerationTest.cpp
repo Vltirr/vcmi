@@ -27,6 +27,10 @@
 #include "../../AI/Nullkiller2/Helpers/ManaRest.h"
 #include "../nullkiller2/NullkillerTest.h"
 #include "../../AI/Nullkiller2/Goals/ExecuteHeroChain.h"
+#include "../../AI/Nullkiller2/Goals/Composition.h"
+#include "../../AI/Nullkiller2/Goals/ExploreNeighbourTile.h"
+#include "../../AI/Nullkiller2/Goals/ExchangeSwapTownHeroes.h"
+#include "../../AI/Nullkiller2/Markers/ExplorationPoint.h"
 #include "../../AI/Nullkiller2/Engine/Nullkiller.h"
 #endif
 
@@ -730,13 +734,17 @@ class ManaRestIntegrationTest : public NullkillerTest
 protected:
 	Services * gameServices() override { return LIBRARY; }
 	void configurePlayer(PlayerSettings & settings) const override { settings.bonus = PlayerStartingBonus::GOLD; }
-	CGHeroInstance * prepareRest()
+	CGHeroInstance * prepareRest(int heroX = 12, bool enemyThreat = false)
 	{
 		TinyH3M::TinyH3MBuilder builder(EMapFormat::SOD);
 		builder.size(36, false).playerActive(PlayerColor(0))
 			.town(int3(18, 18, 0), FactionID::CASTLE, PlayerColor(0))
-			.hero(int3(12, 18, 0), HeroTypeID(HeroTypeID::decode("halon")), PlayerColor(0))
+			.hero(int3(heroX, 18, 0), HeroTypeID(HeroTypeID::decode("halon")), PlayerColor(0))
 			.heroPrimary(1, 1, 1, 10).heroSecondarySkills({});
+		if(enemyThreat)
+			builder.playerActive(PlayerColor(1))
+				.hero({15, 20, 0}, HeroTypeID(0), PlayerColor(1))
+				.heroGarrison({{CreatureID(CreatureID::decode("archangel")), 100}});
 		startWithMap(std::move(builder));
 		findFirst<CGTownInstance>()->addBuilding(BuildingID::MAGES_GUILD_1);
 		JsonNode config;
@@ -755,8 +763,12 @@ protected:
 	std::shared_ptr<NK2AI::Goals::ExecuteHeroChain> normalTask(CGHeroInstance * hero)
 	{
 		NK2AI::AIPath path;
+		path.targetObjectDanger = 0;
+		path.armyLoss = 0;
+		path.targetObjectArmyLoss = 0;
 		path.targetHero = hero;
 		path.heroArmy = hero;
+		path.chainMask = 1;
 		path.exchangeCount = 1;
 		const auto entrance = findFirst<CGTownInstance>()->visitablePos();
 		auto node = pathNode(*hero, entrance + int3(-10, 0, 0));
@@ -765,6 +777,16 @@ protected:
 		auto task = std::make_shared<NK2AI::Goals::ExecuteHeroChain>(path);
 		task->setpriority(0.01f);
 		return task;
+	}
+
+	std::pair<NK2AI::Goals::TTask, int> plannedExploration(NK2AI::Nullkiller & ai, CGHeroInstance * hero)
+	{
+		const auto move = normalTask(hero);
+		NK2AI::Goals::TGoalVec tasks{sptr(NK2AI::Goals::Composition()
+			.addNext(NK2AI::Goals::ExplorationPoint(move->getPath().targetTile(), 5))
+			.addNext(*move)
+			.addNext(NK2AI::Goals::ExploreNeighbourTile(hero, 5)))};
+		return NK2AI::NullkillerTestAccess::selectTask(ai, std::move(tasks));
 	}
 };
 
@@ -791,9 +813,86 @@ TEST_F(ManaRestIntegrationTest, urgentOrMoreValuableNormalActionPreventsRest)
 	NK2AI::NullkillerTestAccess::prepareState(*gateway->nullkiller);
 	auto task = normalTask(hero);
 	EXPECT_FALSE(NK2AI::NullkillerTestAccess::tryRestForMana(*gateway->nullkiller, task, NK2AI::PriorityEvaluator::KILL));
-	task->setpriority(1.0f);
+	task->setpriority(100000.0f);
 	EXPECT_FALSE(NK2AI::NullkillerTestAccess::tryRestForMana(*gateway->nullkiller, task, NK2AI::PriorityEvaluator::EXPLORE_AND_GATHER));
 	EXPECT_EQ(gateway->nullkiller->getHeroLockedReason(hero), NK2AI::HeroLockedReason::NOT_LOCKED);
+}
+
+TEST_F(ManaRestIntegrationTest, plannerSelectedExplorationCanRestAndResumeAfterRecovery)
+{
+	std::shared_lock stateLock(CGameState::mutex);
+	auto * hero = prepareRest(16);
+	const auto gateway = makeGateway(PlayerColor(0));
+	auto & ai = *gateway->nullkiller;
+	NK2AI::NullkillerTestAccess::prepareState(ai);
+	const auto [task, tier] = plannedExploration(ai, hero);
+	ASSERT_NE(task, nullptr);
+	ASSERT_EQ(tier, NK2AI::PriorityEvaluator::ESCAPE);
+	ASSERT_GT(task->priority, 1.0f);
+	EXPECT_TRUE(NK2AI::NullkillerTestAccess::tryRestForMana(ai, task, tier));
+	EXPECT_EQ(ai.getHeroLockedReason(hero), NK2AI::HeroLockedReason::MANA_REST);
+
+	hero->mana = hero->getManaNewTurn();
+	NK2AI::NullkillerTestAccess::prepareState(ai);
+	EXPECT_EQ(ai.getHeroLockedReason(hero), NK2AI::HeroLockedReason::NOT_LOCKED);
+	const auto [nextTask, nextTier] = plannedExploration(ai, hero);
+	ASSERT_NE(nextTask, nullptr);
+	EXPECT_FALSE(NK2AI::NullkillerTestAccess::tryRestForMana(ai, nextTask, nextTier));
+	EXPECT_EQ(ai.getHeroLockedReason(hero), NK2AI::HeroLockedReason::NOT_LOCKED);
+}
+
+TEST_F(ManaRestIntegrationTest, plannerSelectedMoreValuableActionKeepsItsPriority)
+{
+	std::shared_lock stateLock(CGameState::mutex);
+	auto * hero = prepareRest(16);
+	const auto gateway = makeGateway(PlayerColor(0));
+	auto & ai = *gateway->nullkiller;
+	NK2AI::NullkillerTestAccess::prepareState(ai);
+	const auto [task, tier] = plannedExploration(ai, hero);
+	ASSERT_NE(task, nullptr);
+	task->priority = 100000.0f;
+	EXPECT_FALSE(NK2AI::NullkillerTestAccess::tryRestForMana(ai, task, tier));
+	EXPECT_EQ(ai.getHeroLockedReason(hero), NK2AI::HeroLockedReason::NOT_LOCKED);
+}
+
+TEST_F(ManaRestIntegrationTest, combatPathIsNotReplacedEvenInOrdinaryPriorityTier)
+{
+	std::shared_lock stateLock(CGameState::mutex);
+	auto * hero = prepareRest(16);
+	const auto gateway = makeGateway(PlayerColor(0));
+	NK2AI::NullkillerTestAccess::prepareState(*gateway->nullkiller);
+	auto path = normalTask(hero)->getPath();
+	path.targetObjectDanger = 100;
+	const auto task = std::make_shared<NK2AI::Goals::ExecuteHeroChain>(path);
+	EXPECT_FALSE(NK2AI::NullkillerTestAccess::tryRestForMana(*gateway->nullkiller, task, NK2AI::PriorityEvaluator::ESCAPE));
+	EXPECT_EQ(gateway->nullkiller->getHeroLockedReason(hero), NK2AI::HeroLockedReason::NOT_LOCKED);
+}
+
+TEST_F(ManaRestIntegrationTest, compoundTownDefenceIsNotReplacedWithRest)
+{
+	std::shared_lock stateLock(CGameState::mutex);
+	auto * hero = prepareRest(16);
+	const auto gateway = makeGateway(PlayerColor(0));
+	NK2AI::NullkillerTestAccess::prepareState(*gateway->nullkiller);
+	const auto task = taskptr(NK2AI::Goals::Composition()
+		.addNext(*normalTask(hero))
+		.addNext(NK2AI::Goals::ExchangeSwapTownHeroes(findFirst<CGTownInstance>(), hero, NK2AI::HeroLockedReason::DEFENCE)));
+	EXPECT_FALSE(NK2AI::NullkillerTestAccess::tryRestForMana(*gateway->nullkiller, task, NK2AI::PriorityEvaluator::ESCAPE));
+	EXPECT_EQ(gateway->nullkiller->getHeroLockedReason(hero), NK2AI::HeroLockedReason::NOT_LOCKED);
+}
+
+TEST_F(ManaRestIntegrationTest, nearbyEnemyThreatPreventsRestInEscapeTier)
+{
+	std::shared_lock stateLock(CGameState::mutex);
+	auto * hero = prepareRest(16, true);
+	const auto gateway = makeGateway(PlayerColor(0));
+	auto & ai = *gateway->nullkiller;
+	NK2AI::NullkillerTestAccess::prepareState(ai);
+	const auto & threat = ai.dangerHitMap->getTileThreat(hero->visitablePos()).maximumDanger;
+	ASSERT_GT(threat.danger, 0);
+	ASSERT_LE(threat.turn, 1);
+	EXPECT_FALSE(NK2AI::NullkillerTestAccess::tryRestForMana(ai, normalTask(hero), NK2AI::PriorityEvaluator::ESCAPE));
+	EXPECT_EQ(ai.getHeroLockedReason(hero), NK2AI::HeroLockedReason::NOT_LOCKED);
 }
 #endif
 
