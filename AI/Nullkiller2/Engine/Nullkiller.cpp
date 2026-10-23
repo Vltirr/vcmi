@@ -618,17 +618,32 @@ HeroLockedReason Nullkiller::getHeroLockedReason(const CGHeroInstance * hero) co
 
 bool Nullkiller::tryRestForMana(const Goals::TTask & normalTask, int priorityTier)
 {
-	if(priorityTier != PriorityEvaluator::EXPLORE_AND_GATHER)
+	logAi->trace("MGMA rest: player=%s tier=%d priority=%f task=%s", playerID.toString(), priorityTier, normalTask->priority, normalTask->toString());
+	const auto reject = [](const char * reason)
+	{
+		logAi->trace("MGMA rest: rejected reason=%s", reason);
 		return false;
+	};
+	if(priorityTier != PriorityEvaluator::EXPLORE_AND_GATHER)
+		return reject("not-explore-and-gather");
 	const ManaAura aura(cc->getSettings());
 	const auto * move = dynamic_cast<const Goals::ExecuteHeroChain *>(normalTask.get());
-	if(!aura.enabled || !move || move->getHeroExchangeCount() != 1)
-		return false;
+	if(!aura.enabled)
+		return reject("aura-disabled");
+	if(!move)
+		return reject("not-direct-hero-chain");
+	if(move->getHeroExchangeCount() != 1)
+		return reject("multiple-heroes");
 	if(std::ranges::any_of(move->getPath().nodes, [](const auto & node) { return node.specialAction != nullptr; }))
-		return false;
+		return reject("normal-path-special-action");
 	const auto * hero = move->getHero();
-	if(!hero || isHeroLocked(hero))
-		return false;
+	if(!hero)
+		return reject("no-hero");
+	logAi->trace("MGMA rest: hero=%s position=%s mana=%d maximum=%d knowledge=%d spellbook=%d movement=%d daily=%d lock=%d",
+		hero->getNameTextID(), hero->visitablePos().toString(), hero->mana, hero->manaLimit(), hero->getPrimSkillLevel(PrimarySkill::KNOWLEDGE),
+		hero->hasSpellbook(), hero->movementPointsRemaining(), hero->movementPointsLimit(), static_cast<int>(getHeroLockedReason(hero)));
+	if(isHeroLocked(hero))
+		return reject("hero-locked");
 	int combatSpells = 0;
 	if(hero->hasSpellbook())
 		for(const auto & spell : LIBRARY->spellh->objects)
@@ -638,8 +653,9 @@ bool Nullkiller::tryRestForMana(const Goals::TTask & normalTask, int priorityTie
 			if(combatSpells >= 3)
 				break;
 		}
+	logAi->trace("MGMA rest: usable-combat-spells=%d (count capped at 3)", combatSpells);
 	if(!manaRestNeeded(hero->mana, hero->manaLimit(), hero->hasSpellbook(), hero->getPrimSkillLevel(PrimarySkill::KNOWLEDGE), combatSpells))
-		return false;
+		return reject("needs-mana-below-40-percent-book-knowledge-5-and-three-combat-spells");
 
 	const int3 origin = hero->visitablePos();
 	int3 normalEnd = origin;
@@ -653,14 +669,15 @@ bool Nullkiller::tryRestForMana(const Goals::TTask & normalTask, int priorityTie
 		}
 	}
 	if(normalEnd.z != origin.z)
-		return false;
+		return reject("normal-destination-other-level");
 	const int normalMana = hero->getManaNewTurnAt(normalEnd);
+	logAi->trace("MGMA rest: normal-end=%s predicted-mana=%d", normalEnd.toString(), normalMana);
 	std::vector<const CGTownInstance *> sources;
 	for(const auto * town : cc->getTownsInfo())
 		if(town->getOwner() == hero->getOwner() && town->hasBuilt(BuildingID::MAGES_GUILD_1) && town->visitablePos().z == origin.z)
 			sources.push_back(town);
 	if(sources.empty())
-		return false;
+		return reject("no-owned-guild-on-level");
 	auto distanceSquared = [](const int3 & left, const int3 & right)
 	{
 		const int64_t dx = static_cast<int64_t>(left.x) - right.x;
@@ -703,23 +720,40 @@ bool Nullkiller::tryRestForMana(const Goals::TTask & normalTask, int priorityTie
 		const int y = std::abs(from.y - to.y);
 		return 100 * std::max(x, y) + 41 * std::min(x, y);
 	};
+	logAi->trace("MGMA rest: sources=%d candidates=%d", sources.size(), candidates.size());
 	for(const auto & position : candidates)
 	{
+		const auto rejectCandidate = [&](const char * reason)
+		{
+			logAi->trace("MGMA rest: candidate=%s rejected reason=%s", position.toString(), reason);
+		};
 		if(!cc->isInTheMap(position) || !cc->isVisible(position))
+		{
+			rejectCandidate("outside-map-or-not-visible");
 			continue;
+		}
 		bool inAura = false;
 		for(const auto * source : sources)
 			inAura |= aura.distance(source->visitablePos(), position) >= 0;
 		if(!inAura)
+		{
+			rejectCandidate("outside-aura");
 			continue;
+		}
 		if(std::ranges::any_of(sources, [&](const auto * town)
 		{
 			return town->visitablePos() == position && town->getVisitingHero() && town->getVisitingHero() != hero;
 		}))
+		{
+			rejectCandidate("town-occupied-by-other-hero");
 			continue;
+		}
 		const auto & threat = dangerHitMap->getTileThreat(position).maximumDanger;
 		if(threat.turn <= 1 && threat.danger > 0)
+		{
+			rejectCandidate("enemy-threat-next-turn");
 			continue;
+		}
 		const int finalMana = hero->getManaNewTurnAt(position);
 		std::vector<AIPath> paths;
 		if(position != origin)
@@ -732,25 +766,43 @@ bool Nullkiller::tryRestForMana(const Goals::TTask & normalTask, int priorityTie
 			{
 				if(path.targetHero != hero || path.exchangeCount != 1 || path.turn() != 0 || path.getTotalDanger()
 					|| path.getFirstBlockedAction() || arePathHeroesLocked(path))
+				{
+					logAi->trace("MGMA rest: candidate=%s discarded-path=%s reason=hero-exchanges-turn-danger-block-or-lock", position.toString(), path.toString());
 					continue;
+				}
 				if(std::ranges::any_of(path.nodes, [](const auto & node) { return node.specialAction != nullptr; }))
+				{
+					rejectCandidate("path-special-action");
 					continue;
+				}
 				if(!candidatePath || path.movementCost() < candidatePath->movementCost())
 					candidatePath = path;
 			}
 			if(!candidatePath)
+			{
+				rejectCandidate("no-safe-same-day-single-hero-path");
 				continue;
+			}
 			spent = static_cast<int>(candidatePath->movementCost() * daily);
 		}
 		const int unused = std::max(0, hero->movementPointsRemaining() - spent);
 		const int detour = std::max(0, movementDistance(origin, position) + movementDistance(position, normalEnd) - movementDistance(origin, normalEnd));
 		const int sacrificed = unused + detour;
+		logAi->trace("MGMA rest: candidate=%s predicted-mana=%d normal-mana=%d spent=%d unused=%d detour=%d sacrificed=%d daily=%d",
+			position.toString(), finalMana, normalMana, spent, unused, detour, sacrificed, daily);
 		if(!manaRestWorthwhile(hero->manaLimit(), normalMana, finalMana, sacrificed, daily))
+		{
+			rejectCandidate("gain-below-5-or-15-percent-or-sacrifice-above-25-percent");
 			continue;
+		}
 		const float restPriority = static_cast<float>(std::min(hero->manaLimit(), finalMana) - std::min(hero->manaLimit(), normalMana)) / hero->manaLimit()
 			- static_cast<float>(sacrificed) / daily;
+		logAi->trace("MGMA rest: candidate=%s rest-priority=%f normal-priority=%f", position.toString(), restPriority, normalTask->priority);
 		if(normalTask->priority >= restPriority)
+		{
+			rejectCandidate("normal-priority-at-least-rest-priority");
 			continue;
+		}
 		if(sacrificed < bestCost || (sacrificed == bestCost && finalMana > bestMana))
 		{
 			bestPosition = position;
@@ -760,10 +812,14 @@ bool Nullkiller::tryRestForMana(const Goals::TTask & normalTask, int priorityTie
 		}
 	}
 	if(bestPosition == int3(-1))
-		return false;
+		return reject("no-worthwhile-candidate");
+	logAi->trace("MGMA rest: selected=%s predicted-mana=%d sacrificed=%d", bestPosition.toString(), bestMana, bestCost);
 	const auto restingHeroID = hero->id;
 	if(bestPath && !executeTask(taskptr(Goals::ExecuteHeroChain(*bestPath))))
-		return true; // Replan after a failed or interrupted movement.
+	{
+		logAi->trace("MGMA rest: movement failed or interrupted; replanning");
+		return true;
+	}
 	if(const auto * currentHero = cc->getHero(restingHeroID); currentHero && currentHero->visitablePos() == bestPosition)
 	{
 		lockHero(currentHero, HeroLockedReason::MANA_REST);
