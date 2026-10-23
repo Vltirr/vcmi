@@ -982,10 +982,15 @@ void AdventureMapInterface::showHoverSummary(Canvas & to)
 	constexpr auto summaryFont = FONT_VERD;
 	const auto font = ENGINE->renderHandler().loadFont(summaryFont);
 	const int rowHeight = static_cast<int>(font->getLineHeight());
-	const int width = std::min(area.w, static_cast<int>(std::max(font->getStringWidth(movementHoverSummary), font->getStringWidth(manaHoverSummary))) + 4);
-	const int height = rowHeight * (!movementHoverSummary.empty() + !manaHoverSummary.empty());
+	const int rowAdvance = std::max(1, rowHeight - 1);
+	const int movementIndent = !movementHoverSummary.empty() && !manaHoverSummary.empty()
+		? static_cast<int>(font->getStringWidth("+")) : 0;
+	const int width = std::min(area.w, std::max(static_cast<int>(font->getStringWidth(movementHoverSummary)) + movementIndent,
+		static_cast<int>(font->getStringWidth(manaHoverSummary))) + 4);
+	const int rows = !movementHoverSummary.empty() + !manaHoverSummary.empty();
+	const int height = rowHeight + rowAdvance * (rows - 1);
 	int x = cursor.x + 12;
-	int y = cursor.y + 15;
+	int y = cursor.y + 18;
 	if(x + width > area.x + area.w)
 		x = cursor.x - width - 6;
 	if(y + height > area.y + area.h)
@@ -997,9 +1002,9 @@ void AdventureMapInterface::showHoverSummary(Canvas & to)
 	Canvas source(to, hoverSummaryArea);
 	hoverSummaryBackground->draw(source, Point(0, 0));
 	CanvasClipRectGuard clip(to, hoverSummaryArea);
-	const auto drawSummary = [&](const std::string & text, const ColorRGBA & color, const ColorRGBA & outline)
+	const auto drawSummary = [&](const std::string & text, int indent, const ColorRGBA & color, const ColorRGBA & outline)
 	{
-		const Point position(x + 1, y + 1);
+		const Point position(x + 1 + indent, y + 1);
 		for(int dy = -1; dy <= 1; ++dy)
 			for(int dx = -1; dx <= 1; ++dx)
 				if(dx != 0 || dy != 0)
@@ -1008,12 +1013,12 @@ void AdventureMapInterface::showHoverSummary(Canvas & to)
 	};
 	if(!movementHoverSummary.empty())
 	{
-		drawSummary(movementHoverSummary, ColorRGBA(255, 235, 0), Colors::BLACK);
-		y += rowHeight;
+		drawSummary(movementHoverSummary, movementIndent, ColorRGBA(255, 235, 0), Colors::BLACK);
+		y += rowAdvance;
 	}
 	if(!manaHoverSummary.empty())
 	{
-		drawSummary(manaHoverSummary, ColorRGBA(20, 55, 220), ColorRGBA(225, 235, 255));
+		drawSummary(manaHoverSummary, 0, ColorRGBA(20, 55, 220), ColorRGBA(225, 235, 255));
 	}
 }
 
