@@ -673,11 +673,29 @@ TEST_F(MageGuildManaAuraTest, potentialUsesZeroManaAndHeroSpecificLimits)
 #ifdef ENABLE_NULLKILLER2_AI
 TEST(ManaRestPolicy, needsLowManaAndUsableMagic)
 {
-	EXPECT_TRUE(NK2AI::manaRestNeeded(39, 100, true, 5, 3));
-	EXPECT_FALSE(NK2AI::manaRestNeeded(40, 100, true, 5, 3));
-	EXPECT_FALSE(NK2AI::manaRestNeeded(10, 100, false, 5, 3));
-	EXPECT_FALSE(NK2AI::manaRestNeeded(10, 100, true, 4, 3));
-	EXPECT_FALSE(NK2AI::manaRestNeeded(10, 100, true, 5, 2));
+	EXPECT_TRUE(NK2AI::manaRestNeeded(39, 100, true, {20}));
+	EXPECT_TRUE(NK2AI::manaRestNeeded(0, 20, true, {20}));
+	EXPECT_FALSE(NK2AI::manaRestNeeded(40, 100, true, {20}));
+	EXPECT_FALSE(NK2AI::manaRestNeeded(10, 100, false, {20}));
+	EXPECT_FALSE(NK2AI::manaRestNeeded(0, 20, true, {}));
+	EXPECT_FALSE(NK2AI::manaRestNeeded(0, 20, true, {0, 30}));
+}
+
+TEST(ManaRestPolicy, castingGainUsesCostsAndDoesNotSumAlternativeSpells)
+{
+	EXPECT_FLOAT_EQ(NK2AI::manaRestSpellGain(20, 0, 20, {20}), 0.5f);
+	EXPECT_FLOAT_EQ(NK2AI::manaRestSpellGain(20, 0, 20, {10}), 1.0f);
+	EXPECT_FLOAT_EQ(NK2AI::manaRestSpellGain(20, 0, 20, {20, 20, 20}), 0.5f);
+	EXPECT_FLOAT_EQ(NK2AI::manaRestSpellGain(20, 0, 20, {0, 30}), 0.0f);
+}
+
+TEST(ManaRestPolicy, castingGainIsGradualAndIgnoresExcessAndAlreadyComfortableReserves)
+{
+	EXPECT_NEAR(NK2AI::manaRestSpellGain(20, 18, 19, {20}), 0.025f, 0.00001f);
+	EXPECT_NEAR(NK2AI::manaRestSpellGain(20, 19, 20, {20}), 0.025f, 0.00001f);
+	EXPECT_FLOAT_EQ(NK2AI::manaRestSpellGain(100, 20, 80, {10}), 0.0f);
+	EXPECT_FLOAT_EQ(NK2AI::manaRestSpellGain(100, 100, 125, {50}), 0.0f);
+	EXPECT_FLOAT_EQ(NK2AI::manaRestSpellGain(100, 30, 20, {20}), 0.0f);
 }
 
 TEST(ManaRestPolicy, comparesIncrementalGainAndMovementWithoutOverchargeIncentive)
@@ -734,13 +752,13 @@ class ManaRestIntegrationTest : public NullkillerTest
 protected:
 	Services * gameServices() override { return LIBRARY; }
 	void configurePlayer(PlayerSettings & settings) const override { settings.bonus = PlayerStartingBonus::GOLD; }
-	CGHeroInstance * prepareRest(int heroX = 12, bool enemyThreat = false)
+	CGHeroInstance * prepareRest(int heroX = 12, bool enemyThreat = false, int knowledge = 10)
 	{
 		TinyH3M::TinyH3MBuilder builder(EMapFormat::SOD);
 		builder.size(36, false).playerActive(PlayerColor(0))
 			.town(int3(18, 18, 0), FactionID::CASTLE, PlayerColor(0))
 			.hero(int3(heroX, 18, 0), HeroTypeID(HeroTypeID::decode("halon")), PlayerColor(0))
-			.heroPrimary(1, 1, 1, 10).heroSecondarySkills({});
+			.heroPrimary(1, 1, 1, knowledge).heroSecondarySkills({});
 		if(enemyThreat)
 			builder.playerActive(PlayerColor(1))
 				.hero({15, 20, 0}, HeroTypeID(0), PlayerColor(1))
@@ -754,8 +772,7 @@ protected:
 		auto * hero = findHeroByOwner(PlayerColor(0));
 		hero->mana = 0;
 		hero->setMovementPoints(hero->movementPointsLimit() / 5);
-		for(const auto spell : {SpellID::MAGIC_ARROW, SpellID::HASTE, SpellID::SLOW})
-			hero->addSpellToSpellbook(SpellID(spell));
+		hero->addSpellToSpellbook(SpellID(SpellID::FIREBALL));
 		revealMap(PlayerColor(0));
 		return hero;
 	}
@@ -851,6 +868,36 @@ TEST_F(ManaRestIntegrationTest, plannerSelectedMoreValuableActionKeepsItsPriorit
 	const auto [task, tier] = plannedExploration(ai, hero);
 	ASSERT_NE(task, nullptr);
 	task->priority = 100000.0f;
+	EXPECT_FALSE(NK2AI::NullkillerTestAccess::tryRestForMana(ai, task, tier));
+	EXPECT_EQ(ai.getHeroLockedReason(hero), NK2AI::HeroLockedReason::NOT_LOCKED);
+}
+
+TEST_F(ManaRestIntegrationTest, lowKnowledgeHeroWithOneCombatSpellCanRest)
+{
+	std::shared_lock stateLock(CGameState::mutex);
+	auto * hero = prepareRest(16, false, 2);
+	const auto gateway = makeGateway(PlayerColor(0));
+	auto & ai = *gateway->nullkiller;
+	NK2AI::NullkillerTestAccess::prepareState(ai);
+	const auto [task, tier] = plannedExploration(ai, hero);
+	ASSERT_NE(task, nullptr);
+	ASSERT_EQ(hero->getPrimSkillLevel(PrimarySkill::KNOWLEDGE), 2);
+	EXPECT_TRUE(NK2AI::NullkillerTestAccess::tryRestForMana(ai, task, tier));
+	EXPECT_EQ(ai.getHeroLockedReason(hero), NK2AI::HeroLockedReason::MANA_REST);
+}
+
+TEST_F(ManaRestIntegrationTest, disabledAuraLeavesLowKnowledgeHeroAvailableForNormalTask)
+{
+	std::shared_lock stateLock(CGameState::mutex);
+	auto * hero = prepareRest(16, false, 2);
+	JsonNode config;
+	config["enabled"].Bool() = false;
+	map()->overrideGameSetting(EGameSettings::HEROES_MAGE_GUILD_MANA_AURA, config);
+	const auto gateway = makeGateway(PlayerColor(0));
+	auto & ai = *gateway->nullkiller;
+	NK2AI::NullkillerTestAccess::prepareState(ai);
+	const auto [task, tier] = plannedExploration(ai, hero);
+	ASSERT_NE(task, nullptr);
 	EXPECT_FALSE(NK2AI::NullkillerTestAccess::tryRestForMana(ai, task, tier));
 	EXPECT_EQ(ai.getHeroLockedReason(hero), NK2AI::HeroLockedReason::NOT_LOCKED);
 }

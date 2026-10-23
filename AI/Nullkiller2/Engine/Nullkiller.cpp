@@ -669,18 +669,21 @@ bool Nullkiller::tryRestForMana(const Goals::TTask & normalTask, int priorityTie
 		hero->hasSpellbook(), hero->movementPointsRemaining(), hero->movementPointsLimit(), static_cast<int>(getHeroLockedReason(hero)));
 	if(isHeroLocked(hero))
 		return reject("hero-locked");
-	int combatSpells = 0;
+	std::vector<int> combatSpellCosts;
 	if(hero->hasSpellbook())
 		for(const auto & spell : LIBRARY->spellh->objects)
 		{
 			if(spell->isCombat() && hero->canCastThisSpell(spell.get()))
-				++combatSpells;
-			if(combatSpells >= 3)
-				break;
+			{
+				const int cost = hero->getSpellCost(spell.get());
+				logAi->trace("MGMA rest: spell=%d cost=%d usable-at-normal-capacity=%d", spell->getId().num, cost, cost > 0 && cost <= hero->manaLimit());
+				if(cost > 0 && cost <= hero->manaLimit())
+					combatSpellCosts.push_back(cost);
+			}
 		}
-	logAi->trace("MGMA rest: usable-combat-spells=%d (count capped at 3)", combatSpells);
-	if(!manaRestNeeded(hero->mana, hero->manaLimit(), hero->hasSpellbook(), hero->getPrimSkillLevel(PrimarySkill::KNOWLEDGE), combatSpells))
-		return reject("needs-mana-below-40-percent-book-knowledge-5-and-three-combat-spells");
+	logAi->trace("MGMA rest: usable-mana-costing-combat-spells=%d", combatSpellCosts.size());
+	if(!manaRestNeeded(hero->mana, hero->manaLimit(), hero->hasSpellbook(), combatSpellCosts))
+		return reject("needs-mana-below-40-percent-book-and-affordable-combat-spell");
 	const auto normalContext = priorityEvaluator->buildEvaluationContext(sptr(*move));
 	if(normalContext.isDefend || normalContext.isEnemy || normalContext.conquestValue > 0)
 		return reject("defence-or-conquest");
@@ -827,11 +830,12 @@ bool Nullkiller::tryRestForMana(const Goals::TTask & normalTask, int priorityTie
 			continue;
 		}
 		EvaluationContext restContext(this);
-		restContext.strategicalValue = static_cast<float>(std::min(hero->manaLimit(), finalMana) - std::min(hero->manaLimit(), normalMana)) / hero->manaLimit()
-			- static_cast<float>(sacrificed) / daily;
+		const float castingGain = manaRestSpellGain(hero->manaLimit(), normalMana, finalMana, combatSpellCosts);
+		logAi->trace("MGMA rest: candidate=%s casting-gain=%f", position.toString(), castingGain);
+		restContext.strategicalValue = castingGain - static_cast<float>(sacrificed) / daily;
 		if(restContext.strategicalValue <= 0)
 		{
-			rejectCandidate("movement-cost-outweighs-mana-gain");
+			rejectCandidate("movement-cost-outweighs-casting-gain");
 			continue;
 		}
 		restContext.movementCost = static_cast<float>(spent + unused) / daily;
