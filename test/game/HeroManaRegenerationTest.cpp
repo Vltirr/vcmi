@@ -10,6 +10,7 @@
 
 #include "../mock/TinyMapGameTest.h"
 #include "../mock/GameHandlerTestServer.h"
+#include "../mock/GameHandlerTestClient.h"
 #include "../../lib/GameLibrary.h"
 #include "../../lib/GameSettings.h"
 #include "../../lib/mapObjects/ManaAura.h"
@@ -698,7 +699,7 @@ TEST(ManaRestPolicy, castingGainIsGradualAndIgnoresExcessAndAlreadyComfortableRe
 	EXPECT_FLOAT_EQ(NK2AI::manaRestSpellGain(100, 30, 20, {20}), 0.0f);
 }
 
-TEST(ManaRestPolicy, comparesIncrementalGainAndMovementWithoutOverchargeIncentive)
+TEST(ManaRestPolicy, comparesNightRecoveryAndMovementWithoutOverchargeIncentive)
 {
 	EXPECT_TRUE(NK2AI::manaRestWorthwhile(100, 30, 60, 500, 2000));
 	EXPECT_FALSE(NK2AI::manaRestWorthwhile(100, 60, 65, 0, 2000));
@@ -750,14 +751,16 @@ TEST_F(MageGuildManaAuraTest, customParametersChangeCurveAndRadius)
 class ManaRestIntegrationTest : public NullkillerTest
 {
 protected:
+	std::unique_ptr<GameHandlerTestClient> restClient;
 	Services * gameServices() override { return LIBRARY; }
 	void configurePlayer(PlayerSettings & settings) const override { settings.bonus = PlayerStartingBonus::GOLD; }
-	CGHeroInstance * prepareRest(int heroX = 12, bool enemyThreat = false, int knowledge = 10)
+	CGHeroInstance * prepareRest(int heroX = 13, bool enemyThreat = false, int knowledge = 10)
 	{
 		TinyH3M::TinyH3MBuilder builder(EMapFormat::SOD);
-		builder.size(36, false).playerActive(PlayerColor(0))
+		builder.size(36, false).playerActive(PlayerColor(0)).playerActive(PlayerColor(1))
 			.town(int3(18, 18, 0), FactionID::CASTLE, PlayerColor(0))
-			.hero(int3(heroX, 18, 0), HeroTypeID(HeroTypeID::decode("halon")), PlayerColor(0))
+			.town(int3(32, 32, 0), FactionID::CASTLE, PlayerColor(1))
+			.hero(int3(heroX, 20, 0), HeroTypeID(HeroTypeID::decode("halon")), PlayerColor(0))
 			.heroPrimary(1, 1, 1, knowledge).heroSecondarySkills({});
 		if(enemyThreat)
 			builder.playerActive(PlayerColor(1))
@@ -774,6 +777,7 @@ protected:
 		hero->setMovementPoints(hero->movementPointsLimit() / 5);
 		hero->addSpellToSpellbook(SpellID(SpellID::FIREBALL));
 		revealMap(PlayerColor(0));
+		restClient = std::make_unique<GameHandlerTestClient>(gameState(), PlayerColor(0));
 		return hero;
 	}
 
@@ -807,31 +811,28 @@ protected:
 	}
 };
 
-TEST_F(ManaRestIntegrationTest, choosesCurrentAuraPositionAndLocksHeroUntilNextTurn)
+TEST_F(ManaRestIntegrationTest, choosesCoveredPositionAndLocksHeroUntilNextTurn)
 {
 	std::shared_lock stateLock(CGameState::mutex);
 	auto * hero = prepareRest();
-	const auto position = hero->visitablePos();
-	const auto gateway = makeGateway(PlayerColor(0));
+	const auto gateway = makeGateway(PlayerColor(0), restClient.get());
 	NK2AI::NullkillerTestAccess::prepareState(*gateway->nullkiller);
 	ASSERT_TRUE(hero->hasSpellbook());
 	ASSERT_EQ(gateway->nullkiller->getHeroLockedReason(hero), NK2AI::HeroLockedReason::NOT_LOCKED);
 	EXPECT_TRUE(NK2AI::NullkillerTestAccess::tryRestForMana(*gateway->nullkiller, normalTask(hero), NK2AI::PriorityEvaluator::EXPLORE_AND_GATHER));
-	EXPECT_EQ(hero->visitablePos(), position);
+	EXPECT_GE(ManaAura(gameState()->getSettings()).distance(findFirst<CGTownInstance>()->visitablePos(), hero->visitablePos()), 0);
 	EXPECT_EQ(hero->mana, 0);
 	EXPECT_EQ(gateway->nullkiller->getHeroLockedReason(hero), NK2AI::HeroLockedReason::MANA_REST);
 }
 
-TEST_F(ManaRestIntegrationTest, urgentOrMoreValuableNormalActionPreventsRest)
+TEST_F(ManaRestIntegrationTest, urgentNormalActionPreventsRest)
 {
 	std::shared_lock stateLock(CGameState::mutex);
 	auto * hero = prepareRest();
-	const auto gateway = makeGateway(PlayerColor(0));
+	const auto gateway = makeGateway(PlayerColor(0), restClient.get());
 	NK2AI::NullkillerTestAccess::prepareState(*gateway->nullkiller);
 	auto task = normalTask(hero);
 	EXPECT_FALSE(NK2AI::NullkillerTestAccess::tryRestForMana(*gateway->nullkiller, task, NK2AI::PriorityEvaluator::KILL));
-	task->setpriority(100000.0f);
-	EXPECT_FALSE(NK2AI::NullkillerTestAccess::tryRestForMana(*gateway->nullkiller, task, NK2AI::PriorityEvaluator::EXPLORE_AND_GATHER));
 	EXPECT_EQ(gateway->nullkiller->getHeroLockedReason(hero), NK2AI::HeroLockedReason::NOT_LOCKED);
 }
 
@@ -839,7 +840,7 @@ TEST_F(ManaRestIntegrationTest, plannerSelectedExplorationCanRestAndResumeAfterR
 {
 	std::shared_lock stateLock(CGameState::mutex);
 	auto * hero = prepareRest(16);
-	const auto gateway = makeGateway(PlayerColor(0));
+	const auto gateway = makeGateway(PlayerColor(0), restClient.get());
 	auto & ai = *gateway->nullkiller;
 	NK2AI::NullkillerTestAccess::prepareState(ai);
 	const auto [task, tier] = plannedExploration(ai, hero);
@@ -858,16 +859,17 @@ TEST_F(ManaRestIntegrationTest, plannerSelectedExplorationCanRestAndResumeAfterR
 	EXPECT_EQ(ai.getHeroLockedReason(hero), NK2AI::HeroLockedReason::NOT_LOCKED);
 }
 
-TEST_F(ManaRestIntegrationTest, plannerSelectedMoreValuableActionKeepsItsPriority)
+TEST_F(ManaRestIntegrationTest, fullMovementBudgetIsNotSpentWaitingForMana)
 {
 	std::shared_lock stateLock(CGameState::mutex);
 	auto * hero = prepareRest(16);
-	const auto gateway = makeGateway(PlayerColor(0));
+	const auto gateway = makeGateway(PlayerColor(0), restClient.get());
 	auto & ai = *gateway->nullkiller;
 	NK2AI::NullkillerTestAccess::prepareState(ai);
 	const auto [task, tier] = plannedExploration(ai, hero);
 	ASSERT_NE(task, nullptr);
-	task->priority = 100000.0f;
+	hero->setMovementPoints(hero->movementPointsLimit());
+	NK2AI::NullkillerTestAccess::prepareState(ai);
 	EXPECT_FALSE(NK2AI::NullkillerTestAccess::tryRestForMana(ai, task, tier));
 	EXPECT_EQ(ai.getHeroLockedReason(hero), NK2AI::HeroLockedReason::NOT_LOCKED);
 }
@@ -876,7 +878,7 @@ TEST_F(ManaRestIntegrationTest, lowKnowledgeHeroWithOneCombatSpellCanRest)
 {
 	std::shared_lock stateLock(CGameState::mutex);
 	auto * hero = prepareRest(16, false, 2);
-	const auto gateway = makeGateway(PlayerColor(0));
+	const auto gateway = makeGateway(PlayerColor(0), restClient.get());
 	auto & ai = *gateway->nullkiller;
 	NK2AI::NullkillerTestAccess::prepareState(ai);
 	const auto [task, tier] = plannedExploration(ai, hero);
@@ -893,7 +895,7 @@ TEST_F(ManaRestIntegrationTest, disabledAuraLeavesLowKnowledgeHeroAvailableForNo
 	JsonNode config;
 	config["enabled"].Bool() = false;
 	map()->overrideGameSetting(EGameSettings::HEROES_MAGE_GUILD_MANA_AURA, config);
-	const auto gateway = makeGateway(PlayerColor(0));
+	const auto gateway = makeGateway(PlayerColor(0), restClient.get());
 	auto & ai = *gateway->nullkiller;
 	NK2AI::NullkillerTestAccess::prepareState(ai);
 	const auto [task, tier] = plannedExploration(ai, hero);
@@ -906,7 +908,7 @@ TEST_F(ManaRestIntegrationTest, combatPathIsNotReplacedEvenInOrdinaryPriorityTie
 {
 	std::shared_lock stateLock(CGameState::mutex);
 	auto * hero = prepareRest(16);
-	const auto gateway = makeGateway(PlayerColor(0));
+	const auto gateway = makeGateway(PlayerColor(0), restClient.get());
 	NK2AI::NullkillerTestAccess::prepareState(*gateway->nullkiller);
 	auto path = normalTask(hero)->getPath();
 	path.targetObjectDanger = 100;
@@ -919,7 +921,7 @@ TEST_F(ManaRestIntegrationTest, compoundTownDefenceIsNotReplacedWithRest)
 {
 	std::shared_lock stateLock(CGameState::mutex);
 	auto * hero = prepareRest(16);
-	const auto gateway = makeGateway(PlayerColor(0));
+	const auto gateway = makeGateway(PlayerColor(0), restClient.get());
 	NK2AI::NullkillerTestAccess::prepareState(*gateway->nullkiller);
 	const auto task = taskptr(NK2AI::Goals::Composition()
 		.addNext(*normalTask(hero))
@@ -932,7 +934,7 @@ TEST_F(ManaRestIntegrationTest, nearbyEnemyThreatPreventsRestInEscapeTier)
 {
 	std::shared_lock stateLock(CGameState::mutex);
 	auto * hero = prepareRest(16, true);
-	const auto gateway = makeGateway(PlayerColor(0));
+	const auto gateway = makeGateway(PlayerColor(0), restClient.get());
 	auto & ai = *gateway->nullkiller;
 	NK2AI::NullkillerTestAccess::prepareState(ai);
 	const auto & threat = ai.dangerHitMap->getTileThreat(hero->visitablePos()).maximumDanger;
@@ -941,6 +943,30 @@ TEST_F(ManaRestIntegrationTest, nearbyEnemyThreatPreventsRestInEscapeTier)
 	EXPECT_FALSE(NK2AI::NullkillerTestAccess::tryRestForMana(ai, normalTask(hero), NK2AI::PriorityEvaluator::ESCAPE));
 	EXPECT_EQ(ai.getHeroLockedReason(hero), NK2AI::HeroLockedReason::NOT_LOCKED);
 }
+
+TEST_F(ManaRestIntegrationTest, nearbyStoppingTileUsesMovementAndRecoversPredictedMana)
+{
+	std::shared_lock stateLock(CGameState::mutex);
+	auto * hero = prepareRest(16);
+	const auto initialPosition = hero->visitablePos();
+	const auto gateway = makeGateway(PlayerColor(0), restClient.get());
+	auto & ai = *gateway->nullkiller;
+	NK2AI::NullkillerTestAccess::prepareState(ai);
+	const auto [task, tier] = plannedExploration(ai, hero);
+	ASSERT_NE(task, nullptr);
+	ASSERT_TRUE(NK2AI::NullkillerTestAccess::tryRestForMana(ai, task, tier));
+	ASSERT_EQ(ai.getHeroLockedReason(hero), NK2AI::HeroLockedReason::MANA_REST);
+	EXPECT_NE(hero->visitablePos(), initialPosition);
+	EXPECT_NE(hero->visitablePos(), findFirst<CGTownInstance>()->visitablePos());
+	const int predictedMana = hero->getManaNewTurn();
+	EXPECT_GT(predictedMana, hero->mana);
+	GameHandlerTestServer server(gameState(), PlayerColor(0));
+	CGameHandler handler(server, gameState());
+	NewTurnProcessor processor(&handler);
+	processor.onNewTurn();
+	EXPECT_EQ(hero->mana, predictedMana);
+}
+
 #endif
 
 TEST_F(MageGuildManaAuraTest, overlappingSourcesChooseBestWithoutAdding)
@@ -1027,7 +1053,7 @@ TEST_F(ManaRestIntegrationTest, artifactGrantedCombatSpellsCountWithoutLearnedSp
 	hero->putArtifact(ArtifactPosition::MISC1, map()->createArtifact(ArtifactID(ArtifactID::decode("tomeOfAirMagic"))));
 	ASSERT_TRUE(hero->getSpellsInSpellbook().empty());
 	ASSERT_TRUE(hero->hasSpellbook());
-	const auto gateway = makeGateway(PlayerColor(0));
+	const auto gateway = makeGateway(PlayerColor(0), restClient.get());
 	NK2AI::NullkillerTestAccess::prepareState(*gateway->nullkiller);
 	EXPECT_TRUE(NK2AI::NullkillerTestAccess::tryRestForMana(*gateway->nullkiller, normalTask(hero), NK2AI::PriorityEvaluator::EXPLORE_AND_GATHER));
 	EXPECT_EQ(gateway->nullkiller->getHeroLockedReason(hero), NK2AI::HeroLockedReason::MANA_REST);

@@ -40,9 +40,9 @@ inline float manaRestSpellGain(int maximum, int normalFinal, int restingFinal, c
 	return bestGain;
 }
 
-inline bool manaRestWorthwhile(int maximum, int normalFinal, int restingFinal, int sacrificed, int dailyMovement)
+inline bool manaRestWorthwhile(int maximum, int currentMana, int restingFinal, int sacrificed, int dailyMovement)
 {
-	const int gain = std::min(maximum, restingFinal) - std::min(maximum, normalFinal);
+	const int gain = std::min(maximum, restingFinal) - std::min(maximum, currentMana);
 	return gain >= 5 && static_cast<int64_t>(gain) * 100 >= static_cast<int64_t>(maximum) * 15
 		&& dailyMovement > 0 && sacrificed >= 0 && static_cast<int64_t>(sacrificed) * 4 <= dailyMovement;
 }

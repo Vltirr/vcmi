@@ -725,23 +725,19 @@ bool Nullkiller::tryRestForMana(const Goals::TTask & normalTask, int priorityTie
 		return leftDistance == rightDistance ? left->id < right->id : leftDistance < rightDistance;
 	});
 	std::vector<int3> candidates;
-	for(const auto * source : sources)
-		if(aura.distance(source->visitablePos(), origin) >= 0)
-		{
-			candidates.push_back(origin);
-			break;
-		}
-	const auto entrance = sources.front()->visitablePos();
-	candidates.push_back(entrance);
-	// A short step towards the source keeps the normal destination nearby.
-	const int dx = entrance.x - normalEnd.x;
-	const int dy = entrance.y - normalEnd.y;
-	const int scale = std::max(std::abs(dx), std::abs(dy));
-	if(scale > 0)
-		candidates.emplace_back(normalEnd.x + dx * std::min(3, scale) / scale,
-			normalEnd.y + dy * std::min(3, scale) / scale, normalEnd.z);
-	if(sources.size() > 1 && candidates.size() < 4)
-		candidates.push_back(sources.at(1)->visitablePos());
+	const auto addCandidate = [&](const int3 & position)
+	{
+		if(std::ranges::find(candidates, position) == candidates.end())
+			candidates.push_back(position);
+	};
+	addCandidate(origin);
+	for(size_t i = 0; i < std::min<size_t>(2, sources.size()); ++i)
+		addCandidate(sources.at(i)->visitablePos());
+	// Check nearby stopping tiles instead of relying on a single straight step towards town.
+	for(const auto & center : {origin, normalEnd})
+		for(int x = -3; x <= 3; ++x)
+			for(int y = -3; y <= 3; ++y)
+				addCandidate(center + int3(x, y, 0));
 
 	const int daily = hero->movementPointsLimit();
 	std::optional<AIPath> bestPath;
@@ -824,28 +820,24 @@ bool Nullkiller::tryRestForMana(const Goals::TTask & normalTask, int priorityTie
 		const int sacrificed = unused + detour;
 		logAi->trace("MGMA rest: candidate=%s predicted-mana=%d normal-mana=%d spent=%d unused=%d detour=%d sacrificed=%d daily=%d",
 			position.toString(), finalMana, normalMana, spent, unused, detour, sacrificed, daily);
-		if(!manaRestWorthwhile(hero->manaLimit(), normalMana, finalMana, sacrificed, daily))
+		if(std::min(hero->manaLimit(), finalMana) < std::min(hero->manaLimit(), normalMana))
 		{
-			rejectCandidate("gain-below-5-or-15-percent-or-sacrifice-above-25-percent");
+			rejectCandidate("less-recovery-than-normal-destination");
 			continue;
 		}
-		EvaluationContext restContext(this);
-		const float castingGain = manaRestSpellGain(hero->manaLimit(), normalMana, finalMana, combatSpellCosts);
+		if(!manaRestWorthwhile(hero->manaLimit(), hero->mana, finalMana, sacrificed, daily))
+		{
+			rejectCandidate("night-gain-below-5-or-15-percent-or-sacrifice-above-25-percent");
+			continue;
+		}
+		const float castingGain = manaRestSpellGain(hero->manaLimit(), hero->mana, finalMana, combatSpellCosts);
 		logAi->trace("MGMA rest: candidate=%s casting-gain=%f", position.toString(), castingGain);
-		restContext.strategicalValue = castingGain - static_cast<float>(sacrificed) / daily;
-		if(restContext.strategicalValue <= 0)
+		if(castingGain <= 0)
 		{
-			rejectCandidate("movement-cost-outweighs-casting-gain");
+			rejectCandidate("no-useful-casting-gain");
 			continue;
 		}
-		restContext.movementCost = static_cast<float>(spent + unused) / daily;
-		const float restPriority = priorityEvaluator->evaluate(sptr(*move), PriorityEvaluator::EXPLORE_AND_GATHER, restContext);
-		logAi->trace("MGMA rest: candidate=%s rest-priority=%f normal-priority=%f", position.toString(), restPriority, normalTask->priority);
-		if(normalTask->priority >= restPriority)
-		{
-			rejectCandidate("normal-priority-at-least-rest-priority");
-			continue;
-		}
+
 		if(sacrificed < bestCost || (sacrificed == bestCost && finalMana > bestMana))
 		{
 			bestPosition = position;
@@ -866,6 +858,8 @@ bool Nullkiller::tryRestForMana(const Goals::TTask & normalTask, int priorityTie
 	if(const auto * currentHero = cc->getHero(restingHeroID); currentHero && currentHero->visitablePos() == bestPosition)
 	{
 		lockHero(currentHero, HeroLockedReason::MANA_REST);
+		logAi->trace("MGMA rest: accepted hero-id=%d hero=%s position=%s mana=%d maximum=%d normal-mana=%d predicted-mana=%d sacrificed=%d daily=%d",
+			currentHero->id.getNum(), currentHero->getNameTextID(), bestPosition.toString(), currentHero->mana, currentHero->manaLimit(), normalMana, bestMana, bestCost, daily);
 		logAi->debug("Hero %s rests for mana at %s, predicted %d, sacrificed movement %d", currentHero->getNameTextID(), bestPosition.toString(), bestMana, bestCost);
 	}
 	return true;
@@ -877,6 +871,10 @@ void Nullkiller::makeTurn()
 	resetState();
 	Goals::TGoalVec tasks;
 	tracePlayerStatus(true);
+	if(ManaAura(cc->getSettings()).enabled)
+		for(const auto * hero : cc->getHeroesInfo())
+			logAi->trace("MGMA state: player=%s hero-id=%d hero=%s position=%s mana=%d maximum=%d",
+				playerID.toString(), hero->id.getNum(), hero->getNameTextID(), hero->visitablePos().toString(), hero->mana, hero->manaLimit());
 	bool resourcesTradedThisTurn = false;
 
 	for(int pass = 1; pass <= settings->getMaxPass() && cc->getPlayerStatus(playerID) == EPlayerStatus::INGAME; pass++)
