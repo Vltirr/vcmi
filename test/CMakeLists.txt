@@ -49,6 +49,7 @@ set(test_SRCS
 		game/HeroManaRegenerationTest.cpp
 		game/HeroSecondarySkillsTest.cpp
 		server/battles/LearnNowCastLaterTest.cpp
+		server/battles/SharedMageGuildsTest.cpp
 		game/MovementCostTest.cpp
 		game/SaveGameTest.cpp
 		game/VictoryLossTest.cpp

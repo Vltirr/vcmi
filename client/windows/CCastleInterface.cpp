@@ -12,6 +12,8 @@
 
 #include "CHeroWindow.h"
 #include "CMarketWindow.h"
+#include "CSpellWindow.h"
+#include "../widgets/GraphicalPrimitiveCanvas.h"
 #include "InfoWindows.h"
 #include "GUIClasses.h"
 #include "QuickRecruitmentWindow.h"
@@ -2358,6 +2360,22 @@ CMageGuildScreen::CMageGuildScreen(CCastleInterface * owner, const ImagePath & i
 	exit = std::make_shared<CButton>(Point(748, 556), AnimationPath::builtin("TPMAGE1.DEF"), CButton::tooltip(LIBRARY->generaltexth->allTexts[593]), [&](){ close(); }, EShortcut::GLOBAL_RETURN);
 
 	updateSpells(townId);
+	if(owner->town->getOwner() == GAME->interface()->playerID
+		&& GAME->interface()->cb->getSettings().getBoolean(EGameSettings::TOWNS_SHARED_MAGE_GUILDS))
+	{
+		archiveOutline = std::make_shared<GraphicalPrimitiveCanvas>(Rect(342, 350, 96, 56));
+		const std::vector<Point> outline = {{2, 2}, {69, 0}, {92, 6}, {93, 38}, {61, 39}, {55, 55}, {50, 55}, {50, 37}, {2, 36}, {2, 2}};
+		for(size_t i = 1; i < outline.size(); ++i)
+			archiveOutline->addLine(outline.at(i - 1), outline.at(i), Colors::YELLOW);
+		archiveAccess = std::make_shared<LRClickableArea>(Rect(342, 350, 96, 56), [this]()
+		{
+			const auto * town = GAME->interface()->cb->getTown(townId);
+			if(!town || town->getOwner() != GAME->interface()->playerID || town->mageGuildLevel() < 1)
+				return;
+			ENGINE->sound().playSound(soundBase::button);
+			ENGINE->windows().createAndPushWindow<CSpellWindow>(town->getVisitingHero(), GAME->interface(), true, nullptr, town);
+		});
+	}
 }
 
 void CMageGuildScreen::updateSpells(ObjectInstanceID tID)

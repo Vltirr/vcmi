@@ -13,6 +13,7 @@
 #include "../widgets/IVideoHolder.h"
 
 class CGHeroInstance;
+class CGTownInstance;
 class CSpell;
 
 class IImage;
@@ -121,6 +122,11 @@ class CSpellWindow : public CWindowObject, public IVideoHolder
 	SpellSchool selectedTab;
 	int currentPage; //changes when corners are clicked
 	std::vector<const CSpell *> mySpells; //all spels in this spellbook
+	std::optional<PlayerColor> archiveOwner;
+	std::map<SpellID, std::vector<ObjectInstanceID>> archiveSpells;
+	std::shared_ptr<IImage> archiveBackdrop;
+	bool personalArchive = false;
+	std::string archiveDescription(const CSpell * spell) const;
 
 	const CGHeroInstance * myHero; //hero whose spells are presented
 	CPlayerInterface * myInt;
@@ -145,7 +151,7 @@ class CSpellWindow : public CWindowObject, public IVideoHolder
 	std::function<void(SpellID)> onSpellSelect; //external processing of selected spell
 
 public:
-	CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _myInt, bool openOnBattleSpells = true, const std::function<void(SpellID)> & onSpellSelect = nullptr);
+	CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _myInt, bool openOnBattleSpells = true, const std::function<void(SpellID)> & onSpellSelect = nullptr, const CGTownInstance * archiveTown = nullptr);
 	~CSpellWindow();
 
 	void fexitb();
@@ -163,4 +169,5 @@ public:
 	void keyPressed(EShortcut key) override;
 
 	void show(Canvas & to) override;
+	void showAll(Canvas & to) override;
 };

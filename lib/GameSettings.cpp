@@ -130,6 +130,8 @@ const std::vector<GameSettings::SettingOption> GameSettings::settingProperties =
 		{EGameSettings::SPELLS_DIMENSION_DOOR_TRIGGERS_GUARDS,            "spells",    "dimensionDoorTriggersGuards"          },
 		{EGameSettings::SPELLS_TOMES_GRANT_BANNED_SPELLS,                 "spells",    "tomesGrantBannedSpells"               },
 		{EGameSettings::SPELLS_LEARN_NOW_CAST_LATER,                     "spells",    "learnNowCastLater"                    },
+		{EGameSettings::TOWNS_SHARED_MAGE_GUILDS,                        "towns",     "sharedMageGuilds"                     },
+		{EGameSettings::SPELLS_ARCANE_ARCHIVE_PERSONAL,                   "spells",    "arcaneArchivePersonal"                },
 		{EGameSettings::TEXTS_ARTIFACT,                                   "textData",  "artifact"                             },
 		{EGameSettings::TEXTS_CREATURE,                                   "textData",  "creature"                             },
 		{EGameSettings::TEXTS_FACTION,                                    "textData",  "faction"                              },
@@ -163,9 +165,11 @@ void GameSettings::loadBase(const JsonNode & input)
 		if(optionValue.isNull())
 			continue;
 
-		if(option.setting == EGameSettings::SPELLS_LEARN_NOW_CAST_LATER && !optionValue.isBool())
+		if((option.setting == EGameSettings::SPELLS_LEARN_NOW_CAST_LATER
+			|| option.setting == EGameSettings::TOWNS_SHARED_MAGE_GUILDS
+			|| option.setting == EGameSettings::SPELLS_ARCANE_ARCHIVE_PERSONAL) && !optionValue.isBool())
 		{
-			logGlobal->warn("Mod %s: settings.spells.learnNowCastLater must be a boolean; retaining the current value", input.getModScope());
+			logGlobal->warn("Mod %s: settings.%s.%s must be a boolean; retaining the current value", input.getModScope(), option.group, option.key);
 			continue;
 		}
 
@@ -221,7 +225,9 @@ JsonNode GameSettings::getAllOverrides() const
 	for(const auto & option : settingProperties)
 	{
 		const JsonNode & value = overridenSettings[static_cast<int32_t>(option.setting)];
-		if(option.setting == EGameSettings::SPELLS_LEARN_NOW_CAST_LATER)
+		if(option.setting == EGameSettings::SPELLS_LEARN_NOW_CAST_LATER
+			|| option.setting == EGameSettings::TOWNS_SHARED_MAGE_GUILDS
+			|| option.setting == EGameSettings::SPELLS_ARCANE_ARCHIVE_PERSONAL)
 			result[option.group][option.key] = getValue(option.setting);
 		else if (!value.isNull())
 			result[option.group][option.key] = value;

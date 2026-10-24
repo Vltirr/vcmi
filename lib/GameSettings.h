@@ -69,6 +69,14 @@ public:
 				overrides["spells"]["learnNowCastLater"].Bool() = h.hasFeature(Handler::Version::BATTLE_FOCUS);
 			else if(!overrides["spells"]["learnNowCastLater"].isBool())
 				throw std::runtime_error("Invalid saved game setting spells.learnNowCastLater: expected boolean");
+			for(const auto & path : {std::pair{"towns", "sharedMageGuilds"}, std::pair{"spells", "arcaneArchivePersonal"}})
+			{
+				auto & value = overrides[path.first][path.second];
+				if(value.isNull())
+					value.Bool() = false;
+				else if(!value.isBool())
+					throw std::runtime_error(std::string("Invalid saved game setting ") + path.first + "." + path.second + ": expected boolean");
+			}
 			loadOverrides(overrides);
 		}
 	}

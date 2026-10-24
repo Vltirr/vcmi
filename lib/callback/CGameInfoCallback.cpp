@@ -35,6 +35,44 @@ const IMarket * CGameInfoCallback::getMarket(ObjectInstanceID objid) const
 	return dynamic_cast<const IMarket*>(obj);
 }
 
+std::set<SpellID> CGameInfoCallback::getMageGuildSpells(const CGTownInstance * town) const
+{
+	std::set<SpellID> result;
+	if(!town || town->mageGuildLevel() < 1 || !canGetFullInfo(town))
+		return result;
+	if(town->hasBuilt(BuildingSubID::AURORA_BOREALIS))
+	{
+		for(int level = 1; level <= GameConstants::SPELL_LEVELS; ++level)
+		{
+			std::vector<SpellID> allowed;
+			getAllowedSpells(allowed, level);
+			result.insert(allowed.begin(), allowed.end());
+		}
+		return result;
+	}
+	for(int level = 1; level <= town->mageGuildLevel() && level <= static_cast<int>(town->spells.size()); ++level)
+	{
+		const auto & spells = town->spells.at(level - 1);
+		const auto count = std::min<size_t>(town->spellsAtLevel(level, true), spells.size());
+		result.insert(spells.begin(), spells.begin() + count);
+	}
+	return result;
+}
+
+std::map<SpellID, std::vector<ObjectInstanceID>> CGameInfoCallback::getArcaneArchive(PlayerColor owner) const
+{
+	std::map<SpellID, std::vector<ObjectInstanceID>> result;
+	if(getPlayerID().has_value() && getPlayerID() != owner)
+		return result;
+	const auto * player = tryGetPlayerState(owner);
+	if(!player)
+		return result;
+	for(const auto * town : player->getTowns())
+		for(const auto spell : getMageGuildSpells(town))
+			result[spell].push_back(town->id);
+	return result;
+}
+
 int CGameInfoCallback::getResource(PlayerColor Player, GameResID which) const
 {
 	const PlayerState *p = getPlayerState(Player);

@@ -704,32 +704,20 @@ void CGameHandler::giveSpells(const CGTownInstance *t, const CGHeroInstance *h)
 {
 	if (!h->hasSpellbook())
 		return; //hero hasn't spellbook
+	auto offered = gs->getMageGuildSpells(t);
+	if(gameInfo().getSettings().getBoolean(EGameSettings::TOWNS_SHARED_MAGE_GUILDS)
+		&& t->getOwner() == h->getOwner() && t->mageGuildLevel() > 0)
+	{
+		offered.clear();
+		for(const auto & entry : gs->getArcaneArchive(h->getOwner()))
+			offered.insert(entry.first);
+	}
 	ChangeSpells cs;
 	cs.hid = h->id;
 	cs.learn = true;
-	if (t->hasBuilt(BuildingSubID::AURORA_BOREALIS) && t->hasBuilt(BuildingID::MAGES_GUILD_1))
-	{
-		// Aurora Borealis give spells of all levels even if only level 1 mages guild built
-		for (int i = 0; i < GameConstants::SPELL_LEVELS; i++)
-		{
-			std::vector<SpellID> spells;
-			gameState().getAllowedSpells(spells, i+1);
-			for (const auto & spell : spells)
-				if(h->canLearnSpell(spell.toSpell(), true))
-					cs.spells.insert(spell);
-		}
-	}
-	else
-	{
-		for (int i = 0; i < t->mageGuildLevel(); i++)
-		{
-			for (int j = 0; j < t->spellsAtLevel(i+1, true) && j < t->spells.at(i).size(); j++)
-			{
-				if (h->canLearnSpell(t->spells.at(i).at(j).toSpell(), true))
-					cs.spells.insert(t->spells.at(i).at(j));
-			}
-		}
-	}
+	for(const auto spell : offered)
+		if(h->canLearnSpell(spell.toSpell(), true))
+			cs.spells.insert(spell);
 	if (!cs.spells.empty())
 		sendAndApply(cs);
 }
@@ -1575,7 +1563,57 @@ void CGameHandler::heroExchange(ObjectInstanceID hero1, ObjectInstanceID hero2)
 
 void CGameHandler::sendAndApply(CPackForClient & pack)
 {
+	bool guildChanged = dynamic_cast<NewStructures *>(&pack)
+		|| dynamic_cast<RazeStructures *>(&pack) || dynamic_cast<SetResearchedSpells *>(&pack)
+		|| dynamic_cast<NewTurn *>(&pack);
+	if(const auto * property = dynamic_cast<SetObjectProperty *>(&pack))
+		guildChanged = property->what == ObjProperty::OWNER && dynamic_cast<const CGTownInstance *>(gameInfo().tryGetObj(property->id));
+	if(const auto * removal = dynamic_cast<RemoveObject *>(&pack))
+		guildChanged = dynamic_cast<const CGTownInstance *>(gameInfo().tryGetObj(removal->objectID)) != nullptr;
+	std::map<PlayerColor, std::set<SpellID>> previous;
+	if(guildChanged && gameInfo().getSettings().getBoolean(EGameSettings::TOWNS_SHARED_MAGE_GUILDS))
+		for(const auto color : PlayerColor::ALL_PLAYERS())
+		{
+			if(!gameInfo().tryGetPlayerState(color))
+				continue;
+			for(const auto & entry : gs->getArcaneArchive(color))
+				previous[color].insert(entry.first);
+			previous.try_emplace(color);
+		}
 	gameServer().applyPack(pack);
+	for(const auto & entry : previous)
+	{
+		const auto * player = gameInfo().tryGetPlayerState(entry.first);
+		if(!player)
+			continue;
+		const auto current = gs->getArcaneArchive(entry.first);
+		for(const auto * town : player->getTowns())
+		{
+			if(town->mageGuildLevel() < 1)
+				continue;
+			for(const auto * hero : {town->getVisitingHero(), town->getGarrisonHero()})
+				if(hero && hero->getOwner() == entry.first)
+					giveSpells(town, hero);
+		}
+		InfoWindow notice;
+		notice.player = entry.first;
+		notice.text.appendTextID("vcmi.arcaneArchive.newSpells");
+		std::vector<SpellID> added;
+		for(const auto & spell : current)
+			if(!entry.second.count(spell.first))
+				added.push_back(spell.first);
+		// The client splits component lists longer than eight into separate windows.
+		for(const auto spell : added)
+			if(added.size() <= 8)
+				notice.components.emplace_back(ComponentType::SPELL, spell);
+			else
+			{
+				notice.text.appendEOL();
+				notice.text.appendName(spell);
+			}
+		if(player->human && !added.empty())
+			sendAndApply(notice);
+	}
 }
 
 void CGameHandler::sendQuestionResolved(QuestionID questionID)

@@ -42,6 +42,7 @@
 #include "../../lib/GameConstants.h"
 #include "../../lib/IGameSettings.h"
 #include "../../lib/GameLibrary.h"
+#include "../../lib/filesystem/Filesystem.h"
 #include "../../lib/battle/CPlayerBattleCallback.h"
 #include "../../lib/callback/CCallback.h"
 #include "../../lib/spells/ISpellMechanics.h"
@@ -51,6 +52,7 @@
 #include "../../lib/texts/CGeneralTextHandler.h"
 #include "../../lib/texts/TextOperations.h"
 #include "../../lib/mapObjects/CGHeroInstance.h"
+#include "../../lib/mapObjects/CGTownInstance.h"
 #include "../../lib/spells/CSpellHandler.h"
 
 // Ordering of spell school tabs in SpelTab.def
@@ -156,7 +158,7 @@ public:
 	}
 };
 
-CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _myInt, bool openOnBattleSpells, const std::function<void(SpellID)> & onSpellSelect):
+CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _myInt, bool openOnBattleSpells, const std::function<void(SpellID)> & onSpellSelect, const CGTownInstance * archiveTown):
 	CWindowObject(PLAYER_COLORED | (settings["gameTweaks"]["enableLargeSpellbook"].Bool() ? BORDERED : 0)),
 	battleSpellsOnly(openOnBattleSpells),
 	selectedTab(SpellSchool::ANY),
@@ -165,7 +167,7 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 	myInt(_myInt),
 	openOnBattleSpells(openOnBattleSpells),
 	onSpellSelect(onSpellSelect),
-	isBigSpellbook(settings["gameTweaks"]["enableLargeSpellbook"].Bool()),
+	isBigSpellbook(archiveTown || settings["gameTweaks"]["enableLargeSpellbook"].Bool()),
 	spellsPerPage(24),
 	offL(-11),
 	offR(195),
@@ -174,6 +176,20 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 	offB(56)
 {
 	OBJECT_CONSTRUCTION;
+	if(archiveTown)
+	{
+		archiveOwner = archiveTown->getOwner();
+		archiveSpells = myInt->cb->getArcaneArchive(*archiveOwner);
+		personalArchive = myHero && myHero->hasSpellbook() && myInt->cb->getSettings().getBoolean(EGameSettings::SPELLS_LEARN_NOW_CAST_LATER)
+			&& myInt->cb->getSettings().getBoolean(EGameSettings::SPELLS_ARCANE_ARCHIVE_PERSONAL);
+		if(CResourceHandler::get()->existsResource(ResourcePath("SPRITES/arcaneArchive/library", EResType::IMAGE)))
+		{
+			archiveBackdrop = ENGINE->renderHandler().loadImage(ImagePath::builtin("arcaneArchive/library"), EImageBlitMode::OPAQUE);
+			archiveBackdrop->scaleTo(ENGINE->screenDimensions(), EScalingAlgorithm::BILINEAR);
+		}
+		else
+			logGlobal->warn("Arcane Archive: missing SPRITES/arcaneArchive/library; using the spellbook without a backdrop");
+	}
 
 	int maxCustomSchools = (isBigSpellbook ? MAX_CUSTOM_SPELL_SCHOOLS_BIG : MAX_CUSTOM_SPELL_SCHOOLS) * 2;
 	int customSchoolsAvailable = 0;
@@ -181,7 +197,7 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 	std::ranges::sort(sortedSchools, [&](SpellSchool a, SpellSchool b) {
 		auto cnt = [&](SpellSchool s) {
 			return std::ranges::count_if(LIBRARY->spellh->objects, [&](auto const & sp) {
-				return ((!sp->isSpecial() && myHero->spellbookContainsSpell(sp->getId())) || myHero->canCastThisSpell(sp.get()))
+				return (archiveOwner ? archiveSpells.count(sp->getId()) != 0 : ((!sp->isSpecial() && myHero->spellbookContainsSpell(sp->getId())) || myHero->canCastThisSpell(sp.get())))
 					&& sp->schools.count(s);
 			});
 		};
@@ -237,7 +253,7 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 		showAllSpells = std::make_shared<CToggleButton>(boxPos, AnimationPath::builtin("sysopchk.def"), CButton::tooltip(LIBRARY->generaltexth->translate("core.help.458.hover"), LIBRARY->generaltexth->translate("core.help.458.hover")), [this](bool state){ searchInput(); });
 		showAllSpellsDescription = std::make_shared<CLabel>(boxPos.x + 40, boxPos.y + 12, FONT_SMALL, ETextAlignment::CENTERLEFT, Colors::WHITE, LIBRARY->generaltexth->translate("core.help.458.hover"));
 	}
-	else if(myInt->cb->getSettings().getBoolean(EGameSettings::SPELLS_LEARN_NOW_CAST_LATER))
+	else if(myHero && (!archiveOwner || personalArchive) && myInt->cb->getSettings().getBoolean(EGameSettings::SPELLS_LEARN_NOW_CAST_LATER))
 	{
 		const Point bookmarkPosition(isBigSpellbook ? 379 : 288, isBigSpellbook ? 465 : 406);
 		showOnlyCastableSpells = myInt->localState->getShowOnlyCastableSpells(myHero->id);
@@ -276,7 +292,7 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 	schoolPicture = std::make_shared<CAnimImage>(AnimationPath::builtin("Schools"), 0, 0, 117 + offL, 74 + offT);
 
 	const Point manaPosition = isBigSpellbook ? Point(592, 485) : Point(434, 426);
-	mana = std::make_shared<CLabel>(manaPosition.x, manaPosition.y, FONT_SMALL, ETextAlignment::CENTER, Colors::YELLOW, std::to_string(myHero->mana));
+	mana = std::make_shared<CLabel>(manaPosition.x, manaPosition.y, FONT_SMALL, ETextAlignment::CENTER, Colors::YELLOW, myHero && (!archiveOwner || personalArchive) ? std::to_string(myHero->mana) : "");
 
 	if(isBigSpellbook)
 		statusBar = CGStatusBar::create(400, 587);
@@ -360,12 +376,14 @@ void CSpellWindow::searchInput()
 
 bool CSpellWindow::isSpellUnavailable(const CSpell * spell) const
 {
+	if(!myHero || (archiveOwner && !personalArchive))
+		return false;
 	return !myHero->canCastThisSpell(spell) || myInt->cb->getSpellCost(spell, myHero) > myHero->mana;
 }
 
 bool CSpellWindow::isSpellBlockedByWisdom(const CSpell * spell) const
 {
-	return myHero->spellbookContainsSpell(spell->getId())
+	return myHero && (!archiveOwner || personalArchive) && myHero->spellbookContainsSpell(spell->getId())
 		&& spell->getLevel() > myHero->maxCastableSpellLevel()
 		&& !myHero->canCastThisSpell(spell);
 }
@@ -399,6 +417,13 @@ void CSpellWindow::processSpells()
 	for(auto const & spell : LIBRARY->spellh->objects)
 	{
 		bool searchTextFound = !searchBox || TextOperations::isFuzzyMatch(searchBox->getText(), spell->getNameTranslated());
+		if(archiveOwner)
+		{
+			if(archiveSpells.count(spell->id) && !spell->isCreatureAbility() && searchTextFound
+				&& (!showOnlyCastableSpells || !isSpellBlockedByWisdom(spell.get())))
+				mySpells.push_back(spell.get());
+			continue;
+		}
 
 		if(onSpellSelect)
 		{
@@ -478,6 +503,11 @@ void CSpellWindow::processSpells()
 
 void CSpellWindow::fexitb()
 {
+	if(archiveOwner)
+	{
+		close();
+		return;
+	}
 	auto spellBookState = myInt->localState->getSpellbookSettings();
 	if(myInt->battleInt)
 	{
@@ -571,6 +601,44 @@ void CSpellWindow::show(Canvas & to)
 	if(video)
 		video->show(to);
 	statusBar->show(to);
+}
+
+void CSpellWindow::showAll(Canvas & to)
+{
+	if(archiveBackdrop)
+		to.draw(archiveBackdrop, Point(0, 0));
+	if(archiveOwner)
+	{
+		auto current = myInt->cb->getArcaneArchive(*archiveOwner);
+		if(current != archiveSpells)
+		{
+			archiveSpells = std::move(current);
+			searchInput();
+		}
+	}
+	CWindowObject::showAll(to);
+}
+
+std::string CSpellWindow::archiveDescription(const CSpell * spell) const
+{
+	std::string result = spell->getDescriptionTranslated(personalArchive && myHero ? myHero->getSpellSchoolLevel(spell) : 0);
+	result += "\n\n" + LIBRARY->generaltexth->translate("vcmi.arcaneArchive.sources");
+	for(const auto townId : archiveSpells.at(spell->id))
+		if(const auto * town = myInt->cb->getTown(townId))
+			result += "\n" + GAME->translator().translate(town->getNameTextID());
+	if(personalArchive && myHero)
+	{
+		result += "\n\n" + LIBRARY->generaltexth->translate(myHero->spellbookContainsSpell(spell->id)
+			? "vcmi.arcaneArchive.known" : "vcmi.arcaneArchive.unknown");
+		if(isSpellBlockedByWisdom(spell))
+		{
+			auto reason = MetaString::createFromTextID("vcmi.spellBook.wisdomRequired");
+			reason.replaceNumber(spell->getLevel());
+			reason.replaceNumber(myHero->maxCastableSpellLevel());
+			result += "\n" + reason.toString(&GAME->translator());
+		}
+	}
+	return result;
 }
 
 void CSpellWindow::computeSpellsPerArea()
@@ -693,8 +761,8 @@ void CSpellWindow::setCurrentPage(int value)
 	leftCornerArea->setEnabled(canTurnLeft);
 	rightCornerArea->setEnabled(canTurnRight);
 
-	mana->setText(std::to_string(myHero->mana));
-	const auto manaDescription = UIHelper::getHeroManaDescription(*myHero);
+	mana->setText(myHero && (!archiveOwner || personalArchive) ? std::to_string(myHero->mana) : "");
+	const auto manaDescription = myHero && (!archiveOwner || personalArchive) ? UIHelper::getHeroManaDescription(*myHero) : std::string();
 	manaArea->setHelp(manaDescription, manaDescription);
 	ENGINE->fakeMouseMove(); // refresh hover text after updating page controls and mana
 }
@@ -802,6 +870,11 @@ void CSpellWindow::SpellArea::clickPressed(const Point & cursorPosition)
 	if(mySpell)
 	{
 		ENGINE->input().hapticFeedback();
+		if(owner->archiveOwner)
+		{
+			GAME->interface()->showInfoDialog(owner->archiveDescription(mySpell), std::make_shared<CComponent>(ComponentType::SPELL, mySpell->id));
+			return;
+		}
 
 		if(owner->onSpellSelect)
 		{
@@ -903,6 +976,11 @@ void CSpellWindow::SpellArea::showPopupWindow(const Point & cursorPosition)
 {
 	if(mySpell)
 	{
+		if(owner->archiveOwner)
+		{
+			CRClickPopup::createAndPush(owner->archiveDescription(mySpell), std::make_shared<CComponent>(ComponentType::SPELL, mySpell->id));
+			return;
+		}
 		std::string dmgInfo;
 		auto causedDmg = owner->myInt->cb->estimateSpellDamage(mySpell, owner->myHero);
 		if(causedDmg == 0 || mySpell->id == SpellID::TITANS_LIGHTNING_BOLT) //Titan's Lightning Bolt already has damage info included
@@ -947,9 +1025,10 @@ void CSpellWindow::SpellArea::setSpell(const CSpell * spell)
 	mySpell = spell;
 	if(mySpell)
 	{
-		SpellSchool whichSchool;
-		schoolLevel = owner->myHero->getSpellSchoolLevel(mySpell, &whichSchool);
-		auto spellCost = owner->myInt->cb->getSpellCost(mySpell, owner->myHero);
+		SpellSchool whichSchool = mySpell->schools.empty() ? SpellSchool::ANY : *mySpell->schools.begin();
+		const bool personal = owner->myHero && (!owner->archiveOwner || owner->personalArchive);
+		schoolLevel = personal ? owner->myHero->getSpellSchoolLevel(mySpell, &whichSchool) : 0;
+		auto spellCost = personal ? owner->myInt->cb->getSpellCost(mySpell, owner->myHero) : mySpell->getCost(0);
 
 		{
 			OBJECT_CONSTRUCTION;

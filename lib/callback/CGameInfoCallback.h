@@ -91,6 +91,8 @@ public:
 	//town
 
 	int howManyTowns(PlayerColor Player) const;
+	std::set<SpellID> getMageGuildSpells(const CGTownInstance * town) const;
+	std::map<SpellID, std::vector<ObjectInstanceID>> getArcaneArchive(PlayerColor owner) const;
 	std::vector<const CGHeroInstance *> getAvailableHeroes(const CGObjectInstance * townOrTavern) const;
 	std::string getTavernRumor(const CGObjectInstance * townOrTavern, const ITranslator * translator) const;
 	EBuildingState canBuildStructure(const CGTownInstance *t, BuildingID ID) const;

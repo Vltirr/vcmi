@@ -1,4 +1,8 @@
 {
+	"vcmi.arcaneArchive.newSpells": "Se han incorporado nuevos hechizos a tu Archivo Arcano.",
+	"vcmi.arcaneArchive.sources": "Disponible en:",
+	"vcmi.arcaneArchive.known": "Conocido por el héroe visitante.",
+	"vcmi.arcaneArchive.unknown": "No conocido por el héroe visitante.",
 	"vcmi.adventureMap.manaRecovery": "Recuperación: {#2864c8|+%GAIN (%POTENTIAL)} · Maná: {#2864c8|%CURRENT/%MAX}",
 	"vcmi.adventureMap.manaRecoveryBeforeInteraction": "Recuperación en destino (maná actual): {#2864c8|+%GAIN (%POTENTIAL)} · Maná: {#2864c8|%CURRENT/%MAX}",
 	"vcmi.adventureMap.manaRecoveryShort": "+%GAIN (%POTENTIAL), %CURRENT/%MAX",

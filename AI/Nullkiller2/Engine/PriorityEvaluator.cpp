@@ -636,6 +636,21 @@ float RewardEvaluator::getSkillReward(const CGObjectInstance * target, const CGH
 
 	if(!target)
 		return 0;
+	if(target->ID == Obj::TOWN && target->getOwner() == hero->getOwner()
+		&& aiNk->cc->getSettings().getBoolean(EGameSettings::TOWNS_SHARED_MAGE_GUILDS))
+	{
+		const auto * town = dynamic_cast<const CGTownInstance *>(target);
+		if(!town || town->mageGuildLevel() < 1)
+			return 0;
+		float value = 0;
+		for(const auto & entry : aiNk->cc->getArcaneArchive(hero->getOwner()))
+		{
+			const auto * spell = entry.first.toSpell();
+			if(hero->canLearnSpell(spell, true))
+				value += std::sqrt(spell->getLevel()) / (spell->getLevel() <= hero->maxSpellLevel() ? 4.0f : 12.0f);
+		}
+		return value;
+	}
 
 	switch(target->ID)
 	{

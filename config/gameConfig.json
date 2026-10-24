@@ -573,6 +573,7 @@
 			"startingDwellingChances": [100, 50],
 			// Enable spell research in mage guild
 			"spellResearch": false,
+			"sharedMageGuilds": false,
 			// Cost for an spell research (array index is spell tier)
 			"spellResearchCost": [
 				{ "gold": 1000, "mercury": 2, "sulfur": 2, "crystal": 2, "gems": 2 },
@@ -839,6 +840,7 @@
 		"spells":
 		{
 			"learnNowCastLater" : false,
+			"arcaneArchivePersonal" : false,
 			// if enabled, dimension door will initiate a fight upon landing on tile adjacent to neutral creature
 			"dimensionDoorTriggersGuards" : false,
 			// if enabled, SPELLS_OF_SCHOOL bonus (Tomes of Water/Air/Earth/Fire Magic)

@@ -1,4 +1,8 @@
 {
+	"vcmi.arcaneArchive.newSpells": "New spells have been added to your Arcane Archive.",
+	"vcmi.arcaneArchive.sources": "Provided by:",
+	"vcmi.arcaneArchive.known": "Known by the visiting hero.",
+	"vcmi.arcaneArchive.unknown": "Not known by the visiting hero.",
 	"vcmi.adventureMap.manaRecovery": "Recovery: {#2864c8|+%GAIN (%POTENTIAL)} · Mana: {#2864c8|%CURRENT/%MAX}",
 	"vcmi.adventureMap.manaRecoveryBeforeInteraction": "Destination recovery (current mana): {#2864c8|+%GAIN (%POTENTIAL)} · Mana: {#2864c8|%CURRENT/%MAX}",
 	"vcmi.adventureMap.manaRecoveryShort": "+%GAIN (%POTENTIAL), %CURRENT/%MAX",

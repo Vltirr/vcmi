@@ -675,6 +675,15 @@ bool shouldVisit(const Nullkiller * aiNk, const CGHeroInstance * hero, const CGO
 	switch(obj->ID)
 	{
 	case Obj::TOWN:
+		if(relations == PlayerRelations::SAME_PLAYER && aiNk->cc->getSettings().getBoolean(EGameSettings::TOWNS_SHARED_MAGE_GUILDS))
+		{
+			const auto * town = dynamic_cast<const CGTownInstance *>(obj);
+			if(town && town->mageGuildLevel() > 0 && !town->getVisitingHero())
+				for(const auto & entry : aiNk->cc->getArcaneArchive(hero->getOwner()))
+					if(hero->canLearnSpell(entry.first.toSpell(), true))
+						return true;
+		}
+		return relations == PlayerRelations::ENEMIES;
 	case Obj::HERO: //never visit our heroes at random
 		return relations == PlayerRelations::ENEMIES; //do not visit our towns at random
 

@@ -11,6 +11,7 @@
 
 #include "AI/Nullkiller2/AIGateway.h"
 #include "AI/Nullkiller2/AIUtility.h"
+#include "AI/Nullkiller2/Engine/PriorityEvaluator.h"
 
 #include "nullkiller2/NullkillerTest.h"
 #include "server/battles/BattleTestFixture.h"
@@ -19,6 +20,8 @@
 #include "lib/gameState/CGameState.h"
 #include "lib/gameState/QuestInfo.h"
 #include "lib/mapObjects/CGHeroInstance.h"
+#include "lib/mapObjects/CGTownInstance.h"
+#include "lib/callback/CCallback.h"
 #include "lib/mapObjects/Quest.h"
 #include "lib/spells/CSpell.h"
 #include "server/CGameHandler.h"
@@ -83,6 +86,35 @@ TEST_F(Nullkiller2_AIUtility, trackedSeerWithoutActiveQuestIsNotVisitable)
 namespace
 {
 class Nullkiller2_ScrollValue : public BattleTestFixture {};
+class Nullkiller2_ArcaneWeb : public BattleTestFixture {};
+}
+
+TEST_F(Nullkiller2_ArcaneWeb, GuildVisitHasLearningValueUntilHeroLearnsSharedSpells)
+{
+	overrideSettingBeforeInit(EGameSettings::TOWNS_SHARED_MAGE_GUILDS, true);
+	overrideSettingBeforeInit(EGameSettings::SPELLS_LEARN_NOW_CAST_LATER, true);
+	startGame();
+	auto * town = findAll<CGTownInstance>().front();
+	gameHandler->setOwner(town, PlayerColor(0));
+	town->removeAllBuildings();
+	town->addBuilding(BuildingID::MAGES_GUILD_5);
+	town->spells.assign(GameConstants::SPELL_LEVELS, {});
+	town->spells.at(4) = {SpellID::IMPLOSION};
+	giveArtifact(attackerSideHero, ArtifactID::SPELLBOOK, ArtifactPosition::SPELLBOOK);
+	attackerSideHero->removeAllSpells();
+	revealMap(PlayerColor(0));
+	NK2AI::Nullkiller ai;
+	ai.cc = makeCallback(PlayerColor(0));
+	ai.playerID = PlayerColor(0);
+	NK2AI::RewardEvaluator evaluator(&ai);
+	EXPECT_TRUE(NK2AI::shouldVisit(&ai, attackerSideHero, town));
+	const float futureValue = evaluator.getSkillReward(town, attackerSideHero, NK2AI::HeroRole::MAIN);
+	EXPECT_GT(futureValue, 0);
+	attackerSideHero->setSecSkillLevel(SecondarySkill::WISDOM, MasteryLevel::EXPERT, ChangeValueMode::ABSOLUTE);
+	EXPECT_GT(evaluator.getSkillReward(town, attackerSideHero, NK2AI::HeroRole::MAIN), futureValue);
+	gameHandler->giveSpells(town, attackerSideHero);
+	EXPECT_FALSE(NK2AI::shouldVisit(&ai, attackerSideHero, town));
+	EXPECT_EQ(evaluator.getSkillReward(town, attackerSideHero, NK2AI::HeroRole::MAIN), 0);
 }
 
 TEST_F(Nullkiller2_ScrollValue, EquippedScrollKeepsValueWhenItsLearnedSpellIsBlocked)

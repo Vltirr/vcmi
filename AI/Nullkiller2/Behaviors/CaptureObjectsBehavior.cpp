@@ -15,6 +15,7 @@
 #include "../Goals/Invalid.h"
 #include "CaptureObjectsBehavior.h"
 #include "../AIUtility.h"
+#include "../../../lib/IGameSettings.h"
 
 namespace NK2AI
 {
@@ -269,6 +270,10 @@ Goals::TGoalVec CaptureObjectsBehavior::decompose(const Nullkiller * aiNk) const
 	else
 	{
 		auto nearbyObjects = aiNk->objectClusterizer->getNearbyObjects();
+		if(aiNk->cc->getSettings().getBoolean(EGameSettings::TOWNS_SHARED_MAGE_GUILDS))
+			for(const auto * town : aiNk->cc->getTownsInfo())
+				if(!vstd::contains(nearbyObjects, town))
+					nearbyObjects.push_back(town);
 		addVisibleEnemyTowns(nearbyObjects, aiNk);
 		decomposeObjects(tasks, nearbyObjects, aiNk);
 
