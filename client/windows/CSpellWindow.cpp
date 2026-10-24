@@ -56,6 +56,8 @@
 #include "../../lib/mapObjects/CGTownInstance.h"
 #include "../../lib/spells/CSpellHandler.h"
 
+#include <cmath>
+
 // Ordering of spell school tabs in SpelTab.def
 static const std::array schoolTabOrder =
 {
@@ -160,7 +162,7 @@ public:
 };
 
 CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _myInt, bool openOnBattleSpells, const std::function<void(SpellID)> & onSpellSelect, const CGTownInstance * archiveTown):
-	CWindowObject(PLAYER_COLORED | (settings["gameTweaks"]["enableLargeSpellbook"].Bool() ? BORDERED : 0)),
+	CWindowObject(archiveTown ? SHADOW_DISABLED : PLAYER_COLORED | (settings["gameTweaks"]["enableLargeSpellbook"].Bool() ? BORDERED : 0)),
 	battleSpellsOnly(openOnBattleSpells),
 	selectedTab(SpellSchool::ANY),
 	currentPage(0),
@@ -186,7 +188,12 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 		if(CResourceHandler::get()->existsResource(ResourcePath("SPRITES/arcaneArchive/library", EResType::IMAGE)))
 		{
 			archiveBackdrop = ENGINE->renderHandler().loadImage(ImagePath::builtin("arcaneArchive/library"), EImageBlitMode::OPAQUE);
-			archiveBackdrop->scaleTo(ENGINE->screenDimensions(), EScalingAlgorithm::BILINEAR);
+			const Point viewport = ENGINE->screenDimensions();
+			const Point original = archiveBackdrop->dimensions();
+			const double scale = std::max(static_cast<double>(viewport.x) / original.x, static_cast<double>(viewport.y) / original.y);
+			const Point scaled(static_cast<int>(std::ceil(original.x * scale)), static_cast<int>(std::ceil(original.y * scale)));
+			archiveBackdrop->scaleTo(scaled, EScalingAlgorithm::BILINEAR);
+			archiveBackdropPosition = (viewport - scaled) / 2;
 		}
 		else
 			logGlobal->warn("Arcane Archive: missing SPRITES/arcaneArchive/library; using the spellbook without a backdrop");
@@ -221,7 +228,10 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 
 	if(isBigSpellbook)
 	{
-		background = std::make_shared<CPicture>(ImagePath::builtin("SpellBookLarge"), 0, 0);
+		if(archiveTown)
+			background = std::make_shared<CPicture>(ImagePath::builtin("arcaneArchive/spellbook"), Point(0, 0), EImageBlitMode::SIMPLE);
+		else
+			background = std::make_shared<CPicture>(ImagePath::builtin("SpellBookLarge"), 0, 0);
 		updateShadow();
 	}
 	else
@@ -231,11 +241,12 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 		spellsPerPage = 12;
 	}
 
-	background->setPlayerColor(GAME->interface()->playerID);
+	if(!archiveTown)
+		background->setPlayerColor(GAME->interface()->playerID);
 
 	pos = background->center(Point(pos.w/2 + pos.x, pos.h/2 + pos.y));
 
-	Rect r(90, isBigSpellbook ? 480 : 420, isBigSpellbook ? 160 : 110, 16);
+	Rect r(90, archiveTown ? 443 : (isBigSpellbook ? 480 : 420), isBigSpellbook ? 160 : 110, 16);
 	if(settings["general"]["enableUiEnhancements"].Bool())
 	{
 		const ColorRGBA rectangleColor = ColorRGBA(0, 0, 0, 75);
@@ -261,8 +272,13 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 		const Rect bookmarkArtwork(417, 406, 37, 45);
 		// The mana ribbon is blank in SpelBack; its number is a separate label.
 		// Reuse these original pixels, just as createBigSpellBook does, without scaling.
-		auto spellbook = ENGINE->renderHandler().loadImage(ImagePath::builtin("SpelBack"), EImageBlitMode::OPAQUE);
-		availabilityBookmark = std::make_shared<CPicture>(spellbook, bookmarkArtwork, bookmarkPosition.x, bookmarkPosition.y);
+		if(archiveTown)
+			availabilityBookmark = std::make_shared<CPicture>(background->getSurface(), Rect(575, 465, 37, 45), bookmarkPosition.x, bookmarkPosition.y);
+		else
+		{
+			auto spellbook = ENGINE->renderHandler().loadImage(ImagePath::builtin("SpelBack"), EImageBlitMode::OPAQUE);
+			availabilityBookmark = std::make_shared<CPicture>(spellbook, bookmarkArtwork, bookmarkPosition.x, bookmarkPosition.y);
+		}
 		availabilityBookmark->removeUsedEvents(LCLICK | SHOW_POPUP);
 		const std::array bookmarkIcons = {"spellbook/allSpellsIcon.png", "spellbook/castableSpellsIcon.png"};
 		for(size_t i = 0; i < availabilityBookmarkIcons.size(); ++i)
@@ -296,7 +312,7 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 	mana = std::make_shared<CLabel>(manaPosition.x, manaPosition.y, FONT_SMALL, ETextAlignment::CENTER, Colors::YELLOW, myHero && (!archiveOwner || personalArchive) ? std::to_string(myHero->mana) : "");
 
 	if(isBigSpellbook)
-		statusBar = CGStatusBar::create(400, 587);
+		statusBar = CGStatusBar::create(400, archiveTown ? 535 : 587);
 	else
 		statusBar = CGStatusBar::create(7, 569, ImagePath::builtin("Spelroll.bmp"));
 
@@ -607,7 +623,7 @@ void CSpellWindow::show(Canvas & to)
 void CSpellWindow::showAll(Canvas & to)
 {
 	if(archiveBackdrop)
-		to.draw(archiveBackdrop, Point(0, 0));
+		to.draw(archiveBackdrop, archiveBackdropPosition);
 	if(archiveOwner)
 	{
 		auto current = myInt->cb->getArcaneArchive(*archiveOwner);

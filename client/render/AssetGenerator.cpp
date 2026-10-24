@@ -38,6 +38,7 @@ void AssetGenerator::initialize()
 
 	imageFiles[ImagePath::builtin("AdventureOptionsBackgroundClear.png")] = [this](){ return createAdventureOptionsCleanBackground();};
 	imageFiles[ImagePath::builtin("SpellBookLarge.png")] = [this](){ return createBigSpellBook();};
+	imageFiles[ImagePath::builtin("arcaneArchive/spellbook.png")] = [this](){ return createArcaneArchiveBook();};
 	imageFiles[ImagePath::builtin("MuPopUpCustom.png")] = [this](){ return createMuPopUpCustom();};
 
 	imageFiles[ImagePath::builtin("combatUnitNumberWindowDefault.png")]  = [this](){ return createCombatUnitNumberWindow(0.6f, 0.2f, 1.0f);};
@@ -306,6 +307,35 @@ AssetGenerator::CanvasPtr AssetGenerator::createBigSpellBook() const
 	canvas.draw(img, Point(575, 465), Rect(417, 406, 37, 45));
 	canvas.draw(img, Point(667, 465), Rect(478, 406, 37, 47));
 
+	return image;
+}
+
+AssetGenerator::CanvasPtr AssetGenerator::createArcaneArchiveBook() const
+{
+	auto book = createBigSpellBook();
+	auto image = ENGINE->renderHandler().createImage(book->dimensions(), CanvasScalingPolicy::IGNORE);
+	Canvas canvas = image->getCanvas();
+	canvas.drawColor(Rect(Point(0, 0), book->dimensions()), ColorRGBA(0, 0, 0, 0));
+
+	// Keep the cover and pages in the same coordinates as SpellBookLarge.
+	const Rect cover(7, 30, 782, 445);
+	canvas.draw(book, cover.topLeft(), cover);
+	for(const auto & ribbon : {Rect(278, 464, 37, 47), Rect(481, 465, 37, 41), Rect(575, 465, 37, 45), Rect(667, 465, 37, 47)})
+	{
+		for(int y = 0; y < ribbon.h; ++y)
+		{
+			// The last ten rows form a swallowtail; the gap exposes the library.
+			const int notch = std::max(0, y - (ribbon.h - 10));
+			if(notch == 0)
+				canvas.draw(book, ribbon.topLeft() + Point(0, y), Rect(ribbon.x, ribbon.y + y, ribbon.w, 1));
+			else
+			{
+				const int width = (ribbon.w / 2) * (10 - notch) / 10;
+				for(const int x : {0, ribbon.w - width})
+					canvas.draw(book, ribbon.topLeft() + Point(x, y), Rect(ribbon.x + x, ribbon.y + y, width, 1));
+			}
+		}
+	}
 	return image;
 }
 

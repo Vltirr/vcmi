@@ -125,6 +125,7 @@ class CSpellWindow : public CWindowObject, public IVideoHolder
 	std::optional<PlayerColor> archiveOwner;
 	std::map<SpellID, std::vector<ObjectInstanceID>> archiveSpells;
 	std::shared_ptr<IImage> archiveBackdrop;
+	Point archiveBackdropPosition;
 	bool personalArchive = false;
 	std::string archiveDescription(const CSpell * spell) const;
 

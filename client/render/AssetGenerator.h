@@ -62,6 +62,7 @@ private:
 
 	CanvasPtr createAdventureOptionsCleanBackground() const;
 	CanvasPtr createBigSpellBook() const;
+	CanvasPtr createArcaneArchiveBook() const;
 	CanvasPtr createPlayerColoredBackground(const PlayerColor & player) const;
 	CanvasPtr createCombatUnitNumberWindow(float multR, float multG, float multB) const;
 	CanvasPtr createCampaignBackground(int selection) const;
