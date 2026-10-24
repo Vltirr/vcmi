@@ -29,6 +29,7 @@
 #include "render/CAnimation.h"
 #include "render/IRenderHandler.h"
 #include "render/IImage.h"
+#include "render/Canvas.h"
 #include "../widgets/GraphicalPrimitiveCanvas.h"
 #include "../widgets/CComponent.h"
 #include "../widgets/CTextInput.h"

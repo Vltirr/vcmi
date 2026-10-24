@@ -97,9 +97,9 @@ TEST_F(Nullkiller2_ArcaneWeb, GuildVisitHasLearningValueUntilHeroLearnsSharedSpe
 	auto * town = findAll<CGTownInstance>().front();
 	gameHandler->setOwner(town, PlayerColor(0));
 	town->removeAllBuildings();
-	town->addBuilding(BuildingID::MAGES_GUILD_5);
+	town->addBuilding(BuildingID::MAGES_GUILD_4);
 	town->spells.assign(GameConstants::SPELL_LEVELS, {});
-	town->spells.at(4) = {SpellID::IMPLOSION};
+	town->spells.at(3) = {SpellID::RESURRECTION};
 	giveArtifact(attackerSideHero, ArtifactID::SPELLBOOK, ArtifactPosition::SPELLBOOK);
 	attackerSideHero->removeAllSpells();
 	revealMap(PlayerColor(0));
