@@ -64,6 +64,11 @@ public:
 		{
 			JsonNode overrides;
 			h & overrides;
+			// Older fork saves used LNCL unconditionally; official saves used the classic rules.
+			if(overrides["spells"]["learnNowCastLater"].isNull())
+				overrides["spells"]["learnNowCastLater"].Bool() = h.hasFeature(Handler::Version::BATTLE_FOCUS);
+			else if(!overrides["spells"]["learnNowCastLater"].isBool())
+				throw std::runtime_error("Invalid saved game setting spells.learnNowCastLater: expected boolean");
 			loadOverrides(overrides);
 		}
 	}

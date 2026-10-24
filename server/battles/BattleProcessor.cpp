@@ -19,6 +19,7 @@
 #include "../activities/BattleActivities.h"
 
 #include "../../lib/CStack.h"
+#include "../../lib/IGameSettings.h"
 #include "../../lib/CPlayerState.h"
 #include "../../lib/TerrainHandler.h"
 #include "../../lib/battle/CBattleInfoCallback.h"
@@ -182,7 +183,9 @@ void BattleProcessor::tryLearnEnemySpellsPreBattle(const BattleInfo * battle, Ba
 		if(!spell)
 			continue;
 
-		if(spell->getLevel() <= eagleEyeLevel && learner->canLearnSpell(spell, true)
+		const bool canLearn = gameHandler->gameInfo().getSettings().getBoolean(EGameSettings::SPELLS_LEARN_NOW_CAST_LATER)
+			? learner->canLearnSpell(spell, true) : !learner->spellbookContainsSpell(spell->getId());
+		if(spell->getLevel() <= eagleEyeLevel && canLearn
 			&& gameHandler->getRandomGenerator().nextInt(99) < eagleEyeChance)
 			learnedSpells.spells.insert(spell->getId());
 	}

@@ -59,7 +59,7 @@
 								}
 							]
 						},
-						"message" : [ 127, "{%s}. ", 174 ] // Already known
+						"message" : [ 127, "{%s}. ", 130 ] // No Wisdom
 					},
 					{
 						"message" : [ 127, "{%s}. ", 131 ] // No spellbook
@@ -128,7 +128,7 @@
 								}
 							]
 						},
-						"message" : [ 128, "{%s}. ", 174 ] // Already known
+						"message" : [ 128, "{%s}. ", 130 ] // No Wisdom
 					},
 					{
 						"message" : [ 128, "{%s}. ", 131 ] // No spellbook
@@ -197,7 +197,7 @@
 								}
 							]
 						},
-						"message" : [ 129, "{%s}. ", 174 ] // Already known
+						"message" : [ 129, "{%s}. ", 130 ] // No Wisdom
 					},
 					{
 						"message" : [ 129, "{%s}. ", 131 ] // No spellbook

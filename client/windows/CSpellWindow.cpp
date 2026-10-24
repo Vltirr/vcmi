@@ -40,6 +40,7 @@
 
 #include "../../lib/CConfigHandler.h"
 #include "../../lib/GameConstants.h"
+#include "../../lib/IGameSettings.h"
 #include "../../lib/GameLibrary.h"
 #include "../../lib/battle/CPlayerBattleCallback.h"
 #include "../../lib/callback/CCallback.h"
@@ -236,7 +237,7 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 		showAllSpells = std::make_shared<CToggleButton>(boxPos, AnimationPath::builtin("sysopchk.def"), CButton::tooltip(LIBRARY->generaltexth->translate("core.help.458.hover"), LIBRARY->generaltexth->translate("core.help.458.hover")), [this](bool state){ searchInput(); });
 		showAllSpellsDescription = std::make_shared<CLabel>(boxPos.x + 40, boxPos.y + 12, FONT_SMALL, ETextAlignment::CENTERLEFT, Colors::WHITE, LIBRARY->generaltexth->translate("core.help.458.hover"));
 	}
-	else
+	else if(myInt->cb->getSettings().getBoolean(EGameSettings::SPELLS_LEARN_NOW_CAST_LATER))
 	{
 		const Point bookmarkPosition(isBigSpellbook ? 379 : 288, isBigSpellbook ? 465 : 406);
 		showOnlyCastableSpells = myInt->localState->getShowOnlyCastableSpells(myHero->id);

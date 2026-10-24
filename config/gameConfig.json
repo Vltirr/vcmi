@@ -838,6 +838,7 @@
 
 		"spells":
 		{
+			"learnNowCastLater" : false,
 			// if enabled, dimension door will initiate a fight upon landing on tile adjacent to neutral creature
 			"dimensionDoorTriggersGuards" : false,
 			// if enabled, SPELLS_OF_SCHOOL bonus (Tomes of Water/Air/Earth/Fire Magic)
@@ -859,7 +860,7 @@
 				},
 				"wisdom" :
 				{
-					"type" : "MAX_LEARNABLE_SPELL_LEVEL", //Hero can always cast level 1 and 2 spells from the book
+					"type" : "MAX_LEARNABLE_SPELL_LEVEL", // Wisdom limit for learning, or book casting when LNCL is enabled
 					"val" : 2,
 					"valueType" : "BASE_NUMBER"
 				},

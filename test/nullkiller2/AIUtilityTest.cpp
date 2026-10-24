@@ -87,6 +87,7 @@ class Nullkiller2_ScrollValue : public BattleTestFixture {};
 
 TEST_F(Nullkiller2_ScrollValue, EquippedScrollKeepsValueWhenItsLearnedSpellIsBlocked)
 {
+	overrideSettingBeforeInit(EGameSettings::SPELLS_LEARN_NOW_CAST_LATER, true);
 	startGame();
 	giveArtifact(attackerSideHero, ArtifactID::SPELLBOOK, ArtifactPosition::SPELLBOOK);
 	gameHandler->changeSpells(attackerSideHero, true, {SpellID::IMPLOSION});

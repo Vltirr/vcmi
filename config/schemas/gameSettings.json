@@ -230,6 +230,7 @@
 			"additionalProperties" : false,
 			"properties" : {
 				"dimensionDoorTriggersGuards" :       { "type" : "boolean" },
+				"learnNowCastLater" : { "type" : "boolean" },
 				"tomesGrantBannedSpells" : { "type" : "boolean" }
 			}
 		},

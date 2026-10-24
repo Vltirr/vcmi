@@ -132,6 +132,7 @@ TEST_F(TinyH3MDimensionDoorExplorationTest, GeneratedHeroWithoutDimensionDoorDoe
 
 TEST_F(TinyH3MDimensionDoorExplorationTest, KnownDimensionDoorWithoutWisdomDoesNotCast)
 {
+	overrideSettingBeforeInit(EGameSettings::SPELLS_LEARN_NOW_CAST_LATER, true);
 	overrideSettingBeforeInit(EGameSettings::SPELLS_DIMENSION_DOOR_TRIGGERS_GUARDS, false);
 	startWithMap(makeDimensionDoorExplorationMap(true));
 	auto * hero = findHeroByOwner(PLAYER);

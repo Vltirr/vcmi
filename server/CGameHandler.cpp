@@ -715,7 +715,8 @@ void CGameHandler::giveSpells(const CGTownInstance *t, const CGHeroInstance *h)
 			std::vector<SpellID> spells;
 			gameState().getAllowedSpells(spells, i+1);
 			for (const auto & spell : spells)
-				cs.spells.insert(spell);
+				if(h->canLearnSpell(spell.toSpell(), true))
+					cs.spells.insert(spell);
 		}
 	}
 	else
@@ -724,7 +725,7 @@ void CGameHandler::giveSpells(const CGTownInstance *t, const CGHeroInstance *h)
 		{
 			for (int j = 0; j < t->spellsAtLevel(i+1, true) && j < t->spells.at(i).size(); j++)
 			{
-				if (!h->spellbookContainsSpell(t->spells.at(i).at(j)))
+				if (h->canLearnSpell(t->spells.at(i).at(j).toSpell(), true))
 					cs.spells.insert(t->spells.at(i).at(j));
 			}
 		}

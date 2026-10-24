@@ -1037,6 +1037,10 @@ bool CGHeroInstance::canLearnSpell(const spells::Spell * spell, bool allowBanned
 	if(!hasSpellbook())
 		return false;
 
+	if(!cb->getSettings().getBoolean(EGameSettings::SPELLS_LEARN_NOW_CAST_LATER)
+		&& spell->getLevel() > maxSpellLevel())
+		return false;
+
 	if(vstd::contains(spells, spell->getId()))//already known
 		return false;
 
@@ -1579,12 +1583,13 @@ const std::set<SpellID> & CGHeroInstance::getSpellsInSpellbook() const
 
 int CGHeroInstance::maxSpellLevel() const
 {
-	return maxCastableSpellLevel();
+	return std::min(GameConstants::SPELL_LEVELS, valOfBonuses(BonusType::MAX_LEARNABLE_SPELL_LEVEL));
 }
 
 int CGHeroInstance::maxCastableSpellLevel() const
 {
-	return std::min(GameConstants::SPELL_LEVELS, valOfBonuses(BonusType::MAX_LEARNABLE_SPELL_LEVEL));
+	return cb->getSettings().getBoolean(EGameSettings::SPELLS_LEARN_NOW_CAST_LATER)
+		? maxSpellLevel() : GameConstants::SPELL_LEVELS;
 }
 
 bool CGHeroInstance::inBoat() const

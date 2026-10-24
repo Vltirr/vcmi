@@ -10,6 +10,8 @@
 #include "StdInc.h"
 
 #include "BattleTestFixture.h"
+#include "../../../lib/GameLibrary.h"
+#include "../../../lib/GameSettings.h"
 
 #include "../../../lib/bonuses/Bonus.h"
 #include "../../../lib/bonuses/BonusCustomTypes.h"
@@ -38,6 +40,7 @@ public:
 	void SetUp() override
 	{
 		BattleTestFixture::SetUp();
+		overrideSettingBeforeInit(EGameSettings::SPELLS_LEARN_NOW_CAST_LATER, true);
 		startGame();
 		giveArtifact(attackerSideHero, ArtifactID::SPELLBOOK, ArtifactPosition::SPELLBOOK);
 		giveArtifact(defenderSideHero, ArtifactID::SPELLBOOK, ArtifactPosition::SPELLBOOK);
@@ -296,6 +299,143 @@ TEST_F(LearnNowCastLaterTest, EquippedTomeBypassesWisdomWithoutTeachingSpell)
 	EXPECT_FALSE(attackerSideHero->spellbookContainsSpell(SpellID::IMPLOSION));
 	gameHandler->removeArtifact(ArtifactLocation(attackerSideHero->id, ArtifactPosition::MISC1));
 	EXPECT_FALSE(attackerSideHero->canCastThisSpell(SpellID(SpellID::IMPLOSION).toSpell()));
+}
+
+class ClassicSpellLearningTest : public LearnNowCastLaterTest
+{
+public:
+	void SetUp() override
+	{
+		LearnNowCastLaterTest::SetUp();
+		map()->overrideGameSetting(EGameSettings::SPELLS_LEARN_NOW_CAST_LATER, JsonNode(false));
+	}
+};
+
+TEST_F(ClassicSpellLearningTest, WisdomLimitsLearningButNotPreconfiguredKnowledge)
+{
+	EXPECT_FALSE(LIBRARY->settingsHandler->getBoolean(EGameSettings::SPELLS_LEARN_NOW_CAST_LATER));
+	EXPECT_EQ(attackerSideHero->maxSpellLevel(), 2);
+	EXPECT_TRUE(attackerSideHero->canLearnSpell(SpellID(SpellID::MAGIC_ARROW).toSpell()));
+	EXPECT_FALSE(attackerSideHero->canLearnSpell(SpellID(SpellID::IMPLOSION).toSpell()));
+	learn(SpellID::IMPLOSION);
+	EXPECT_TRUE(attackerSideHero->canCastThisSpell(SpellID(SpellID::IMPLOSION).toSpell()));
+	attackerSideHero->removeAllSpells();
+	attackerSideHero->setSecSkillLevel(SecondarySkill::WISDOM, MasteryLevel::EXPERT, ChangeValueMode::ABSOLUTE);
+	EXPECT_TRUE(attackerSideHero->canLearnSpell(SpellID(SpellID::IMPLOSION).toSpell()));
+}
+
+TEST_F(ClassicSpellLearningTest, GuildAndAuroraRespectWisdom)
+{
+	CGTownInstance town(gameState().get());
+	town.ID = Obj::TOWN;
+	town.subID = MapObjectSubID(FactionID::CONFLUX.getNum());
+	town.addBuilding(BuildingID::MAGES_GUILD_1);
+	town.addBuilding(BuildingID::MAGES_GUILD_5);
+	town.spells.resize(GameConstants::SPELL_LEVELS);
+	town.spells.at(0) = {SpellID::MAGIC_ARROW};
+	town.spells.at(4) = {SpellID::IMPLOSION};
+	gameHandler->giveSpells(&town, attackerSideHero);
+	EXPECT_TRUE(attackerSideHero->spellbookContainsSpell(SpellID::MAGIC_ARROW));
+	EXPECT_FALSE(attackerSideHero->spellbookContainsSpell(SpellID::IMPLOSION));
+	town.addBuilding(town.getTown()->getBuildingType(BuildingSubID::AURORA_BOREALIS));
+	gameHandler->giveSpells(&town, attackerSideHero);
+	EXPECT_FALSE(attackerSideHero->spellbookContainsSpell(SpellID::IMPLOSION));
+	attackerSideHero->setSecSkillLevel(SecondarySkill::WISDOM, MasteryLevel::EXPERT, ChangeValueMode::ABSOLUTE);
+	gameHandler->giveSpells(&town, attackerSideHero);
+	EXPECT_TRUE(attackerSideHero->spellbookContainsSpell(SpellID::IMPLOSION));
+}
+
+TEST_F(ClassicSpellLearningTest, ScholarRespectsRecipientsWisdom)
+{
+	attackerSideHero->setSecSkillLevel(SecondarySkill::SCHOLAR, MasteryLevel::EXPERT, ChangeValueMode::ABSOLUTE);
+	learn(SpellID::RESURRECTION);
+	gameHandler->useScholarSkill(attackerSideHero->id, defenderSideHero->id);
+	EXPECT_FALSE(defenderSideHero->spellbookContainsSpell(SpellID::RESURRECTION));
+	defenderSideHero->setSecSkillLevel(SecondarySkill::WISDOM, MasteryLevel::ADVANCED, ChangeValueMode::ABSOLUTE);
+	gameHandler->useScholarSkill(attackerSideHero->id, defenderSideHero->id);
+	EXPECT_TRUE(defenderSideHero->spellbookContainsSpell(SpellID::RESURRECTION));
+}
+
+TEST_F(ClassicSpellLearningTest, ExternalGrantsStillBypassWisdom)
+{
+	auto grant = grantSpell(BonusType::SPELL, BonusSubtypeID(SpellID(SpellID::IMPLOSION)));
+	EXPECT_TRUE(attackerSideHero->canCastThisSpell(SpellID(SpellID::IMPLOSION).toSpell()));
+	EXPECT_FALSE(attackerSideHero->canLearnSpell(SpellID(SpellID::IMPLOSION).toSpell()));
+	attackerSideHero->removeBonus(grant);
+	EXPECT_FALSE(attackerSideHero->canCastThisSpell(SpellID(SpellID::IMPLOSION).toSpell()));
+}
+
+TEST_F(ClassicSpellLearningTest, EagleEyeKeepsItsOwnLearningLimitWithoutWisdom)
+{
+	grantSpell(BonusType::LEARN_BATTLE_SPELL_LEVEL_LIMIT_PRE_BATTLE, BonusSubtypeID(), 4);
+	grantSpell(BonusType::LEARN_BATTLE_SPELL_CHANCE_PRE_BATTLE, BonusSubtypeID(), 100);
+	gameHandler->changeSpells(defenderSideHero, true, {SpellID::RESURRECTION, SpellID::IMPLOSION});
+	startBattle();
+	gameHandler->battles->tryLearnEnemySpellsPreBattle(battle(), BattleSide::ATTACKER);
+	EXPECT_TRUE(attackerSideHero->spellbookContainsSpell(SpellID::RESURRECTION));
+	EXPECT_FALSE(attackerSideHero->spellbookContainsSpell(SpellID::IMPLOSION));
+	EXPECT_TRUE(attackerSideHero->canCastThisSpell(SpellID(SpellID::RESURRECTION).toSpell()));
+}
+
+TEST_F(LearnNowCastLaterTest, ModSettingsCanEnableAndDisableTheRule)
+{
+	GameSettings settings;
+	settings.loadBase(LIBRARY->settingsHandler->getFullConfig());
+	EXPECT_FALSE(settings.getBoolean(EGameSettings::SPELLS_LEARN_NOW_CAST_LATER));
+	JsonNode overrides;
+	overrides["spells"]["learnNowCastLater"].Bool() = true;
+	settings.loadBase(overrides);
+	EXPECT_TRUE(settings.getBoolean(EGameSettings::SPELLS_LEARN_NOW_CAST_LATER));
+	overrides["spells"]["learnNowCastLater"].Bool() = false;
+	settings.loadBase(overrides);
+	EXPECT_FALSE(settings.getBoolean(EGameSettings::SPELLS_LEARN_NOW_CAST_LATER));
+}
+
+TEST_F(LearnNowCastLaterTest, SavedEffectiveSettingSurvivesDifferentModDefaults)
+{
+	for(const bool enabled : {false, true})
+	{
+		JsonNode config = LIBRARY->settingsHandler->getFullConfig();
+		config["spells"]["learnNowCastLater"].Bool() = enabled;
+		GameSettings original;
+		original.loadBase(config);
+		CMemorySerializer memory;
+		memory.oser & original;
+		config["spells"]["learnNowCastLater"].Bool() = !enabled;
+		GameSettings restored;
+		restored.loadBase(config);
+		memory.iser.version = ESerializationVersion::CURRENT;
+		memory.iser & restored;
+		EXPECT_EQ(restored.getBoolean(EGameSettings::SPELLS_LEARN_NOW_CAST_LATER), enabled);
+		EXPECT_TRUE(memory.isFullyRead());
+	}
+}
+
+TEST_F(LearnNowCastLaterTest, LegacySettingsDistinguishForkAndOfficialSaves)
+{
+	for(const auto version : {ESerializationVersion::CURRENT, ESerializationVersion::UPSTREAM_CURRENT})
+	{
+		CMemorySerializer memory;
+		memory.oser & JsonNode();
+		GameSettings restored;
+		restored.loadBase(LIBRARY->settingsHandler->getFullConfig());
+		memory.iser.version = version;
+		memory.iser & restored;
+		EXPECT_EQ(restored.getBoolean(EGameSettings::SPELLS_LEARN_NOW_CAST_LATER), version == ESerializationVersion::CURRENT);
+		EXPECT_TRUE(memory.isFullyRead());
+	}
+}
+
+TEST_F(LearnNowCastLaterTest, InvalidSavedSettingReportsTheField)
+{
+	JsonNode overrides;
+	overrides["spells"]["learnNowCastLater"].String() = "enabled";
+	CMemorySerializer memory;
+	memory.oser & overrides;
+	GameSettings restored;
+	restored.loadBase(LIBRARY->settingsHandler->getFullConfig());
+	memory.iser.version = ESerializationVersion::CURRENT;
+	EXPECT_THROW(memory.iser & restored, std::runtime_error);
 }
 
 }
