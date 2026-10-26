@@ -15,6 +15,7 @@
 #include "GUIClasses.h"
 #include "InfoWindows.h"
 #include "CCastleInterface.h"
+#include "CMessage.h"
 
 #include "../CPlayerInterface.h"
 #include "../UIHelper.h"
@@ -162,7 +163,7 @@ public:
 };
 
 CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _myInt, bool openOnBattleSpells, const std::function<void(SpellID)> & onSpellSelect, const CGTownInstance * archiveTown):
-	CWindowObject(archiveTown ? SHADOW_DISABLED | BORDERED : PLAYER_COLORED | (settings["gameTweaks"]["enableLargeSpellbook"].Bool() ? BORDERED : 0)),
+	CWindowObject(archiveTown ? SHADOW_DISABLED : PLAYER_COLORED | (settings["gameTweaks"]["enableLargeSpellbook"].Bool() ? BORDERED : 0)),
 	battleSpellsOnly(openOnBattleSpells),
 	selectedTab(SpellSchool::ANY),
 	currentPage(0),
@@ -233,8 +234,6 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 		background->setPlayerColor(GAME->interface()->playerID);
 
 	pos = background->center(Point(pos.w/2 + pos.x, pos.h/2 + pos.y));
-	if(archiveTown)
-		updateArchiveBackdrop();
 
 	Rect r(90, archiveTown ? 443 : (isBigSpellbook ? 480 : 420), isBigSpellbook ? 160 : 110, 16);
 	if(settings["general"]["enableUiEnhancements"].Bool())
@@ -362,8 +361,7 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 	computeSpellsPerArea();
 	addUsedEvents(KEYBOARD);
 	if(archiveTown)
-		for(auto * child : children)
-			child->moveBy(Point(0, 25));
+		updateArchiveLayout();
 }
 
 CSpellWindow::~CSpellWindow()
@@ -630,6 +628,25 @@ void CSpellWindow::showAll(Canvas & to)
 		}
 	}
 	CWindowObject::showAll(to);
+	if(archiveOwner)
+	{
+		const Rect frame = Rect(pos.x - 14, pos.y - 15, pos.w + 28, pos.h + 29)
+			.intersect(Rect(Point(0, 0), ENGINE->screenDimensions()));
+		CMessage::drawBorder(*archiveOwner, to, frame.w, frame.h, frame.x, frame.y);
+	}
+}
+
+void CSpellWindow::updateArchiveLayout()
+{
+	const Point screen = ENGINE->screenDimensions();
+	const Point viewport(std::clamp(screen.x - 64, 800, 1120), std::clamp(screen.y - 66, 600, 800));
+	center(Rect(Point(0, 0), viewport));
+	// The visible pages span y=30..475; keep their centre below the window midpoint.
+	const Point bookOffset((viewport.x - 800) / 2, std::min(viewport.y - 575, viewport.y / 2 + 40 - 252));
+	for(auto * child : children)
+		child->moveBy(bookOffset - archiveBookOffset);
+	archiveBookOffset = bookOffset;
+	updateArchiveBackdrop();
 }
 
 void CSpellWindow::updateArchiveBackdrop()
@@ -651,9 +668,10 @@ void CSpellWindow::updateArchiveBackdrop()
 
 void CSpellWindow::onScreenResize()
 {
-	CWindowObject::onScreenResize();
 	if(archiveOwner)
-		updateArchiveBackdrop();
+		updateArchiveLayout();
+	else
+		CWindowObject::onScreenResize();
 }
 
 std::string CSpellWindow::archiveDescription(const CSpell * spell) const
