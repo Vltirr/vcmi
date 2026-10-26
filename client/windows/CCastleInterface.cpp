@@ -13,7 +13,6 @@
 #include "CHeroWindow.h"
 #include "CMarketWindow.h"
 #include "CSpellWindow.h"
-#include "../widgets/GraphicalPrimitiveCanvas.h"
 #include "InfoWindows.h"
 #include "GUIClasses.h"
 #include "QuickRecruitmentWindow.h"
@@ -66,6 +65,66 @@
 #include "../../lib/mapObjects/TownBuildingInstance.h"
 #include "../../lib/spells/CSpell.h"
 #include "wiki/WikiWindow.h"
+
+namespace
+{
+class ArcaneArchiveAccess : public LRClickableArea
+{
+	const std::vector<Point> outline = {{1, 8}, {16, 1}, {58, 1}, {58, 34}, {53, 40}, {24, 40}, {21, 62}, {17, 56}, {12, 62}, {12, 40}, {1, 40}};
+	bool highlighted = false;
+
+public:
+	explicit ArcaneArchiveAccess(const std::function<void()> & onClick)
+		: LRClickableArea(Rect(383, 349, 60, 65), onClick)
+	{
+		addUsedEvents(HOVER);
+		setRedrawParent(true);
+	}
+
+	bool receiveEvent(const Point & position, int eventType) const override
+	{
+		if(!CIntObject::receiveEvent(position, eventType))
+			return false;
+		const Point point = position - pos.topLeft();
+		int winding = 0;
+		for(size_t i = 0; i < outline.size(); ++i)
+		{
+			const Point & a = outline.at(i);
+			const Point & b = outline.at((i + 1) % outline.size());
+			const int cross = (b.x - a.x) * (point.y - a.y) - (point.x - a.x) * (b.y - a.y);
+			if(a.y <= point.y && b.y > point.y && cross > 0)
+				++winding;
+			if(a.y > point.y && b.y <= point.y && cross < 0)
+				--winding;
+		}
+		return winding != 0;
+	}
+
+	void hover(bool on) override
+	{
+		highlighted = on;
+		redraw();
+	}
+
+	void showAll(Canvas & to) override
+	{
+		if(!highlighted)
+			return;
+		for(size_t i = 0; i < outline.size(); ++i)
+			for(int x = -1; x <= 1; ++x)
+				for(int y = -1; y <= 1; ++y)
+				{
+					const Point offset = pos.topLeft() + Point(x, y);
+					to.drawLine(outline.at(i) + offset, outline.at((i + 1) % outline.size()) + offset, ColorRGBA(255, 240, 0));
+				}
+	}
+
+	void show(Canvas & to) override
+	{
+		showAll(to);
+	}
+};
+}
 
 static bool useCompactCreatureBox()
 {
@@ -2363,11 +2422,7 @@ CMageGuildScreen::CMageGuildScreen(CCastleInterface * owner, const ImagePath & i
 	if(owner->town->getOwner() == GAME->interface()->playerID
 		&& GAME->interface()->cb->getSettings().getBoolean(EGameSettings::TOWNS_SHARED_MAGE_GUILDS))
 	{
-		archiveOutline = std::make_shared<GraphicalPrimitiveCanvas>(Rect(342, 350, 96, 56));
-		const std::vector<Point> outline = {{2, 2}, {69, 0}, {92, 6}, {93, 38}, {61, 39}, {55, 55}, {50, 55}, {50, 37}, {2, 36}, {2, 2}};
-		for(size_t i = 1; i < outline.size(); ++i)
-			archiveOutline->addLine(outline.at(i - 1), outline.at(i), Colors::YELLOW);
-		archiveAccess = std::make_shared<LRClickableArea>(Rect(342, 350, 96, 56), [this]()
+		archiveAccess = std::make_shared<ArcaneArchiveAccess>([this]()
 		{
 			const auto * town = GAME->interface()->cb->getTown(townId);
 			if(!town || town->getOwner() != GAME->interface()->playerID || town->mageGuildLevel() < 1)

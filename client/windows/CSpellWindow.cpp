@@ -15,6 +15,7 @@
 #include "GUIClasses.h"
 #include "InfoWindows.h"
 #include "CCastleInterface.h"
+#include "CMessage.h"
 
 #include "../CPlayerInterface.h"
 #include "../UIHelper.h"
@@ -245,6 +246,8 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 		background->setPlayerColor(GAME->interface()->playerID);
 
 	pos = background->center(Point(pos.w/2 + pos.x, pos.h/2 + pos.y));
+	if(archiveTown)
+		moveBy(Point(0, std::max(0, ENGINE->screenDimensions().y - 575 - pos.y)));
 
 	Rect r(90, archiveTown ? 443 : (isBigSpellbook ? 480 : 420), isBigSpellbook ? 160 : 110, 16);
 	if(settings["general"]["enableUiEnhancements"].Bool())
@@ -634,6 +637,11 @@ void CSpellWindow::showAll(Canvas & to)
 		}
 	}
 	CWindowObject::showAll(to);
+	if(archiveOwner)
+	{
+		const Point viewport = ENGINE->screenDimensions();
+		CMessage::drawBorder(*archiveOwner, to, viewport.x, viewport.y, 0, 0);
+	}
 }
 
 std::string CSpellWindow::archiveDescription(const CSpell * spell) const

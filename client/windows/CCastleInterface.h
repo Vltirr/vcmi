@@ -35,7 +35,6 @@ class CComponentBox;
 class LRClickableArea;
 class LRClickableAreaWText;
 class CTextInputWithConfirm;
-class GraphicalPrimitiveCanvas;
 
 /// Building "button"
 class CBuildingRect : public CShowableAnim
@@ -421,7 +420,6 @@ class CMageGuildScreen : public CStatusbarWindow
 
 	std::shared_ptr<CPicture> window;
 	std::shared_ptr<LRClickableArea> archiveAccess;
-	std::shared_ptr<GraphicalPrimitiveCanvas> archiveOutline;
 	std::shared_ptr<CButton> exit;
 	std::vector<std::shared_ptr<Scroll>> spells;
 	std::vector<std::shared_ptr<CAnimImage>> emptyScrolls;
