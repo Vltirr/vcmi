@@ -110,12 +110,13 @@ public:
 	{
 		if(!highlighted)
 			return;
+		const ColorRGBA color(255, 240, 0);
 		for(size_t i = 0; i < outline.size(); ++i)
 			for(int x = -1; x <= 1; ++x)
 				for(int y = -1; y <= 1; ++y)
 				{
 					const Point offset = pos.topLeft() + Point(x, y);
-					to.drawLine(outline.at(i) + offset, outline.at((i + 1) % outline.size()) + offset, ColorRGBA(255, 240, 0));
+					to.drawLine(outline.at(i) + offset, outline.at((i + 1) % outline.size()) + offset, color, color);
 				}
 	}
 
