@@ -301,7 +301,7 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 	mana = std::make_shared<CLabel>(manaPosition.x, manaPosition.y, FONT_SMALL, ETextAlignment::CENTER, Colors::YELLOW, myHero && (!archiveOwner || personalArchive) ? std::to_string(myHero->mana) : "");
 
 	if(isBigSpellbook)
-		statusBar = CGStatusBar::create(400, archiveTown ? 535 : 587);
+		statusBar = CGStatusBar::create(400, archiveTown ? 520 : 587);
 	else
 		statusBar = CGStatusBar::create(7, 569, ImagePath::builtin("Spelroll.bmp"));
 
@@ -641,8 +641,8 @@ void CSpellWindow::updateArchiveLayout()
 	const Point screen = ENGINE->screenDimensions();
 	const Point viewport(std::clamp(screen.x - 64, 800, 1120), std::clamp(screen.y - 66, 600, 800));
 	center(Rect(Point(0, 0), viewport));
-	// The visible pages span y=30..475; keep their centre below the window midpoint.
-	const Point bookOffset((viewport.x - 800) / 2, std::min(viewport.y - 575, viewport.y / 2 + 40 - 252));
+	// Anchor the visible cover bottom (y=475) at 90% of the library height.
+	const Point bookOffset((viewport.x - 800) / 2, viewport.y * 9 / 10 - 475);
 	for(auto * child : children)
 		child->moveBy(bookOffset - archiveBookOffset);
 	archiveBookOffset = bookOffset;
