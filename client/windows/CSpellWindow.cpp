@@ -669,7 +669,8 @@ void CSpellWindow::updateArchiveLayout()
 	const Point viewport(std::min(baseWidth + extraWidth, 1400), std::clamp(screen.y - 66, 600, 800));
 	center(Rect(Point(0, 0), viewport));
 	// Centre the visible cover near 54% height, reserving room for the lower controls.
-	const int bookY = std::min(viewport.y * 54 / 100 - 252, viewport.y - 535);
+	const int wideScreenOffset = std::min(extraWidth / 25, 8);
+	const int bookY = std::min(viewport.y * 54 / 100 - 252 + wideScreenOffset, viewport.y - 535);
 	const Point bookOffset((viewport.x - 800) / 2, bookY);
 	for(auto * child : children)
 		child->moveBy(bookOffset - archiveBookOffset);
