@@ -393,14 +393,6 @@ void ScreenHandler::updateWindowState()
 		{
 			Point resolution = getPreferredWindowResolution();
 			SDL_SetWindowFullscreen(mainWindow, false);
-			Point currentSize;
-			SDL_GetWindowSize(mainWindow, &currentSize.x, &currentSize.y);
-			if((SDL_GetWindowFlags(mainWindow) & SDL_WINDOW_MAXIMIZED) && currentSize != resolution)
-			{
-				// SDL ignores size requests while maximized. Restore only for a different requested size.
-				if(!SDL_RestoreWindow(mainWindow) || !SDL_SyncWindow(mainWindow))
-					logGlobal->warn("Failed to restore window before changing resolution: %s", SDL_GetError());
-			}
 			SDL_SetWindowSize(mainWindow, resolution.x, resolution.y);
 			break;
 		}
