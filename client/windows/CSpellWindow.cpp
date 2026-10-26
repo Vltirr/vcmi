@@ -664,10 +664,13 @@ void CSpellWindow::showAll(Canvas & to)
 void CSpellWindow::updateArchiveLayout()
 {
 	const Point screen = ENGINE->screenDimensions();
-	const Point viewport(std::max(screen.x - 64, 800), std::clamp(screen.y - 66, 600, 800));
+	const int baseWidth = std::clamp(screen.x - 64, 800, 1120);
+	const int extraWidth = std::max(screen.x - 1280, 0) / 2;
+	const Point viewport(std::min(baseWidth + extraWidth, 1400), std::clamp(screen.y - 66, 600, 800));
 	center(Rect(Point(0, 0), viewport));
-	// Keep the cover slightly below center, preserving the 800x600 composition.
-	const Point bookOffset((viewport.x - 800) / 2, (viewport.y - 600) / 2 + 65);
+	// Centre the visible cover near 54% height, reserving room for the lower controls.
+	const int bookY = std::min(viewport.y * 54 / 100 - 252, viewport.y - 535);
+	const Point bookOffset((viewport.x - 800) / 2, bookY);
 	for(auto * child : children)
 		child->moveBy(bookOffset - archiveBookOffset);
 	archiveBookOffset = bookOffset;

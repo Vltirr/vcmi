@@ -93,7 +93,7 @@ public:
 			int error = dx + dy;
 			while(true)
 			{
-				canvas.drawColor(Rect(from.x - 1, from.y - 1, 2, 2), ColorRGBA(255, 240, 0));
+				canvas.drawColor(Rect(from.x - 1, from.y - 1, 2, 2), ColorRGBA(224, 180, 64));
 				if(from == to)
 					break;
 				const int doubledError = error * 2;
