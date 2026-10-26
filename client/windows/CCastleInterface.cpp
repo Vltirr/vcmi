@@ -37,6 +37,7 @@
 #include "../widgets/RadialMenu.h"
 #include "../widgets/CExchangeController.h"
 #include "render/Canvas.h"
+#include "render/CanvasImage.h"
 #include "render/IImage.h"
 #include "render/IRenderHandler.h"
 #include "render/CAnimation.h"
@@ -71,6 +72,7 @@ namespace
 class ArcaneArchiveAccess : public LRClickableArea
 {
 	const std::vector<Point> outline = {{1, 8}, {16, 1}, {58, 1}, {58, 34}, {53, 40}, {24, 40}, {21, 62}, {17, 56}, {12, 62}, {12, 40}, {1, 40}};
+	std::shared_ptr<CanvasImage> highlight;
 	bool highlighted = false;
 
 public:
@@ -79,6 +81,39 @@ public:
 	{
 		addUsedEvents(HOVER);
 		setRedrawParent(true);
+		highlight = ENGINE->renderHandler().createImage(pos.dimensions(), CanvasScalingPolicy::AUTO);
+		Canvas canvas = highlight->getCanvas();
+		canvas.drawColor(Rect(Point(0, 0), pos.dimensions()), ColorRGBA(0, 0, 0, 0));
+		const auto stroke = [&](Point from, const Point & to)
+		{
+			const int dx = std::abs(to.x - from.x);
+			const int dy = -std::abs(to.y - from.y);
+			const int stepX = from.x < to.x ? 1 : -1;
+			const int stepY = from.y < to.y ? 1 : -1;
+			int error = dx + dy;
+			while(true)
+			{
+				canvas.drawColor(Rect(from.x - 1, from.y - 1, 3, 3), ColorRGBA(255, 240, 0));
+				if(from == to)
+					break;
+				const int doubledError = error * 2;
+				if(doubledError >= dy)
+				{
+					error += dy;
+					from.x += stepX;
+				}
+				if(doubledError <= dx)
+				{
+					error += dx;
+					from.y += stepY;
+				}
+			}
+		};
+		for(size_t i = 0; i < outline.size(); ++i)
+			stroke(outline.at(i), outline.at((i + 1) % outline.size()));
+		stroke(Point(1, 8), Point(53, 8));
+		stroke(Point(53, 8), Point(53, 40));
+		stroke(Point(53, 8), Point(58, 1));
 	}
 
 	bool receiveEvent(const Point & position, int eventType) const override
@@ -110,14 +145,7 @@ public:
 	{
 		if(!highlighted)
 			return;
-		const ColorRGBA color(255, 240, 0);
-		for(size_t i = 0; i < outline.size(); ++i)
-			for(int x = -1; x <= 1; ++x)
-				for(int y = -1; y <= 1; ++y)
-				{
-					const Point offset = pos.topLeft() + Point(x, y);
-					to.drawLine(outline.at(i) + offset, outline.at((i + 1) % outline.size()) + offset, color, color);
-				}
+		to.draw(highlight, pos.topLeft());
 	}
 
 	void show(Canvas & to) override
