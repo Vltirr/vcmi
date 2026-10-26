@@ -31,11 +31,12 @@ public:
 
 	/// Draws the composed surface onto the renderer's target, uploading it on first use
 	bool drawTexture(SDL_Renderer * renderer, const Point & pos, const Rect * src, int scalingFactor) const override;
+	/// Changes draw opacity without modifying pixels or invalidating the cached texture.
+	void setAlpha(uint8_t value) override { alpha = value; }
 
 	//no-op methods
 
 	bool isTransparent(const Point & coords) const override{ return false;};
-	void setAlpha(uint8_t value) override{};
 	void setBrightness(uint8_t value) override{};
 	void playerColored(const PlayerColor & player) override{};
 	void setOverlayColor(const ColorRGBA & color) override{};
@@ -47,6 +48,7 @@ public:
 
 private:
 	SDL_Surface * surface;
+	uint8_t alpha = 255;
 
 	/// GPU copy of surface, rebuilt whenever the surface is redrawn or the renderer changes
 	mutable SDL_Texture * texture = nullptr;

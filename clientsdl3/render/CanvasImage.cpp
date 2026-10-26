@@ -42,6 +42,8 @@ bool CanvasImage::drawTexture(SDL_Renderer * renderer, const Point & pos, const 
 {
 	if(!surface || !renderer)
 		return false;
+	if(alpha == 0)
+		return true;
 
 	if(!texture || textureGeneration != GpuResources::get().generation())
 	{
@@ -60,6 +62,10 @@ bool CanvasImage::drawTexture(SDL_Renderer * renderer, const Point & pos, const 
 
 	SDL_FRect source = CSDL_Ext::toSDLFloat(src ? *src : Rect(0, 0, surface->w, surface->h));
 	SDL_FRect target{ static_cast<float>(pos.x), static_cast<float>(pos.y), source.w, source.h };
+	SDL_BlendMode blendMode;
+	SDL_GetSurfaceBlendMode(surface, &blendMode);
+	SDL_SetTextureBlendMode(texture, alpha == 255 ? blendMode : SDL_BLENDMODE_BLEND);
+	SDL_SetTextureAlphaMod(texture, alpha);
 
 	return SDL_RenderTexture(renderer, texture, &source, &target);
 }
@@ -72,10 +78,21 @@ CanvasImage::~CanvasImage()
 
 void CanvasImage::draw(SDL_Surface * where, const Point & pos, const Rect * src, int scalingFactor) const
 {
+	if(alpha == 0)
+		return;
+	Uint8 previousAlpha;
+	SDL_BlendMode previousBlendMode;
+	SDL_GetSurfaceAlphaMod(surface, &previousAlpha);
+	SDL_GetSurfaceBlendMode(surface, &previousBlendMode);
+	SDL_SetSurfaceAlphaMod(surface, static_cast<Uint8>(previousAlpha * alpha / 255));
+	if(alpha != 255)
+		SDL_SetSurfaceBlendMode(surface, SDL_BLENDMODE_BLEND);
 	if(src)
 		CSDL_Ext::blitSurface(surface, *src, where, pos);
 	else
 		CSDL_Ext::blitSurface(surface, where, pos);
+	SDL_SetSurfaceAlphaMod(surface, previousAlpha);
+	SDL_SetSurfaceBlendMode(surface, previousBlendMode);
 }
 
 void CanvasImage::scaleTo(const Point & size, EScalingAlgorithm algorithm)

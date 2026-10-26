@@ -17,6 +17,7 @@ class CGTownInstance;
 class CSpell;
 
 class IImage;
+class CanvasImage;
 class CAnimImage;
 class CPicture;
 class CLabel;
@@ -124,7 +125,12 @@ class CSpellWindow : public CWindowObject, public IVideoHolder
 	std::vector<const CSpell *> mySpells; //all spels in this spellbook
 	std::optional<PlayerColor> archiveOwner;
 	std::map<SpellID, std::vector<ObjectInstanceID>> archiveSpells;
-	std::shared_ptr<IImage> archiveBackdrop;
+	std::shared_ptr<CanvasImage> archiveBackdrop;
+	std::shared_ptr<CanvasImage> archiveBlurredBackdrop;
+	Point archiveBackdropSize;
+	int archiveBackdropScaling = 0;
+	double archiveDarkness = 0.35;
+	double archiveBlurMix = 1.0;
 	Point archiveBackdropPosition;
 	Point archiveBookOffset;
 	bool personalArchive = false;

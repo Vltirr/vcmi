@@ -31,6 +31,8 @@
 #include "render/IRenderHandler.h"
 #include "render/IImage.h"
 #include "render/Canvas.h"
+#include "render/CanvasImage.h"
+#include "render/IScreenHandler.h"
 #include "../widgets/GraphicalPrimitiveCanvas.h"
 #include "../widgets/CComponent.h"
 #include "../widgets/CTextInput.h"
@@ -182,6 +184,21 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 	OBJECT_CONSTRUCTION;
 	if(archiveTown)
 	{
+		const JsonNode config(JsonPath::builtin("config/widgets/arcaneArchive.json"));
+		const auto readIntensity = [&](const char * field, double fallback)
+		{
+			const auto & value = config[field];
+			if(value.isNull())
+				return fallback;
+			if(!value.isNumber() || !std::isfinite(value.Float()) || value.Float() < 0 || value.Float() > 1)
+			{
+				logGlobal->warn("Arcane Archive: config/widgets/arcaneArchive.json %s must be a number from 0 to 1; using %f", field, fallback);
+				return fallback;
+			}
+			return value.Float();
+		};
+		archiveDarkness = readIntensity("darkness", archiveDarkness);
+		archiveBlurMix = readIntensity("blurMix", archiveBlurMix);
 		archiveOwner = archiveTown->getOwner();
 		archiveSpells = myInt->cb->getArcaneArchive(*archiveOwner);
 		personalArchive = myHero && myHero->hasSpellbook() && myInt->cb->getSettings().getBoolean(EGameSettings::SPELLS_LEARN_NOW_CAST_LATER)
@@ -616,7 +633,15 @@ void CSpellWindow::showAll(Canvas & to)
 	if(archiveBackdrop)
 	{
 		CanvasClipRectGuard clip(to, pos);
-		to.draw(archiveBackdrop, pos.topLeft() + archiveBackdropPosition);
+		if(!archiveBlurredBackdrop || archiveBlurMix < 1)
+			to.draw(archiveBackdrop, pos.topLeft() + archiveBackdropPosition);
+		if(archiveBlurredBackdrop && archiveBlurMix > 0)
+		{
+			archiveBlurredBackdrop->setAlpha(static_cast<uint8_t>(std::lround(archiveBlurMix * 255)));
+			to.draw(archiveBlurredBackdrop, pos.topLeft() + archiveBackdropPosition);
+		}
+		if(archiveDarkness > 0)
+			to.drawColorBlended(pos, ColorRGBA(0, 0, 0, static_cast<uint8_t>(std::lround(archiveDarkness * 255))));
 	}
 	if(archiveOwner)
 	{
@@ -651,19 +676,42 @@ void CSpellWindow::updateArchiveLayout()
 
 void CSpellWindow::updateArchiveBackdrop()
 {
+	const int scaling = ENGINE->screenHandler().getScalingFactor();
+	if(archiveBackdrop && archiveBackdropSize == pos.dimensions() && archiveBackdropScaling == scaling)
+		return;
 	archiveBackdrop.reset();
+	archiveBlurredBackdrop.reset();
 	if(!CResourceHandler::get()->existsResource(ResourcePath("SPRITES/arcaneArchive/library", EResType::IMAGE)))
 	{
 		logGlobal->warn("Arcane Archive: missing SPRITES/arcaneArchive/library; using the spellbook without a backdrop");
 		return;
 	}
-	archiveBackdrop = ENGINE->renderHandler().loadImage(ImagePath::builtin("arcaneArchive/library"), EImageBlitMode::OPAQUE);
+	auto originalImage = ENGINE->renderHandler().loadImage(ImagePath::builtin("arcaneArchive/library"), EImageBlitMode::OPAQUE);
 	const Point viewport = pos.dimensions();
-	const Point original = archiveBackdrop->dimensions();
+	const Point original = originalImage->dimensions();
 	const double scale = std::max(static_cast<double>(viewport.x) / original.x, static_cast<double>(viewport.y) / original.y);
 	const Point scaled(static_cast<int>(std::ceil(original.x * scale)), static_cast<int>(std::ceil(original.y * scale)));
-	archiveBackdrop->scaleTo(scaled, EScalingAlgorithm::BILINEAR);
+	const auto prepare = [&](const std::shared_ptr<IImage> & source)
+	{
+		auto cached = ENGINE->renderHandler().createImage(source->dimensions(), CanvasScalingPolicy::AUTO);
+		cached->getCanvas().draw(source, Point(0, 0));
+		cached->scaleTo(scaled, EScalingAlgorithm::BILINEAR);
+		return cached;
+	};
+	archiveBackdrop = prepare(originalImage);
+	if(CResourceHandler::get()->existsResource(ResourcePath("SPRITES/arcaneArchive/libraryBlurred", EResType::IMAGE)))
+	{
+		auto blurred = ENGINE->renderHandler().loadImage(ImagePath::builtin("arcaneArchive/libraryBlurred"), EImageBlitMode::OPAQUE);
+		if(blurred->dimensions() == original)
+			archiveBlurredBackdrop = prepare(blurred);
+		else
+			logGlobal->warn("Arcane Archive: SPRITES/arcaneArchive/libraryBlurred dimensions differ from library; using sharp background");
+	}
+	else
+		logGlobal->warn("Arcane Archive: missing SPRITES/arcaneArchive/libraryBlurred; using sharp background");
 	archiveBackdropPosition = (viewport - scaled) / 2;
+	archiveBackdropSize = viewport;
+	archiveBackdropScaling = scaling;
 }
 
 void CSpellWindow::onScreenResize()
