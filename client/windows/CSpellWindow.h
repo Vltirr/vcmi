@@ -127,6 +127,7 @@ class CSpellWindow : public CWindowObject, public IVideoHolder
 	std::shared_ptr<IImage> archiveBackdrop;
 	Point archiveBackdropPosition;
 	bool personalArchive = false;
+	void updateArchiveBackdrop();
 	std::string archiveDescription(const CSpell * spell) const;
 
 	const CGHeroInstance * myHero; //hero whose spells are presented
@@ -171,4 +172,5 @@ public:
 
 	void show(Canvas & to) override;
 	void showAll(Canvas & to) override;
+	void onScreenResize() override;
 };

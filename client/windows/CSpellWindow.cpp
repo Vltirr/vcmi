@@ -15,7 +15,6 @@
 #include "GUIClasses.h"
 #include "InfoWindows.h"
 #include "CCastleInterface.h"
-#include "CMessage.h"
 
 #include "../CPlayerInterface.h"
 #include "../UIHelper.h"
@@ -163,7 +162,7 @@ public:
 };
 
 CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _myInt, bool openOnBattleSpells, const std::function<void(SpellID)> & onSpellSelect, const CGTownInstance * archiveTown):
-	CWindowObject(archiveTown ? SHADOW_DISABLED : PLAYER_COLORED | (settings["gameTweaks"]["enableLargeSpellbook"].Bool() ? BORDERED : 0)),
+	CWindowObject(archiveTown ? SHADOW_DISABLED | BORDERED : PLAYER_COLORED | (settings["gameTweaks"]["enableLargeSpellbook"].Bool() ? BORDERED : 0)),
 	battleSpellsOnly(openOnBattleSpells),
 	selectedTab(SpellSchool::ANY),
 	currentPage(0),
@@ -186,18 +185,6 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 		archiveSpells = myInt->cb->getArcaneArchive(*archiveOwner);
 		personalArchive = myHero && myHero->hasSpellbook() && myInt->cb->getSettings().getBoolean(EGameSettings::SPELLS_LEARN_NOW_CAST_LATER)
 			&& myInt->cb->getSettings().getBoolean(EGameSettings::SPELLS_ARCANE_ARCHIVE_PERSONAL);
-		if(CResourceHandler::get()->existsResource(ResourcePath("SPRITES/arcaneArchive/library", EResType::IMAGE)))
-		{
-			archiveBackdrop = ENGINE->renderHandler().loadImage(ImagePath::builtin("arcaneArchive/library"), EImageBlitMode::OPAQUE);
-			const Point viewport = ENGINE->screenDimensions();
-			const Point original = archiveBackdrop->dimensions();
-			const double scale = std::max(static_cast<double>(viewport.x) / original.x, static_cast<double>(viewport.y) / original.y);
-			const Point scaled(static_cast<int>(std::ceil(original.x * scale)), static_cast<int>(std::ceil(original.y * scale)));
-			archiveBackdrop->scaleTo(scaled, EScalingAlgorithm::BILINEAR);
-			archiveBackdropPosition = (viewport - scaled) / 2;
-		}
-		else
-			logGlobal->warn("Arcane Archive: missing SPRITES/arcaneArchive/library; using the spellbook without a backdrop");
 	}
 
 	int maxCustomSchools = (isBigSpellbook ? MAX_CUSTOM_SPELL_SCHOOLS_BIG : MAX_CUSTOM_SPELL_SCHOOLS) * 2;
@@ -247,7 +234,7 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 
 	pos = background->center(Point(pos.w/2 + pos.x, pos.h/2 + pos.y));
 	if(archiveTown)
-		moveBy(Point(0, std::max(0, ENGINE->screenDimensions().y - 575 - pos.y)));
+		updateArchiveBackdrop();
 
 	Rect r(90, archiveTown ? 443 : (isBigSpellbook ? 480 : 420), isBigSpellbook ? 160 : 110, 16);
 	if(settings["general"]["enableUiEnhancements"].Bool())
@@ -374,6 +361,9 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 	setCurrentPage(cp);
 	computeSpellsPerArea();
 	addUsedEvents(KEYBOARD);
+	if(archiveTown)
+		for(auto * child : children)
+			child->moveBy(Point(0, 25));
 }
 
 CSpellWindow::~CSpellWindow()
@@ -626,7 +616,10 @@ void CSpellWindow::show(Canvas & to)
 void CSpellWindow::showAll(Canvas & to)
 {
 	if(archiveBackdrop)
-		to.draw(archiveBackdrop, archiveBackdropPosition);
+	{
+		CanvasClipRectGuard clip(to, pos);
+		to.draw(archiveBackdrop, pos.topLeft() + archiveBackdropPosition);
+	}
 	if(archiveOwner)
 	{
 		auto current = myInt->cb->getArcaneArchive(*archiveOwner);
@@ -637,11 +630,30 @@ void CSpellWindow::showAll(Canvas & to)
 		}
 	}
 	CWindowObject::showAll(to);
-	if(archiveOwner)
+}
+
+void CSpellWindow::updateArchiveBackdrop()
+{
+	archiveBackdrop.reset();
+	if(!CResourceHandler::get()->existsResource(ResourcePath("SPRITES/arcaneArchive/library", EResType::IMAGE)))
 	{
-		const Point viewport = ENGINE->screenDimensions();
-		CMessage::drawBorder(*archiveOwner, to, viewport.x, viewport.y, 0, 0);
+		logGlobal->warn("Arcane Archive: missing SPRITES/arcaneArchive/library; using the spellbook without a backdrop");
+		return;
 	}
+	archiveBackdrop = ENGINE->renderHandler().loadImage(ImagePath::builtin("arcaneArchive/library"), EImageBlitMode::OPAQUE);
+	const Point viewport = pos.dimensions();
+	const Point original = archiveBackdrop->dimensions();
+	const double scale = std::max(static_cast<double>(viewport.x) / original.x, static_cast<double>(viewport.y) / original.y);
+	const Point scaled(static_cast<int>(std::ceil(original.x * scale)), static_cast<int>(std::ceil(original.y * scale)));
+	archiveBackdrop->scaleTo(scaled, EScalingAlgorithm::BILINEAR);
+	archiveBackdropPosition = (viewport - scaled) / 2;
+}
+
+void CSpellWindow::onScreenResize()
+{
+	CWindowObject::onScreenResize();
+	if(archiveOwner)
+		updateArchiveBackdrop();
 }
 
 std::string CSpellWindow::archiveDescription(const CSpell * spell) const
