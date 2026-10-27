@@ -384,7 +384,11 @@ protected:
 	CGHeroInstance * preparePreference(bool rework)
 	{
 		overrideSettingBeforeInit(EGameSettings::HEROES_MYSTICISM_USES_KNOWLEDGE, rework);
-		return prepare(GetParam());
+		auto * hero = prepare(GetParam());
+		const auto initialSkills = hero->secSkills;
+		for(const auto & skill : initialSkills)
+			hero->setSecSkillLevel(skill.first, MasteryLevel::NONE, ChangeValueMode::ABSOLUTE);
+		return hero;
 	}
 };
 
