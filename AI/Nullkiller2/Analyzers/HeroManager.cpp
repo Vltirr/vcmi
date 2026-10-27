@@ -55,11 +55,11 @@ const SecondarySkillEvaluator HeroManager::mainSkillsEvaluator = SecondarySkillE
 				{SecondarySkill::EAGLE_EYE, -1},
 				{SecondarySkill::NAVIGATION, -1}
 			}),
+		std::make_shared<KnowledgeMysticismRule>(),
 		std::make_shared<ExistingSkillRule>(),
 		std::make_shared<WisdomRule>(),
 		std::make_shared<AtLeastOneMagicRule>(),
-		std::make_shared<LevelUpGrantingSkillRule>(),
-		std::make_shared<KnowledgeMysticismRule>()
+		std::make_shared<LevelUpGrantingSkillRule>()
 	});
 
 const SecondarySkillEvaluator HeroManager::scoutSkillsEvaluator = SecondarySkillEvaluator(

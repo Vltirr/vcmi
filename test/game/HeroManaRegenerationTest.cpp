@@ -378,40 +378,105 @@ TEST_F(KnowledgeMysticismTest, zeroKnowledgeDoesNotProduceNegativeRecovery)
 }
 
 #ifdef ENABLE_NULLKILLER2_AI
-TEST_F(KnowledgeMysticismTest, mainRuleUsesKnowledgeTiersWithoutNewSkillBoost)
+class MysticismSkillPreferenceTest : public HeroManaRegenerationTest, public ::testing::WithParamInterface<bool>
 {
-	auto * hero = prepareRework();
-	NK2AI::SecondarySkillEvaluator evaluator({
-		std::make_shared<NK2AI::SecondarySkillScoreMap>(std::map<SecondarySkill, float>{{SecondarySkill::MYSTICISM, -1}}),
-		std::make_shared<NK2AI::ExistingSkillRule>(),
-		std::make_shared<NK2AI::KnowledgeMysticismRule>()});
-	for(auto [knowledge, expected] : std::vector<std::pair<int, float>>{{5, 1}, {10, 1}, {11, 2}, {15, 2}, {16, 2.5f}})
+protected:
+	CGHeroInstance * preparePreference(bool rework)
 	{
-		hero->setPrimarySkill(PrimarySkill::KNOWLEDGE, knowledge, ChangeValueMode::ABSOLUTE);
-		EXPECT_FLOAT_EQ(evaluator.evaluateSecSkill(hero, SecondarySkill::MYSTICISM), expected);
-		hero->setSecSkillLevel(SecondarySkill::MYSTICISM, MasteryLevel::BASIC, ChangeValueMode::ABSOLUTE);
-		EXPECT_FLOAT_EQ(evaluator.evaluateSecSkill(hero, SecondarySkill::MYSTICISM), expected);
-		hero->setSecSkillLevel(SecondarySkill::MYSTICISM, MasteryLevel::NONE, ChangeValueMode::ABSOLUTE);
+		overrideSettingBeforeInit(EGameSettings::HEROES_MYSTICISM_USES_KNOWLEDGE, rework);
+		return prepare(GetParam());
 	}
+};
+
+TEST_P(MysticismSkillPreferenceTest, newSkillUsesKnowledgeBaseAndBothGeneralBonusConditions)
+{
+	auto * hero = preparePreference(true);
 	auto callback = makeCallback(PlayerColor(0));
 	NK2AI::Nullkiller ai;
 	ai.cc = callback;
 	NK2AI::HeroManager manager(callback.get(), &ai);
-	EXPECT_FLOAT_EQ(manager.evaluateSecSkill(SecondarySkill::MYSTICISM, hero), 0);
 	hero->patrol.patrolling = true;
 	manager.update();
-	EXPECT_FLOAT_EQ(manager.evaluateSecSkill(SecondarySkill::MYSTICISM, hero), 2.5f);
-	EXPECT_EQ(manager.selectBestSkillIndex(NK2AI::HeroPtr(hero, callback.get()),
-		{SecondarySkill::SORCERY, SecondarySkill::MYSTICISM}), 1);
+	for(auto [knowledge, base] : std::vector<std::pair<int, float>>{{10, 1}, {11, 2}, {15, 2}, {16, 2.5f}})
+	{
+		SCOPED_TRACE(knowledge);
+		hero->setPrimarySkill(PrimarySkill::KNOWLEDGE, knowledge, ChangeValueMode::ABSOLUTE);
+		for(auto offence : {MasteryLevel::BASIC, MasteryLevel::ADVANCED, MasteryLevel::EXPERT})
+		{
+			SCOPED_TRACE(offence);
+			hero->setSecSkillLevel(SecondarySkill::OFFENCE, offence, ChangeValueMode::ABSOLUTE);
+			const bool bonus = base >= 2 || offence >= MasteryLevel::ADVANCED;
+			EXPECT_FLOAT_EQ(manager.evaluateSecSkill(SecondarySkill::MYSTICISM, hero), base + (bonus ? 1.5f : 0));
+			if(offence != MasteryLevel::EXPERT)
+				EXPECT_EQ(manager.selectBestSkillIndex(NK2AI::HeroPtr(hero, callback.get()),
+					{SecondarySkill::OFFENCE, SecondarySkill::MYSTICISM}), bonus ? 1 : 0);
+		}
+	}
 }
 
-TEST_F(HeroManaRegenerationTest, classicMainRuleRemainsUnchangedWithNaturalKnowledge)
+TEST_P(MysticismSkillPreferenceTest, upgradesKeepKnowledgeBaseWithoutAcquisitionBonus)
 {
-	auto * hero = prepare(true, 20);
-	float score = -1;
-	NK2AI::KnowledgeMysticismRule().evaluateScore(hero, SecondarySkill::MYSTICISM, score);
-	EXPECT_FLOAT_EQ(score, -1);
+	auto * hero = preparePreference(true);
+	auto callback = makeCallback(PlayerColor(0));
+	NK2AI::Nullkiller ai;
+	ai.cc = callback;
+	NK2AI::HeroManager manager(callback.get(), &ai);
+	hero->patrol.patrolling = true;
+	manager.update();
+	for(auto [knowledge, base] : std::vector<std::pair<int, float>>{{10, 1}, {11, 2}, {15, 2}, {16, 2.5f}})
+	{
+		SCOPED_TRACE(knowledge);
+		hero->setPrimarySkill(PrimarySkill::KNOWLEDGE, knowledge, ChangeValueMode::ABSOLUTE);
+		for(auto mastery : {MasteryLevel::BASIC, MasteryLevel::ADVANCED})
+		{
+			hero->setSecSkillLevel(SecondarySkill::MYSTICISM, mastery, ChangeValueMode::ABSOLUTE);
+			EXPECT_FLOAT_EQ(manager.evaluateSecSkill(SecondarySkill::MYSTICISM, hero), base);
+		}
+	}
+	EXPECT_FLOAT_EQ(manager.evaluateSecSkill(SecondarySkill::OFFENCE, hero), 3.5f);
 }
+
+TEST_P(MysticismSkillPreferenceTest, classicAndScoutsKeepTheirEvaluators)
+{
+	auto * hero = preparePreference(false);
+	auto callback = makeCallback(PlayerColor(0));
+	NK2AI::Nullkiller ai;
+	ai.cc = callback;
+	NK2AI::HeroManager scout(callback.get(), &ai);
+	NK2AI::HeroManager main(callback.get(), &ai);
+	hero->patrol.patrolling = true;
+	main.update();
+	for(auto knowledge : {10, 11, 15, 16})
+	{
+		hero->setPrimarySkill(PrimarySkill::KNOWLEDGE, knowledge, ChangeValueMode::ABSOLUTE);
+		for(auto mastery : {MasteryLevel::NONE, MasteryLevel::BASIC, MasteryLevel::ADVANCED})
+		{
+			hero->setSecSkillLevel(SecondarySkill::MYSTICISM, mastery, ChangeValueMode::ABSOLUTE);
+			EXPECT_FLOAT_EQ(main.evaluateSecSkill(SecondarySkill::MYSTICISM, hero), -1);
+			EXPECT_FLOAT_EQ(scout.evaluateSecSkill(SecondarySkill::MYSTICISM, hero), 0);
+		}
+	}
+}
+
+TEST_P(MysticismSkillPreferenceTest, reworkedScoutsDoNotUseMainKnowledgeBase)
+{
+	auto * hero = preparePreference(true);
+	auto callback = makeCallback(PlayerColor(0));
+	NK2AI::Nullkiller ai;
+	ai.cc = callback;
+	NK2AI::HeroManager manager(callback.get(), &ai);
+	for(auto knowledge : {10, 11, 15, 16})
+	{
+		hero->setPrimarySkill(PrimarySkill::KNOWLEDGE, knowledge, ChangeValueMode::ABSOLUTE);
+		for(auto mastery : {MasteryLevel::NONE, MasteryLevel::BASIC, MasteryLevel::ADVANCED})
+		{
+			hero->setSecSkillLevel(SecondarySkill::MYSTICISM, mastery, ChangeValueMode::ABSOLUTE);
+			EXPECT_FLOAT_EQ(manager.evaluateSecSkill(SecondarySkill::MYSTICISM, hero), 0);
+		}
+	}
+}
+
+INSTANTIATE_TEST_SUITE_P(WithAndWithoutNaturalKnowledge, MysticismSkillPreferenceTest, ::testing::Bool());
 #endif
 
 class MageGuildManaAuraTest : public HeroManaRegenerationTest
