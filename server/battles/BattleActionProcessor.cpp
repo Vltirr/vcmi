@@ -249,17 +249,21 @@ void BattleActionProcessor::performAttackSequence(const CBattleInfoCallback & ba
 	BonusList attackerBonusesToRemove = *attacker->getAllBonuses(Bonus::untilAfterAttackSequence);
 	BonusList defenderBonusesToRemove = *defender->getAllBonuses(Bonus::untilAfterAttackSequence);
 
+	bool repeatRetaliation = false;
+	const auto trivialRules = battle.getBattle()->getTrivialRetaliationRules();
 	for (int i = 0; i < totalAttacks; ++i)
 	{
-		if(i == 0 && firstStrike && defender->ableToRetaliate() && !attacker->hasBonusOfType(BonusType::BLOCKS_RETALIATION) && !attacker->isInvincible() && !longWeaponAttack)
+		auto trivial = trivialRules.classify(*attacker, *defender);
+		if((i == 0 || repeatRetaliation) && firstStrike && defender->ableToRetaliate() && !attacker->hasBonusOfType(BonusType::BLOCKS_RETALIATION) && !attacker->isInvincible() && !longWeaponAttack)
 		{
-			makeAttack(battle, defender, attacker, {.targetHex = attacker->getPosition(), .first = true, .counter = true});
+			makeAttack(battle, defender, attacker, {.targetHex = attacker->getPosition(), .first = true, .counter = true, .trivialRetaliation = trivial});
+			repeatRetaliation = trivial.active();
 		}
 
 		// Movement, FIRST_STRIKE, or their handlers may kill or disable either unit.
 		if(attacker->alive() && !attacker->hasBonusOfType(BonusType::NOT_ACTIVE) && defender->alive())
 		{
-			makeAttack(battle, attacker, defender, {.targetHex = targetHex, .distance = (i ? 0 : distance), .attackIndex = i, .first = i == 0, .activatedAbility = activatedAbility});
+			trivial = makeAttack(battle, attacker, defender, {.targetHex = targetHex, .distance = (i ? 0 : distance), .attackIndex = i, .first = i == 0, .activatedAbility = activatedAbility});
 
 			if(!ferocityApplied && attacker->hasBonusOfType(BonusType::FEROCITY))
 			{
@@ -279,10 +283,11 @@ void BattleActionProcessor::performAttackSequence(const CBattleInfoCallback & ba
 			&& !attacker->hasBonusOfType(BonusType::BLOCKS_RETALIATION)
 			&& !attacker->isInvincible()
 			&& !longWeaponAttack
-			&& (i == 0 && !firstStrike)
+			&& ((i == 0 || repeatRetaliation) && !firstStrike)
 			&& defender->ableToRetaliate())
 		{
-			makeAttack(battle, defender, attacker, {.targetHex = attacker->getPosition(), .first = true, .counter = true});
+			makeAttack(battle, defender, attacker, {.targetHex = attacker->getPosition(), .first = true, .counter = true, .trivialRetaliation = trivial});
+			repeatRetaliation = trivial.active();
 		}
 	}
 
@@ -487,8 +492,9 @@ bool BattleActionProcessor::executeShot(const CBattleInfoCallback & battle, cons
 		firstStrike = destinationStack->hasBonus(firstStrikeSelector) && !destinationStack->hasBonusOfType(BonusType::NOT_ACTIVE);
 	}
 
+	auto trivial = destinationStack ? battle.getBattle()->getTrivialRetaliationRules().classify(*stack, *destinationStack) : TrivialRetaliation{};
 	if (!firstStrike)
-		makeAttack(battle, stack, destinationStack,
+		trivial = makeAttack(battle, stack, destinationStack,
 			{.targetHex = destination, .first = true, .ranged = true, .mobileShooting = mobileShooting});
 
 	// Bonuses added during the sequence, such as Blind, must survive this cleanup.
@@ -497,6 +503,7 @@ bool BattleActionProcessor::executeShot(const CBattleInfoCallback & battle, cons
 	if (destinationStack)
 		defenderBonusesToRemove = *destinationStack->getAllBonuses(Bonus::untilAfterAttackSequence);
 
+	bool repeatRetaliation = false;
 	if (!emptyTileAreaAttack
 		&& destinationStack->hasBonusOfType(BonusType::RANGED_RETALIATION)
 		&& !stack->hasBonusOfType(BonusType::BLOCKS_RANGED_RETALIATION)
@@ -505,7 +512,8 @@ bool BattleActionProcessor::executeShot(const CBattleInfoCallback & battle, cons
 		// Fire Shield may kill the attacker before retaliation.
 		&& stack->alive())
 	{
-		makeAttack(battle, destinationStack, stack, {.targetHex = stack->getPosition(), .first = true, .ranged = true, .counter = true});
+		makeAttack(battle, destinationStack, stack, {.targetHex = stack->getPosition(), .first = true, .ranged = true, .counter = true, .trivialRetaliation = trivial});
+		repeatRetaliation = trivial.active();
 	}
 	int totalRangedAttacks = stack->getTotalAttacks(true);
 
@@ -524,9 +532,27 @@ bool BattleActionProcessor::executeShot(const CBattleInfoCallback & battle, cons
 		{
 			// when the defender strikes first the opening shot above is skipped and this loop makes
 			// it instead, so the shot that abilities fire on is the first one this loop makes
-			makeAttack(battle, stack, destinationStack,
+			const auto nextRatio = destinationStack ? battle.getBattle()->getTrivialRetaliationRules().classify(*stack, *destinationStack) : TrivialRetaliation{};
+			const auto canRespond = [&]()
+			{
+				return !emptyTileAreaAttack && destinationStack->alive() && destinationStack->ableToRetaliate()
+					&& destinationStack->hasBonusOfType(BonusType::RANGED_RETALIATION)
+					&& !stack->hasBonusOfType(BonusType::BLOCKS_RANGED_RETALIATION)
+					&& stack->alive() && battle.battleCanShoot(destinationStack, stack->getPosition());
+			};
+			if(firstStrike && repeatRetaliation && i > 0 && canRespond())
+			{
+				makeAttack(battle, destinationStack, stack, {.targetHex = stack->getPosition(), .first = true, .ranged = true, .counter = true, .trivialRetaliation = nextRatio});
+				repeatRetaliation = nextRatio.active();
+			}
+			const auto hitRatio = makeAttack(battle, stack, destinationStack,
 				{.targetHex = destination, .attackIndex = i, .first = i == 0,
 					.ranged = true, .mobileShooting = mobileShooting});
+			if(!firstStrike && repeatRetaliation && canRespond())
+			{
+				makeAttack(battle, destinationStack, stack, {.targetHex = stack->getPosition(), .first = true, .ranged = true, .counter = true, .trivialRetaliation = hitRatio});
+				repeatRetaliation = hitRatio.active();
+			}
 		}
 	}
 
@@ -1427,7 +1453,7 @@ void BattleActionProcessor::markSpellLikeAttack(const CStack * attacker, BattleA
 	}
 }
 
-void BattleActionProcessor::makeAttack(const CBattleInfoCallback & battle, const CStack * attacker, const CStack * defender, const AttackDescriptor & attack)
+TrivialRetaliation BattleActionProcessor::makeAttack(const CBattleInfoCallback & battle, const CStack * attacker, const CStack * defender, const AttackDescriptor & attack)
 {
 	// spell-casting abilities keep their own rule - once per attack action and never on a counter.
 	// Combat event reactions are notified before every attack instead, further below
@@ -1436,7 +1462,7 @@ void BattleActionProcessor::makeAttack(const CBattleInfoCallback & battle, const
 
 	// If the attacker or defender is not alive before the attack action, the action should be skipped.
 	if((!attacker->alive()) || (defender && !defender->alive()))
-		return;
+		return {};
 
 	BattleAttack bat;
 	BattleLogMessage blm;
@@ -1469,15 +1495,16 @@ void BattleActionProcessor::makeAttack(const CBattleInfoCallback & battle, const
 	// a reaction to the upcoming attack may have killed either side of it - a unit that died before
 	// striking does not strike, and one that died before being hit is not hit again
 	if((!attacker->alive()) || (defender && !defender->alive()))
-		return;
+		return {};
 
+	const auto incomingRatio = defender && !attack.counter ? battle.getBattle()->getTrivialRetaliationRules().classify(*attacker, *defender) : TrivialRetaliation{};
 	std::shared_ptr<battle::CUnitState> attackerState = attacker->acquireState();
 
 	rollAttackFlags(battle, attacker, bat);
 
 	// only primary target
 	if(defender && defender->alive())
-		applyBattleEffects(battle, bat, attackerState, payload, defender, attack.distance, false, attack.mobileShooting);
+		applyBattleEffects(battle, bat, attackerState, payload, defender, attack.distance, false, attack.mobileShooting, attack.trivialRetaliation);
 
 	for(const auto * unit : secondaryTargets)
 	{
@@ -1485,13 +1512,13 @@ void BattleActionProcessor::makeAttack(const CBattleInfoCallback & battle, const
 		if(!unit->alive())
 			continue;
 
-		applyBattleEffects(battle, bat, attackerState, payload, unit, attack.distance, true, attack.mobileShooting);
+		applyBattleEffects(battle, bat, attackerState, payload, unit, attack.distance, true, attack.mobileShooting, attack.trivialRetaliation);
 		removeBonuses(battle, unit, *unit->getAllBonuses(Bonus::UntilTakingIndirectDamage));
 	}
 
 	markSpellLikeAttack(attacker, bat);
 
-	attackerState->afterAttack(attack.ranged, attack.counter);
+	attackerState->afterAttack(attack.ranged, attack.counter && !attack.trivialRetaliation.active());
 
 	{
 		UnitChanges info(attackerState->unitId(), UnitChanges::EOperation::UPDATE);
@@ -1519,6 +1546,15 @@ void BattleActionProcessor::makeAttack(const CBattleInfoCallback & battle, const
 	}
 
 	noteDeaths(battle, bat.bsa);
+	if(attack.counter && battle.getBattle()->getTrivialRetaliationRules().enabled)
+		logGlobal->debug("SRET response: defender=%d attacker=%d trivial=%d damage=%d remaining=%d", attacker->unitId(), defender->unitId(), attack.trivialRetaliation.active(), bat.bsa.empty() ? int64_t(0) : bat.bsa.front().damageAmount, attackerState->counterAttacks.available());
+	if(attack.counter && attack.trivialRetaliation.active())
+	{
+		BattleLogMessage message;
+		message.battleID = bat.battleID;
+		message.lines.emplace_back().appendTextID("vcmi.battle.noRetaliationConsumption");
+		gameHandler->sendAndApply(message);
+	}
 	gameHandler->sendAndApply(bat);
 	for(const auto side : {BattleSide::ATTACKER, BattleSide::DEFENDER})
 		if(focusGained[side])
@@ -1552,6 +1588,7 @@ void BattleActionProcessor::makeAttack(const CBattleInfoCallback & battle, const
 	// burn the attacker down and how a death stare only lands after it. Not gated on anyone being
 	// alive: a reflecting ability answers a lethal hit while dying, so each reaction decides for itself
 	runEventTriggers(battle, reactions, payload);
+	return incomingRatio;
 }
 
 void BattleActionProcessor::attackCasting(const CBattleInfoCallback & battle, bool ranged, BonusType attackMode, const battle::Unit * attacker, const CStack * defender, const std::string & activatedAbility)
@@ -1688,7 +1725,7 @@ void BattleActionProcessor::handleAfterAttackCasting(const CBattleInfoCallback &
 
 void BattleActionProcessor::applyBattleEffects(const CBattleInfoCallback & battle, BattleAttack & bat,
 	std::shared_ptr<battle::CUnitState> attackerState, CombatEventPayload & payload,
-	const battle::Unit * def, int distance, bool secondary, bool mobileShooting) const
+	const battle::Unit * def, int distance, bool secondary, bool mobileShooting, const TrivialRetaliation & trivial) const
 {
 	BattleStackAttacked bsa;
 	if(secondary)
@@ -1707,7 +1744,7 @@ void BattleActionProcessor::applyBattleEffects(const CBattleInfoCallback & battl
 
 	auto range = battle.calculateDmgRange(bai);
 	{
-		bsa.damageAmount = battle.getBattle()->getActualDamage(range.damage, attackerState->getCount(), gameHandler->getRandomGenerator());
+		bsa.damageAmount = trivial.scale(battle.getBattle()->getActualDamage(range.damage, attackerState->getCount(), gameHandler->getRandomGenerator()));
 		CStack::prepareAttacked(bsa, gameHandler->getRandomGenerator(), bai.defender->acquireState()); //calculate casualties
 	}
 

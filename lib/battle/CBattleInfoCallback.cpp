@@ -1449,25 +1449,40 @@ DamageEstimation CBattleInfoCallback::battleEstimateDamage(const BattleAttackInf
 
 	*retaliationDmg = DamageEstimation();
 
-	if(bai.shooting) //FIXME: handle RANGED_RETALIATION
+	const auto rules = getBattle()->getTrivialRetaliationRules();
+	if(bai.shooting)
+	{
+		if(!rules.enabled || !bai.defender->hasBonusOfType(BonusType::RANGED_RETALIATION)
+			|| bai.attacker->hasBonusOfType(BonusType::BLOCKS_RANGED_RETALIATION)
+			|| !battleCanShoot(bai.defender, bai.attackerPos.isValid() ? bai.attackerPos : bai.attacker->getPosition()))
+			return ret;
+	}
+	else if(bai.attacker->hasBonusOfType(BonusType::BLOCKS_RETALIATION) || bai.attacker->isInvincible() || isLongWeaponAttack(bai.attacker, bai.defender))
 		return ret;
 
-	if (!bai.defender->ableToRetaliate())	//FIXME: handle situation when NO_RETALIATION bonus is removed during attack
+	if(!bai.defender->ableToRetaliate())
 		return ret;
 
-	if (bai.attacker->hasBonusOfType(BonusType::BLOCKS_RETALIATION) || bai.attacker->isInvincible() || isLongWeaponAttack(bai.attacker, bai.defender))
-		return ret;
-
+	const auto firstStrikeSelector = Selector::typeSubtype(BonusType::FIRST_STRIKE, BonusCustomSubtype::damageTypeAll)
+		.Or(Selector::typeSubtype(BonusType::FIRST_STRIKE, bai.shooting ? BonusCustomSubtype::damageTypeRanged : BonusCustomSubtype::damageTypeMelee));
+	const bool strikesFirst = rules.enabled && bai.defender->hasBonus(firstStrikeSelector) && !bai.defender->hasBonusOfType(BonusType::NOT_ACTIVE);
 	//TODO: rewire once more using interval-based fuzzy arithmetic
 
 	const auto & estimateRetaliation = [&](int64_t damage)
 	{
+		const auto trivial = getBattle()->getTrivialRetaliationRules().classify(*bai.attacker, *bai.defender);
 		auto retaliationAttack = bai.reverse();
+		retaliationAttack.shooting = bai.shooting;
 		auto state = retaliationAttack.attacker->acquireState();
-		state->damage(damage);
+		if(!strikesFirst)
+			state->damage(damage);
 		retaliationAttack.attacker = state.get();
 		if (state->alive())
-			return calculateDmgRange(retaliationAttack);
+		{
+			auto estimate = calculateDmgRange(retaliationAttack);
+			trivial.apply(estimate, *bai.attacker);
+			return estimate;
+		}
 		else
 			return DamageEstimation();
 	};
@@ -1475,11 +1490,30 @@ DamageEstimation CBattleInfoCallback::battleEstimateDamage(const BattleAttackInf
 	DamageEstimation retaliationMin = estimateRetaliation(ret.damage.min);
 	DamageEstimation retaliationMax = estimateRetaliation(ret.damage.max);
 
+	retaliationDmg->noRetaliationConsumption = retaliationMin.noRetaliationConsumption || retaliationMax.noRetaliationConsumption;
 	retaliationDmg->damage.min = std::min(retaliationMin.damage.min, retaliationMax.damage.min);
 	retaliationDmg->damage.max = std::max(retaliationMin.damage.max, retaliationMax.damage.max);
 
 	retaliationDmg->kills.min = std::min(retaliationMin.kills.min, retaliationMax.kills.min);
 	retaliationDmg->kills.max = std::max(retaliationMin.kills.max, retaliationMax.kills.max);
+
+	if(strikesFirst)
+	{
+		const auto afterCounter = [&](int64_t damage)
+		{
+			auto attacker = bai.attacker->acquireState();
+			attacker->damage(damage);
+			if(!attacker->alive())
+				return DamageEstimation{};
+			auto attack = bai;
+			attack.attacker = attacker.get();
+			return calculateDmgRange(attack);
+		};
+		const auto low = afterCounter(retaliationDmg->damage.max);
+		const auto high = afterCounter(retaliationDmg->damage.min);
+		ret.damage = {std::min(low.damage.min, high.damage.min), std::max(low.damage.max, high.damage.max)};
+		ret.kills = {std::min(low.kills.min, high.kills.min), std::max(low.kills.max, high.kills.max)};
+	}
 
 	return ret;
 }

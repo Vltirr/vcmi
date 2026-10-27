@@ -14,6 +14,11 @@
 
 ///BattleProxy
 
+TrivialRetaliationRules BattleProxy::getTrivialRetaliationRules() const
+{
+	return subject->getBattle()->getTrivialRetaliationRules();
+}
+
 FocusRules BattleProxy::getFocusRules() const
 {
 	return subject->getBattle()->getFocusRules();

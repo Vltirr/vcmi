@@ -12,6 +12,7 @@
 #include "CBattleInfoEssentials.h"
 #include "BattleUnitTurnReason.h"
 #include "FocusRules.h"
+#include "TrivialRetaliation.h"
 
 class ObstacleChanges;
 class UnitChanges;
@@ -69,6 +70,7 @@ public:
 	virtual int32_t getEnchanterCounter(BattleSide side) const = 0;
 	virtual int32_t getFocusPoints(BattleSide side) const = 0;
 	virtual FocusRules getFocusRules() const = 0;
+	virtual TrivialRetaliationRules getTrivialRetaliationRules() const = 0;
 	virtual int32_t getActivationUsage(BattleSide side, const std::string & key, EActivationLimitPeriod period) const = 0;
 	virtual int32_t getActivationUsage(BattleSide side, const ActivationStateKey & key) const = 0;
 	virtual int32_t getActivationCooldownReadyRound(BattleSide side, const ActivationStateKey & key) const = 0;

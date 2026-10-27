@@ -29,6 +29,11 @@
 
 #include <vstd/RNG.h>
 
+TrivialRetaliationRules BattleInfo::getTrivialRetaliationRules() const
+{
+	return TrivialRetaliationRules(cb->getSettings().getValue(EGameSettings::COMBAT_TRIVIAL_STACK_RETALIATION));
+}
+
 FocusRules BattleInfo::getFocusRules() const
 {
 	return FocusRules(cb->getSettings().getValue(EGameSettings::COMBAT_FOCUS));

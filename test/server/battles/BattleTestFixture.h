@@ -44,6 +44,8 @@ public:
 	std::vector<RecordedCast> casts;
 	std::vector<CatapultAttack> catapultAttacks;
 	std::vector<BattleResult> battleResults;
+	std::vector<BattleAttack> attacks;
+	std::vector<std::string> battleLogLines;
 
 	void setState(EServerState value) override { state = value; }
 	EServerState getState() const override { return state; }

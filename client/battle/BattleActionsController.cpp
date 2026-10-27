@@ -131,7 +131,7 @@ static std::string formatRangedAttack(const DamageEstimation & estimation, const
 
 static std::string formatRetaliation(const DamageEstimation & estimation, bool mayBeKilled)
 {
-	if (estimation.damage.max == 0)
+	if (estimation.damage.max == 0 && !estimation.noRetaliationConsumption)
 		return LIBRARY->generaltexth->translate("vcmi.battleWindow.damageRetaliation.never");
 
 	std::string baseTextID = estimation.kills.max == 0 ?
@@ -142,7 +142,10 @@ static std::string formatRetaliation(const DamageEstimation & estimation, bool m
 		"vcmi.battleWindow.damageRetaliation.may" :
 		"vcmi.battleWindow.damageRetaliation.will";
 
-	return LIBRARY->generaltexth->translate(prefixTextID) + formatAttack(estimation, "", baseTextID, 0);
+	auto result = LIBRARY->generaltexth->translate(prefixTextID) + formatAttack(estimation, "", baseTextID, 0);
+	if(estimation.noRetaliationConsumption)
+		result += "\n" + LIBRARY->generaltexth->translate("vcmi.battle.noRetaliationConsumption");
+	return result;
 }
 
 static std::string prepareSpellEffectText(int gnrlTextID, const spells::effects::SpellEffectValue & value,
@@ -708,10 +711,14 @@ std::string BattleActionsController::actionGetStatusMessage(PossiblePlayerBattle
 				BattleAttackInfo attackInfo(shooter, targetStack, 0, true);
 				attackInfo.attackerPos = *selectedMovementHex;
 				attackInfo.mobileShooting = true;
-				DamageEstimation estimation = owner.getBattle()->battleEstimateDamage(attackInfo, nullptr);
+				DamageEstimation retaliation;
+				DamageEstimation estimation = owner.getBattle()->battleEstimateDamage(attackInfo, &retaliation);
 				estimation.kills.max = std::min<int64_t>(estimation.kills.max, targetStack->getCount());
 				estimation.kills.min = std::min<int64_t>(estimation.kills.min, targetStack->getCount());
-				return formatRangedAttack(estimation, targetStack->getName(), shooter->shots.available());
+				auto result = formatRangedAttack(estimation, targetStack->getName(), shooter->shots.available());
+				if(retaliation.noRetaliationConsumption)
+					result += "\n" + formatRetaliation(retaliation, estimation.kills.max >= targetStack->getCount());
+				return result;
 			}
 
 			const CStack * activeStack = owner.stacksController->getActiveStack();
@@ -781,7 +788,10 @@ std::string BattleActionsController::actionGetStatusMessage(PossiblePlayerBattle
 			DamageEstimation estimation = owner.getBattle()->battleEstimateDamage(attackInfo, &retaliation);
 			estimation.kills.max = std::min<int64_t>(estimation.kills.max, targetStack->getCount());
 			estimation.kills.min = std::min<int64_t>(estimation.kills.min, targetStack->getCount());
-			return formatRangedAttack(estimation, targetStack->getName(), shooter->shots.available());
+			auto result = formatRangedAttack(estimation, targetStack->getName(), shooter->shots.available());
+			if(retaliation.noRetaliationConsumption)
+				result += "\n" + formatRetaliation(retaliation, estimation.kills.max >= targetStack->getCount());
+			return result;
 		}
 
 		case PossiblePlayerBattleAction::AIMED_SPELL_CREATURE:

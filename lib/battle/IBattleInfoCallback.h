@@ -48,6 +48,7 @@ struct DamageEstimation
 	/// Damage with every mitigating factor of the target left out. Abilities that reflect a strike
 	/// back at its author, such as Fire Shield, work from this rather than from the damage dealt.
 	DamageRange damageBeforeDefense;
+	bool noRetaliationConsumption = false;
 };
 
 class DLL_LINKAGE IBattleInfoCallback : public IConstBonusProvider, public scripting::ApiRawPointer<IBattleInfoCallback>

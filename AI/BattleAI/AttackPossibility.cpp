@@ -17,6 +17,7 @@
 #include "../../lib/battle/CObstacleInstance.h"
 #include "../../lib/battle/CombatValue.h"
 #include "../../lib/CCreatureHandler.h"
+#include "../../lib/bonuses/BonusCustomTypes.h"
 
 #include "../../lib/GameLibrary.h"
 
@@ -423,90 +424,80 @@ AttackPossibility AttackPossibility::evaluate(
 			defenderStates[u->unitId()] = defenderState;
 		}
 
+		bool repeatRetaliation = false;
+		const auto trivialRules = state->getBattle()->getTrivialRetaliationRules();
+		const auto firstStrikeSelector = Selector::typeSubtype(BonusType::FIRST_STRIKE, BonusCustomSubtype::damageTypeAll)
+			.Or(Selector::typeSubtype(BonusType::FIRST_STRIKE, attackInfo.shooting ? BonusCustomSubtype::damageTypeRanged : BonusCustomSubtype::damageTypeMelee));
+		const bool strikesFirst = trivialRules.enabled && defender->hasBonus(firstStrikeSelector) && !defender->hasBonusOfType(BonusType::NOT_ACTIVE);
+		const auto respondingDefender = defenderStates.at(defender->unitId());
+		const auto canRespond = [&]()
+		{
+			if(!ap.attackerState->alive() || !respondingDefender->ableToRetaliate())
+				return false;
+			if(attackInfo.shooting)
+				return trivialRules.enabled && respondingDefender->hasBonusOfType(BonusType::RANGED_RETALIATION)
+					&& !ap.attackerState->hasBonusOfType(BonusType::BLOCKS_RANGED_RETALIATION)
+					&& state->battleCanShoot(respondingDefender.get(), ap.attackerState->getPosition());
+			return !counterAttacksBlocked && !ap.attackerState->isInvincible()
+				&& !state->isLongWeaponAttack(ap.attackerState.get(), respondingDefender.get());
+		};
+		const auto respond = [&](const TrivialRetaliation & trivial)
+		{
+			for(const auto * target : retaliatedUnits)
+			{
+				const auto targetState = target->unitId() == attacker->unitId()
+					? ap.attackerState : defenderStates.at(target->unitId());
+				if(!targetState->alive())
+					continue;
+				BattleAttackInfo response(respondingDefender.get(), targetState.get(), 0, attackInfo.shooting);
+				auto estimate = state->calculateDmgRange(response);
+				trivial.apply(estimate, *targetState);
+				auto damage = std::min<int64_t>(averageDmg(estimate.damage), targetState->getAvailableHealth());
+				const auto reduction = calculateDamageReduce(target, damage, damageCache);
+				if(target->unitId() == attacker->unitId())
+					ap.attackerDamageReduce += reduction;
+				else if(target->unitSide() == defender->unitSide())
+					ap.defenderDamageReduce += reduction;
+				else
+					ap.collateralDamageReduce += reduction;
+				targetState->damage(damage);
+			}
+			respondingDefender->afterAttack(attackInfo.shooting, !trivial.active());
+			repeatRetaliation = trivial.active();
+		};
+
 		for(int i = 0; i < totalAttacks; i++)
 		{
-			if(!ap.attackerState->alive() || !defenderStates[defender->unitId()]->alive())
+			if(!ap.attackerState->alive() || !respondingDefender->alive())
+				break;
+			const auto trivial = trivialRules.classify(*ap.attackerState, *respondingDefender);
+			if(strikesFirst && (i == 0 || repeatRetaliation) && canRespond())
+				respond(trivial);
+			if(!ap.attackerState->alive())
 				break;
 
-			for(auto u : defenderUnits)
+			for(const auto * target : defenderUnits)
 			{
-				auto defenderState = defenderStates.at(u->unitId());
-
-				int64_t damageDealt;
-				float defenderDamageReduce;
-				float attackerDamageReduce;
-
-				DamageEstimation retaliation;
-				auto attackDmg = state->battleEstimateDamage(ap.attack, &retaliation);
-
-				damageDealt = averageDmg(attackDmg.damage);
-				vstd::amin(damageDealt, defenderState->getAvailableHealth());
-
-				defenderDamageReduce = calculateDamageReduce(u, damageDealt, damageCache);
-				ap.attackerState->afterAttack(attackInfo.shooting, false);
-
-				//FIXME: use ranged retaliation
-				attackerDamageReduce = 0;
-
-				if(i == 0 && !attackInfo.shooting && u->unitId() == defender->unitId() && defenderState->ableToRetaliate() && !counterAttacksBlocked)
-				{
-					for(auto retaliated : retaliatedUnits)
-					{
-						if(retaliated->unitId() == attacker->unitId())
-						{
-							int64_t damageReceived = averageDmg(retaliation.damage);
-
-							vstd::amin(damageReceived, ap.attackerState->getAvailableHealth());
-
-							attackerDamageReduce = calculateDamageReduce(retaliated, damageReceived, damageCache);
-							ap.attackerState->damage(damageReceived);
-						}
-						else
-						{
-							auto retaliationCollateral = state->battleEstimateDamage(defender, retaliated, 0);
-							int64_t damageReceived = averageDmg(retaliationCollateral.damage);
-
-							vstd::amin(damageReceived, retaliated->getAvailableHealth());
-
-							if(defender->unitSide() == retaliated->unitSide())
-								defenderDamageReduce += calculateDamageReduce(retaliated, damageReceived, damageCache);
-							else
-								ap.collateralDamageReduce += calculateDamageReduce(retaliated, damageReceived, damageCache);
-
-							defenderStates.at(retaliated->unitId())->damage(damageReceived);
-						}
-						
-					}
-
-					defenderState->afterAttack(attackInfo.shooting, true);
-				}
-
-				bool isEnemy = state->battleMatchOwner(attacker, u);
-
-				// this includes enemy units as well as attacker units under enemy's mind control
-				if(isEnemy)
-					ap.defenderDamageReduce += defenderDamageReduce;
-
-				// damaging attacker's units (even those under enemy's mind control) is considered friendly fire
-				if(attackerSide == u->unitSide())
-					ap.collateralDamageReduce += defenderDamageReduce;
-
-				if(u->unitId() == defender->unitId()
-					|| (!attackInfo.shooting && state->isMeleeAttackPossible(u, attacker, hex)))
-				{
-					//FIXME: handle RANGED_RETALIATION ?
-					ap.attackerDamageReduce += attackerDamageReduce;
-				}
-
-				defenderState->damage(damageDealt);
-
-				if(u->unitId() == defender->unitId())
-				{
-					ap.defenderDead = !defenderState->alive();
-				}
+				const auto targetState = defenderStates.at(target->unitId());
+				if(!targetState->alive())
+					continue;
+				auto simulatedAttack = ap.attack;
+				simulatedAttack.attacker = ap.attackerState.get();
+				simulatedAttack.defender = targetState.get();
+				const auto estimate = state->calculateDmgRange(simulatedAttack);
+				auto damage = std::min<int64_t>(averageDmg(estimate.damage), targetState->getAvailableHealth());
+				const auto reduction = calculateDamageReduce(target, damage, damageCache);
+				if(state->battleMatchOwner(attacker, target))
+					ap.defenderDamageReduce += reduction;
+				if(attackerSide == target->unitSide())
+					ap.collateralDamageReduce += reduction;
+				targetState->damage(damage);
 			}
+			ap.attackerState->afterAttack(attackInfo.shooting, false);
+			if(!strikesFirst && (i == 0 || repeatRetaliation) && canRespond())
+				respond(trivial);
+			ap.defenderDead = !respondingDefender->alive();
 		}
-
 #if BATTLE_TRACE_LEVEL>=2
 		logAi->trace("BattleAI AP: %s -> %s at %d from %d, affects %d units: d:%lld a:%lld c:%lld s:%lld",
 			attackInfo.attacker->unitType()->getJsonKey(),

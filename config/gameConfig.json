@@ -595,6 +595,11 @@
 
 		"combat":
 		{
+			"trivialStackRetaliation": {
+			"enabled": false,
+			"thresholdPercent": 10,
+			"damagePercent": 100
+			},
 			"focus": {
 				// Enable the shared Focus resource and its battle bars. Mods may override this.
 				"enabled": false,

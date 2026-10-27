@@ -11,6 +11,7 @@
 
 #include "IGameSettings.h"
 #include "json/JsonNode.h"
+#include <cmath>
 
 class DLL_LINKAGE GameSettings final : public IGameSettings, boost::noncopyable
 {
@@ -76,6 +77,21 @@ public:
 					value.Bool() = false;
 				else if(!value.isBool())
 					throw std::runtime_error(std::string("Invalid saved game setting ") + path.first + "." + path.second + ": expected boolean");
+			}
+			if(overrides["combat"]["trivialStackRetaliation"].isNull())
+				overrides["combat"]["trivialStackRetaliation"]["enabled"].Bool() = false;
+			else
+			{
+				const auto & config = overrides["combat"]["trivialStackRetaliation"];
+				if(!config.isStruct() || !config["enabled"].isBool())
+					throw std::runtime_error("Invalid saved game setting combat.trivialStackRetaliation: expected object with boolean enabled");
+				for(const auto & field : {std::pair{"thresholdPercent", 100}, std::pair{"damagePercent", 1000000}})
+				{
+					const auto & value = config[field.first];
+					if(!value.isNull() && (!value.isNumber() || !std::isfinite(value.Float()) || value.Float() < 0
+						|| value.Float() > field.second || value.Float() != value.Integer()))
+						throw std::runtime_error(std::string("Invalid saved game setting combat.trivialStackRetaliation.") + field.first);
+				}
 			}
 			loadOverrides(overrides);
 		}

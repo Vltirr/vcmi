@@ -50,6 +50,9 @@ void RecordingGameServer::applyPack(CPackForClient & pack)
 /// belonging to the next attack closes the window again.
 void RecordingGameServer::record(CPackForClient & pack)
 {
+	if(const auto * log = dynamic_cast<const BattleLogMessage *>(&pack))
+		for(const auto & line : log->lines)
+			battleLogLines.push_back(line.toString(LIBRARY->staticTexts()));
 	if(const auto * catapultAttack = dynamic_cast<const CatapultAttack *>(&pack))
 	{
 		catapultAttacks.push_back(*catapultAttack);
@@ -62,8 +65,9 @@ void RecordingGameServer::record(CPackForClient & pack)
 		return;
 	}
 
-	if(dynamic_cast<const BattleAttack *>(&pack))
+	if(const auto * attack = dynamic_cast<const BattleAttack *>(&pack))
 	{
+		attacks.push_back(*attack);
 		recording = false;
 		return;
 	}

@@ -53,6 +53,7 @@ set(lib_MAIN_SRCS
 	battle/AccessibilityInfo.cpp
 	battle/BattleAction.cpp
 	battle/BattleAttackInfo.cpp
+	battle/TrivialRetaliation.cpp
 	battle/BattleHex.cpp
 	battle/BattleHexArray.cpp
 	battle/BattleInfo.cpp
@@ -466,6 +467,7 @@ set(lib_MAIN_HEADERS
 	battle/AutocombatPreferences.h
 	battle/BattleAction.h
 	battle/BattleAttackInfo.h
+	battle/TrivialRetaliation.h
 	battle/BattleHex.h
 	battle/BattleHexArray.h
 	battle/BattleInfo.h

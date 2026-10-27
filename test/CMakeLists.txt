@@ -116,6 +116,7 @@ set(test_SRCS
 		server/battles/AcidBreathTest.cpp
 		server/battles/ActionOptionsTest.cpp
 		server/battles/AttackSequenceTest.cpp
+		server/battles/TrivialRetaliationTest.cpp
 		server/battles/BallistaDamageTest.cpp
 		server/battles/BattleTestFixture.cpp
 		server/battles/CombatEventTriggerTest.cpp

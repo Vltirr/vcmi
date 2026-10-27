@@ -12,6 +12,7 @@
 #include "BattleEvaluator.h"
 #include "../../lib/CStack.h"
 #include "../../lib/GameLibrary.h"
+#include "../../lib/bonuses/BonusCustomTypes.h"
 
 #include <tbb/parallel_for.h>
 
@@ -90,10 +91,7 @@ float BattleExchangeVariant::trackAttack(
 		{
 			if(unitToUpdate->unitId() == ap.attack.defender->unitId())
 			{
-				if(unitToUpdate->ableToRetaliate() && !affectedUnit->ableToRetaliate())
-				{
-					unitToUpdate->afterAttack(ap.attack.shooting, true);
-				}
+				static_cast<battle::CAmmo &>(unitToUpdate->counterAttacks) = affectedUnit->counterAttacks;
 
 #if BATTLE_TRACE_LEVEL>=1
 				logAi->trace(
@@ -141,48 +139,30 @@ float BattleExchangeVariant::trackAttack(
 	static const auto selectorBlocksRetaliation = Selector::type()(BonusType::BLOCKS_RETALIATION);
 	const bool counterAttacksBlocked = attacker->hasBonus(selectorBlocksRetaliation, cachingStringBlocksRetaliation);
 
-	int64_t attackDamage = damageCache.getDamage(attacker.get(), defender.get(), hb);
-	float defenderDamageReduce = AttackPossibility::calculateDamageReduce(defender.get(), attackDamage, damageCache);
+	const auto rules = hb->getBattle()->getTrivialRetaliationRules();
+	const auto trivial = rules.classify(*attacker, *defender);
+	const auto firstStrikeSelector = Selector::typeSubtype(BonusType::FIRST_STRIKE, BonusCustomSubtype::damageTypeAll)
+		.Or(Selector::typeSubtype(BonusType::FIRST_STRIKE, shooting ? BonusCustomSubtype::damageTypeRanged : BonusCustomSubtype::damageTypeMelee));
+	const bool strikesFirst = rules.enabled && defender->hasBonus(firstStrikeSelector) && !defender->hasBonusOfType(BonusType::NOT_ACTIVE);
 	float attackerDamageReduce = 0;
-
-	if(mode != AttackMode::ESTIMATE)
+	const auto canRespond = [&]()
 	{
-#if BATTLE_TRACE_LEVEL>=1
-		logAi->trace(
-			"%s -> %s, normal attack, %s, dps: %lld, %2f",
-			attacker->getDescription(),
-			defender->getDescription(),
-			shooting ? "shot" : "mellee",
-			attackDamage,
-			defenderDamageReduce);
-#endif
-
-		if(isOurAttack)
-		{
-			dpsScore.enemyDamageReduce += defenderDamageReduce;
-			attackerValue[attacker->unitId()].value += defenderDamageReduce;
-		}
-		else
-			dpsScore.ourDamageReduce += defenderDamageReduce;
-
-		defender->damage(attackDamage);
-		attacker->afterAttack(shooting, false);
-	}
-
-	if(mode == AttackMode::FIRST_STRIKE && defender->alive() && defender->ableToRetaliate() && !counterAttacksBlocked && !shooting)
+		if(!attacker->alive() || !defender->ableToRetaliate())
+			return false;
+		if(shooting)
+			return rules.enabled && defender->hasBonusOfType(BonusType::RANGED_RETALIATION)
+				&& !attacker->hasBonusOfType(BonusType::BLOCKS_RANGED_RETALIATION)
+				&& hb->battleCanShoot(defender.get(), attacker->getPosition());
+		return !counterAttacksBlocked && !attacker->isInvincible()
+			&& !hb->isLongWeaponAttack(attacker.get(), defender.get());
+	};
+	const auto respond = [&]()
 	{
-		auto retaliationDamage = damageCache.getDamage(defender.get(), attacker.get(), hb);
-		attackerDamageReduce = AttackPossibility::calculateDamageReduce(attacker.get(), retaliationDamage, damageCache);
-
-#if BATTLE_TRACE_LEVEL>=1
-		logAi->trace(
-			"%s -> %s, retaliation, dps: %lld, %2f",
-			defender->getDescription(),
-			attacker->getDescription(),
-			retaliationDamage,
-			attackerDamageReduce);
-#endif
-
+		BattleAttackInfo response(defender.get(), attacker.get(), 0, shooting);
+		auto estimate = hb->calculateDmgRange(response);
+		trivial.apply(estimate, *attacker);
+		auto damage = (estimate.damage.min + estimate.damage.max) / 2;
+		attackerDamageReduce = AttackPossibility::calculateDamageReduce(attacker.get(), damage, damageCache);
 		if(isOurAttack)
 		{
 			dpsScore.ourDamageReduce += attackerDamageReduce;
@@ -193,21 +173,30 @@ float BattleExchangeVariant::trackAttack(
 			dpsScore.enemyDamageReduce += attackerDamageReduce;
 			attackerValue[defender->unitId()].value += attackerDamageReduce;
 		}
-
-		attacker->damage(retaliationDamage);
-		defender->afterAttack(false, true);
-	}
-
-	auto score = defenderDamageReduce - attackerDamageReduce;
-
-#if BATTLE_TRACE_LEVEL>=1
-	if(!score)
+		attacker->damage(damage);
+		defender->afterAttack(shooting, !trivial.active());
+	};
+	if(mode == AttackMode::FIRST_STRIKE && strikesFirst && canRespond())
+		respond();
+	if(!attacker->alive() || !defender->alive())
+		return -attackerDamageReduce;
+	auto attackDamage = damageCache.getDamage(attacker.get(), defender.get(), hb);
+	const auto defenderDamageReduce = AttackPossibility::calculateDamageReduce(defender.get(), attackDamage, damageCache);
+	if(mode != AttackMode::ESTIMATE)
 	{
-		logAi->trace("Attack has zero score def:%2f att:%2f", defenderDamageReduce, attackerDamageReduce);
+		if(isOurAttack)
+		{
+			dpsScore.enemyDamageReduce += defenderDamageReduce;
+			attackerValue[attacker->unitId()].value += defenderDamageReduce;
+		}
+		else
+			dpsScore.ourDamageReduce += defenderDamageReduce;
+		defender->damage(attackDamage);
+		attacker->afterAttack(shooting, false);
 	}
-#endif
-
-	return score;
+	if(mode == AttackMode::FIRST_STRIKE && !strikesFirst && canRespond())
+		respond();
+	return defenderDamageReduce - attackerDamageReduce;
 }
 
 float BattleExchangeEvaluator::scoreValue(const BattleScore & score) const
@@ -861,10 +850,13 @@ BattleScore BattleExchangeEvaluator::calculateExchange(
 			}
 			else
 			{
+				bool repeatRetaliation = false;
 				for(int i = 0; i < totalAttacks; i++)
 				{
+					const bool freeResponse = exchangeBattle->getBattle()->getTrivialRetaliationRules().classify(*attacker, *defender).active();
 					v.trackAttack(attacker, defender, shooting, isOur, damageCache, exchangeBattle,
-						i == 0 ? BattleExchangeVariant::AttackMode::FIRST_STRIKE : BattleExchangeVariant::AttackMode::FOLLOWUP_STRIKE);
+						(i == 0 || repeatRetaliation) ? BattleExchangeVariant::AttackMode::FIRST_STRIKE : BattleExchangeVariant::AttackMode::FOLLOWUP_STRIKE);
+					repeatRetaliation = (i == 0 || repeatRetaliation) && freeResponse;
 
 					if(!attacker->alive() || !defender->alive())
 						break;

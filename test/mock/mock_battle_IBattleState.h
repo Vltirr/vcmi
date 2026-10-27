@@ -33,6 +33,7 @@ public:
 	MOCK_CONST_METHOD1(getEnchanterCounter, int32_t(BattleSide));
 	MOCK_CONST_METHOD1(getFocusPoints, int32_t(BattleSide));
 	MOCK_CONST_METHOD0(getFocusRules, FocusRules());
+	MOCK_CONST_METHOD0(getTrivialRetaliationRules, TrivialRetaliationRules());
 	MOCK_CONST_METHOD3(getActivationUsage, int32_t(BattleSide, const std::string &, EActivationLimitPeriod));
 	MOCK_CONST_METHOD2(getActivationUsage, int32_t(BattleSide, const ActivationStateKey &));
 	MOCK_CONST_METHOD2(getActivationCooldownReadyRound, int32_t(BattleSide, const ActivationStateKey &));

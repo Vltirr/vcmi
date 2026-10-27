@@ -11,7 +11,19 @@
 #include "GameSettings.h"
 #include "json/JsonUtils.h"
 #include "mapObjects/ManaAura.h"
+#include "battle/TrivialRetaliation.h"
 
+namespace
+{
+void normalizeTrivialRetaliation(JsonNode & config)
+{
+	const TrivialRetaliationRules rules(config);
+	config = JsonNode();
+	config["enabled"].Bool() = rules.enabled;
+	config["thresholdPercent"].Integer() = rules.thresholdPercent;
+	config["damagePercent"].Integer() = rules.damagePercent;
+}
+}
 bool IGameSettings::getBoolean(EGameSettings option) const
 {
 	return getValue(option).Bool();
@@ -47,6 +59,7 @@ const std::vector<GameSettings::SettingOption> GameSettings::settingProperties =
 		{EGameSettings::CAMPAIGN_UNLOCK_ALL,                              "campaign",  "unlockAll"                            },
 		{EGameSettings::CHEATS_BUILD_WITHOUT_GRAIL,                       "cheats",    "buildWithoutGrail"                    },
 		{EGameSettings::COMBAT_FOCUS, "combat", "focus"},
+		{EGameSettings::COMBAT_TRIVIAL_STACK_RETALIATION, "combat", "trivialStackRetaliation"},
 		{EGameSettings::COMBAT_ABILITY_BIAS,                              "combat",    "abilityBias"                          },
 		{EGameSettings::COMBAT_AREA_SHOT_CAN_TARGET_EMPTY_HEX,            "combat",    "areaShotCanTargetEmptyHex"            },
 		{EGameSettings::COMBAT_ATTACK_POINT_DAMAGE_FACTOR,                "combat",    "attackPointDamageFactor"              },
@@ -174,6 +187,8 @@ void GameSettings::loadBase(const JsonNode & input)
 		}
 
 		JsonUtils::mergeCopy(baseSettings[index], optionValue);
+		if(option.setting == EGameSettings::COMBAT_TRIVIAL_STACK_RETALIATION)
+			normalizeTrivialRetaliation(baseSettings[index]);
 		if(option.setting == EGameSettings::HEROES_MAGE_GUILD_MANA_AURA)
 			ManaAura::normalize(baseSettings[index]);
 	}
@@ -197,6 +212,8 @@ void GameSettings::addOverride(EGameSettings option, const JsonNode & input)
 	overridenSettings[index] = input;
 	JsonNode newValue = baseSettings[index];
 	JsonUtils::mergeCopy(newValue, input);
+	if(option == EGameSettings::COMBAT_TRIVIAL_STACK_RETALIATION)
+		normalizeTrivialRetaliation(newValue);
 	if(option == EGameSettings::HEROES_MAGE_GUILD_MANA_AURA)
 		ManaAura::normalize(newValue);
 	actualSettings[index] = newValue;
@@ -225,6 +242,11 @@ JsonNode GameSettings::getAllOverrides() const
 	for(const auto & option : settingProperties)
 	{
 		const JsonNode & value = overridenSettings[static_cast<int32_t>(option.setting)];
+		if(option.setting == EGameSettings::COMBAT_TRIVIAL_STACK_RETALIATION)
+		{
+			result[option.group][option.key] = getValue(option.setting);
+			continue;
+		}
 		if(option.setting == EGameSettings::SPELLS_LEARN_NOW_CAST_LATER
 			|| option.setting == EGameSettings::TOWNS_SHARED_MAGE_GUILDS
 			|| option.setting == EGameSettings::SPELLS_ARCANE_ARCHIVE_PERSONAL)
