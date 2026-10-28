@@ -116,7 +116,7 @@ class SpellSpecialistWisdomTest : public TinyMapGameTest, public ::testing::With
 TEST_P(SpellSpecialistWisdomTest, SpecialtyRemainsUsableWithoutWisdom)
 {
 	overrideSettingBeforeInit(EGameSettings::SPELLS_LEARN_NOW_CAST_LATER, true);
-	const auto * heroType = LIBRARY->heroes()->getByName("core:" + GetParam());
+	const auto * heroType = LIBRARY->heroTypes()->getByName("core:" + GetParam());
 	ASSERT_NE(heroType, nullptr);
 	TinyH3M::TinyH3MBuilder builder(EMapFormat::SOD);
 	builder.size(36, false).playerActive(PlayerColor(0))
