@@ -139,7 +139,12 @@ TEST_P(SpellSpecialistWisdomTest, SpecialtyRemainsUsableWithoutWisdom)
 	apply(knowledge);
 	EXPECT_FALSE(hero->canCastThisSpell(SpellID(SpellID::IMPLOSION).toSpell()));
 
-	auto restored = CMemorySerializer::deepCopy(*hero, gameState().get());
+	CMemorySerializer memory;
+	memory.oser & hero;
+	memory.iser.cb = gameState().get();
+	memory.iser.loadingGamestate = true;
+	std::unique_ptr<CGHeroInstance> restored;
+	memory.iser & restored;
 	restored->restoreBonusSystem(*gameState());
 	EXPECT_TRUE(restored->canCastThisSpell(specialtySpell.toSpell()));
 	EXPECT_FALSE(restored->canCastThisSpell(SpellID(SpellID::IMPLOSION).toSpell()));
