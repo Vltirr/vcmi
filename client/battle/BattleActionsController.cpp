@@ -22,6 +22,7 @@
 #include "../CPlayerInterface.h"
 #include "../GameEngine.h"
 #include "../GameInstance.h"
+#include "events/InputHandler.h"
 #include "../gui/CIntObject.h"
 #include "../gui/CursorHandler.h"
 #include "../gui/WindowHandler.h"
@@ -670,8 +671,8 @@ void BattleActionsController::chooseAreaShotOrMovement(const BattleHex & targetH
 			selectMovementDestination(movementDestination);
 		else
 		{
-			cancelMoveAndShootSelection();
-			owner.giveCommand(EActionType::WALK, movementDestination);
+			const auto * activeStack = owner.stacksController->getActiveStack();
+			sendAction(BattleAction::makeMove(activeStack, movementDestination), activeStack);
 		}
 	};
 	owner.curInt->showYesNoDialog(
