@@ -98,7 +98,7 @@ TEST_F(SaveGameTest, invalidMetadataIsRejected)
 	EXPECT_THROW(SaveMetadata::parse(metadata.toBytes(), "test"), std::runtime_error);
 }
 
-TEST_F(SaveGameTest, acceptedForkSaveUsesLegacyHeaderReader)
+TEST_F(SaveGameTest, previousForkSaveIsRejected)
 {
 	startTestGame();
 	const auto acceptedVersion = static_cast<ESerializationVersion>(0x40000000
@@ -119,13 +119,6 @@ TEST_F(SaveGameTest, acceptedForkSaveUsesLegacyHeaderReader)
 		file.write(SAVEGAME_MAGIC.data(), SAVEGAME_MAGIC.size());
 		file.write(reinterpret_cast<const char *>(data.data()), data.size());
 	}
-	const auto version = CLoadFile::readVersion(saveFile);
-	EXPECT_EQ(version, acceptedVersion);
-	EXPECT_FALSE(serializationHasFeature(version, ESerializationVersion::SAVE_CHUNKS));
-	CLegacyLoadFile loader(saveFile, nullptr);
-	CMapHeader restoredHeader;
-	StartInfo restoredStartInfo;
-	loader.loadHeader(restoredHeader, restoredStartInfo);
-	EXPECT_EQ(restoredHeader.width, map->width);
-	EXPECT_EQ(restoredStartInfo.mapname, gameState->getStartInfo()->mapname);
+	EXPECT_THROW(CLoadFile::readVersion(saveFile), std::runtime_error);
+	EXPECT_THROW(CLegacyLoadFile(saveFile, nullptr), std::runtime_error);
 }

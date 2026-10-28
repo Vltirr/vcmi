@@ -185,7 +185,10 @@ TEST_F(FocusActivationTest, loaderRejectsPositiveCostActivationWhenFocusIsDisabl
 	ability.setModScope("vcmi-test");
 	InstantIdentifierResolver resolver(*LIBRARY->identifiers());
 
-	EXPECT_FALSE(JsonUtils::parseBonus(ability, resolver));
+	const auto bonus = JsonUtils::parseBonus(ability, resolver);
+	ASSERT_NE(bonus, nullptr);
+	EXPECT_EQ(bonus->type, BonusType::NONE);
+	EXPECT_FALSE(bonus->activation.has_value());
 }
 
 TEST_F(FocusActivationTest, loaderAcceptsZeroCostActivationWhenFocusIsDisabled)
@@ -235,7 +238,10 @@ TEST_F(FocusActivationTest, loaderRejectsDeliberateActivationWithoutId)
 	ability.setModScope("vcmi-test");
 	InstantIdentifierResolver resolver(*LIBRARY->identifiers());
 
-	EXPECT_FALSE(JsonUtils::parseBonus(ability, resolver));
+	const auto bonus = JsonUtils::parseBonus(ability, resolver);
+	ASSERT_NE(bonus, nullptr);
+	EXPECT_EQ(bonus->type, BonusType::NONE);
+	EXPECT_FALSE(bonus->activation.has_value());
 }
 
 TEST_F(FocusActivationTest, loaderRejectsAmbiguousCooldownScope)
@@ -257,7 +263,10 @@ TEST_F(FocusActivationTest, loaderRejectsAmbiguousCooldownScope)
 	ability.setModScope("vcmi-test");
 	InstantIdentifierResolver resolver(*LIBRARY->identifiers());
 
-	EXPECT_FALSE(JsonUtils::parseBonus(ability, resolver));
+	const auto bonus = JsonUtils::parseBonus(ability, resolver);
+	ASSERT_NE(bonus, nullptr);
+	EXPECT_EQ(bonus->type, BonusType::NONE);
+	EXPECT_FALSE(bonus->activation.has_value());
 }
 
 TEST_F(FocusActivationTest, activationIgnoresNativeSpellTurnMarker)

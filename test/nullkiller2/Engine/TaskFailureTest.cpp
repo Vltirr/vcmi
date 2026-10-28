@@ -8,6 +8,8 @@
  */
 #include "StdInc.h"
 
+#include <shared_mutex>
+
 #include "AI/Nullkiller2/AIGateway.h"
 #include "AI/Nullkiller2/Behaviors/EscapeBehavior.h"
 #include "AI/Nullkiller2/Engine/Nullkiller.h"
@@ -18,6 +20,7 @@
 #include "nullkiller2/NullkillerTest.h"
 
 #include "lib/callback/CCallback.h"
+#include "lib/gameState/CGameState.h"
 #include "lib/mapObjects/CGHeroInstance.h"
 
 #include <tbb/global_control.h>
@@ -152,6 +155,7 @@ TEST_F(FailedEscapeRouteTest, replanningAvoidsFailedMultiNodeEscapeRoute)
 
 	auto gateway = makeGateway(PLAYER);
 	auto & ai = *gateway->nullkiller;
+	std::shared_lock stateLock(CGameState::mutex);
 	NK2AI::NullkillerTestAccess::prepareState(ai);
 
 	NK2AI::Goals::EscapeBehavior escape;

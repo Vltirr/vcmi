@@ -8,6 +8,8 @@
  */
 #include "StdInc.h"
 
+#include <shared_mutex>
+
 #include "AI/Nullkiller2/AIGateway.h"
 
 #include "mock/GameHandlerTestClient.h"
@@ -165,6 +167,7 @@ TEST_F(ResourceTradingTurnTest, tradesForArmyOnlyOncePerTurn)
 	TradingPhaseClient client(gameState(), PLAYER);
 	auto gateway = makeGateway(PLAYER, &client);
 
+	std::shared_lock stateLock(CGameState::mutex);
 	gateway->nullkiller->makeTurn();
 
 	EXPECT_GT(client.recruitmentRequests, 0)
@@ -182,6 +185,7 @@ TEST_F(ResourceTradingTurnTest, stopsTradingWhenServerRejectsTrade)
 	TradeRejectingClient client(gameState(), PLAYER);
 	auto gateway = makeGateway(PLAYER, &client);
 
+	std::shared_lock stateLock(CGameState::mutex);
 	gateway->nullkiller->makeTurn();
 
 	EXPECT_EQ(client.rejectedTrades, 1)
