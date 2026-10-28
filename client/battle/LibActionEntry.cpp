@@ -18,6 +18,7 @@
 #include "../GameInstance.h"
 #include "../../lib/CBonusTypeHandler.h"
 #include "../../lib/CCreatureHandler.h"
+#include "../../lib/GameLibrary.h"
 #include "../../lib/battle/Activation.h"
 #include "../../lib/bonuses/Bonus.h"
 
