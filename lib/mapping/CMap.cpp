@@ -102,6 +102,9 @@ CMapEvent::CMapEvent()
 
 bool CMapEvent::occursToday(int currentDay) const
 {
+	if (disabled)
+		return false;
+
 	if (currentDay == firstOccurrence + 1)
 		return true;
 
@@ -163,6 +166,7 @@ void CMapEvent::serializeJson(JsonSerializeFormat & handler)
 void CCastleEvent::serializeJson(JsonSerializeFormat & handler)
 {
 	CMapEvent::serializeJson(handler);
+	handler.serializeBool("neutralAffected", neutralAffected, false);
 
 	// TODO: handler.serializeIdArray("buildings", buildings);
 	{

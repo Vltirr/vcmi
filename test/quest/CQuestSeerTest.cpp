@@ -390,6 +390,24 @@ TEST_F(QuestSeerTest, FullArmyRemoval_disabled_keepsHeroWithOneStack)
 		<< "without the H3-bug setting the hero must keep at least one stack";
 }
 
+TEST_F(QuestSeerTest, FullArmyRemoval_zeroCreatureRewardKeepsHeroWithOneStack)
+{
+	// A reward of 0 units gives nothing, so it must not let the seer take the last stack
+	auto s = seerZeroCreatureReward();
+	ASSERT_NO_FATAL_FAILURE(startWithMap(std::move(s.builder)));
+
+	auto * hero = findHeroAt(s.heroPos);
+	auto * seer = findObjectAt(s.questPos);
+	ASSERT_NE(hero, nullptr);
+	ASSERT_NE(seer, nullptr);
+
+	visit(hero, seer);
+	if(!gameEvents().blockingDialogs.empty())
+		answerDialog(hero, 1);
+
+	EXPECT_EQ(hero->getStackCount(SlotID(0)), 1);
+}
+
 TEST_F(QuestSeerTest, Timeout_expiresOnLastDay)
 {
 	// A quest with a lastDay=7 deadline becomes inaccessible after day 7
@@ -416,6 +434,23 @@ TEST_F(QuestSeerTest, Timeout_expiresOnLastDay)
 		<< "expired seer must not register a quest log entry";
 	EXPECT_TRUE(gameEvents().blockingDialogs.empty())
 		<< "expired seer must not offer its reward";
+}
+
+TEST_F(QuestSeerTest, Timeout_showsCustomTimeoutMessage)
+{
+	auto s = seerTimeout();
+	ASSERT_NO_FATAL_FAILURE(startWithMap(std::move(s.builder)));
+
+	auto * seer = expectAt<SeerHut>(s.questPos);
+	seer->getQuest().timeoutTextID = "core.genrltxt.1";
+
+	advanceDays(10);
+	GameRandomizer randomizer(*gameState());
+	seer->newTurn(gameEvents(), randomizer);
+
+	visit(findHeroAt(s.heroPos), seer);
+	ASSERT_FALSE(gameEvents().infoWindows.empty());
+	EXPECT_EQ(gameEvents().infoWindows.back().text.toString(LIBRARY->staticTexts()), LIBRARY->generaltexth->translate("core.genrltxt.1"));
 }
 
 TEST_F(QuestSeerTest, ManaReward_exceedsFullManaPool)

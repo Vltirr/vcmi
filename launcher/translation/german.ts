@@ -93,7 +93,7 @@
     </message>
     <message>
         <location filename="../aboutProject/aboutproject_moc.ui" line="329"/>
-        <location filename="../aboutProject/aboutproject_moc.cpp" line="442"/>
+        <location filename="../aboutProject/dataexporter.cpp" line="311"/>
         <source>Export saves</source>
         <translation>Spielstände exportieren</translation>
     </message>
@@ -102,61 +102,61 @@
         <translation type="vanished">Speichere Log</translation>
     </message>
     <message>
-        <location filename="../aboutProject/aboutproject_moc.cpp" line="442"/>
+        <location filename="../aboutProject/dataexporter.cpp" line="311"/>
         <source>Zip archives (*.zip)</source>
         <translation>Zip-Archive (*.zip)</translation>
     </message>
     <message>
-        <location filename="../aboutProject/aboutproject_moc.cpp" line="415"/>
-        <location filename="../aboutProject/aboutproject_moc.cpp" line="532"/>
+        <location filename="../aboutProject/dataexporter.cpp" line="284"/>
+        <location filename="../aboutProject/dataexporter.cpp" line="401"/>
         <source>Error</source>
         <translation>Fehler</translation>
     </message>
     <message>
-        <location filename="../aboutProject/aboutproject_moc.cpp" line="411"/>
-        <location filename="../aboutProject/aboutproject_moc.cpp" line="448"/>
+        <location filename="../aboutProject/dataexporter.cpp" line="280"/>
+        <location filename="../aboutProject/dataexporter.cpp" line="317"/>
         <source>Saves exported to %1</source>
         <translation>Spielstände nach %1 exportiert</translation>
     </message>
     <message>
-        <location filename="../aboutProject/aboutproject_moc.cpp" line="415"/>
+        <location filename="../aboutProject/dataexporter.cpp" line="284"/>
         <source>Failed to save archive to selected destination</source>
         <translation>Das Archiv konnte nicht am ausgewählten Zielort gespeichert werden</translation>
     </message>
     <message>
-        <location filename="../aboutProject/aboutproject_moc.cpp" line="433"/>
-        <location filename="../aboutProject/aboutproject_moc.cpp" line="435"/>
+        <location filename="../aboutProject/dataexporter.cpp" line="302"/>
+        <location filename="../aboutProject/dataexporter.cpp" line="304"/>
         <source>Select destination file</source>
         <translation>Zieldatei auswählen</translation>
     </message>
     <message>
-        <location filename="../aboutProject/aboutproject_moc.cpp" line="433"/>
+        <location filename="../aboutProject/dataexporter.cpp" line="302"/>
         <source>Please select destination file and save the archive as vcmi-saves.zip.</source>
         <translation>Bitte wählen sie die Zieldatei aus und speichern Sie das Archiv als vcmi-saves.zip.</translation>
     </message>
     <message>
-        <location filename="../aboutProject/aboutproject_moc.cpp" line="435"/>
+        <location filename="../aboutProject/dataexporter.cpp" line="304"/>
         <source>Zip archives (*.zip);;All files (*.*)</source>
         <translation>Zip-Archive (*.zip);;Alle Dateien (*.*)</translation>
     </message>
     <message>
-        <location filename="../aboutProject/aboutproject_moc.cpp" line="464"/>
-        <location filename="../aboutProject/aboutproject_moc.cpp" line="465"/>
+        <location filename="../aboutProject/dataexporter.cpp" line="333"/>
+        <location filename="../aboutProject/dataexporter.cpp" line="334"/>
         <source>Exporting logs...</source>
         <translation>Logs werden exportiert...</translation>
     </message>
     <message>
-        <location filename="../aboutProject/aboutproject_moc.cpp" line="464"/>
+        <location filename="../aboutProject/dataexporter.cpp" line="333"/>
         <source>Cancel</source>
         <translation>Abbrechen</translation>
     </message>
     <message>
-        <location filename="../aboutProject/aboutproject_moc.cpp" line="465"/>
+        <location filename="../aboutProject/dataexporter.cpp" line="334"/>
         <source>Log export</source>
         <translation>Log exportieren</translation>
     </message>
     <message>
-        <location filename="../aboutProject/aboutproject_moc.cpp" line="532"/>
+        <location filename="../aboutProject/dataexporter.cpp" line="401"/>
         <source>Failed to create archive: %1</source>
         <translation>Erstellen des Archivs fehlgeschlagen: %1</translation>
     </message>
@@ -169,14 +169,14 @@
         <translation type="vanished">Das Archiv wird über eine andere Anwendung gesendet. Teile die Protokolle z. B. über Discord mit den Entwicklern.</translation>
     </message>
     <message>
-        <location filename="../aboutProject/aboutproject_moc.cpp" line="411"/>
-        <location filename="../aboutProject/aboutproject_moc.cpp" line="448"/>
-        <location filename="../aboutProject/aboutproject_moc.cpp" line="541"/>
+        <location filename="../aboutProject/dataexporter.cpp" line="280"/>
+        <location filename="../aboutProject/dataexporter.cpp" line="317"/>
+        <location filename="../aboutProject/dataexporter.cpp" line="410"/>
         <source>Success</source>
         <translation>Erfolg</translation>
     </message>
     <message>
-        <location filename="../aboutProject/aboutproject_moc.cpp" line="541"/>
+        <location filename="../aboutProject/dataexporter.cpp" line="410"/>
         <source>Logs saved to %1, please send them to the developers</source>
         <translation>Log-Dateien gespeichert unter %1, bitte an die Entwickler senden</translation>
     </message>
@@ -186,7 +186,7 @@
     <message>
         <location filename="../modManager/cdownloadmanager_moc.cpp" line="171"/>
         <source>Failed to copy file %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Kopieren von Datei %1 fehlgeschlagen</translation>
     </message>
 </context>
 <context>
@@ -429,9 +429,9 @@
     <message numerus="yes">
         <location filename="../modManager/cmodlistview_moc.cpp" line="886"/>
         <source>Downloading %n mods. %p% (%v MB out of %m MB) finished</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>Lade %n Mod herunter. %p% (%v MB von %m MB) fertiggestellt</numerusform>
+            <numerusform>Lade %n Mods herunter. %p% (%v MB von %m MB) fertiggestellt</numerusform>
         </translation>
     </message>
     <message>
@@ -553,14 +553,16 @@ Ursache: %2</translation>
     <message>
         <location filename="../modManager/cmodlistview_moc.cpp" line="1548"/>
         <source>Mods disabled</source>
-        <translation type="unfinished"></translation>
+        <translation>Mods deaktiviert</translation>
     </message>
     <message>
         <location filename="../modManager/cmodlistview_moc.cpp" line="1549"/>
         <source>Following mods were disabled due to changes in installed mods:
 
 %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Die folgenden Mods wurden aufgrund Änderungen an den installierten Mods deaktiviert:
+
+%1</translation>
     </message>
     <message>
         <location filename="../modManager/cmodlistview_moc.cpp" line="1616"/>
@@ -632,12 +634,18 @@ This usually happens on older systems, such as Windows 7, that are missing recen
 However, it may also mean that someone is tampering with your internet connection, for example on a public Wi-Fi network. In that case, downloaded files could be replaced with harmful ones.
 
 Do you want to turn off this check and try again? You can turn it back on at any time in launcher settings, using the &quot;Ignore SSL errors&quot; option.</source>
-        <translation type="unfinished"></translation>
+        <translation>VCMI konnte nicht bestätigen, dass eine Verbindung zum korrekten Download-Server besteht.
+
+Dies tritt in der Regel auf älteren Systemen wie Windows 7 auf, auf denen aktuelle Sicherheitsupdates fehlen.
+
+Es könnte jedoch auch bedeuten, dass jemand Ihre Internetverbindung manipuliert, beispielsweise in einem öffentlichen WLAN-Netzwerk. In diesem Fall könnten heruntergeladene Dateien durch schädliche Dateien ersetzt werden.
+
+Möchten Sie diese Überprüfung deaktivieren und es erneut versuchen? Sie können sie jederzeit in den Launcher-Einstellungen über die Option &quot;SSL-Fehler ignorieren&quot; wieder aktivieren.</translation>
     </message>
     <message>
         <location filename="../modManager/cmodlistview_moc.cpp" line="1007"/>
         <source>Unable to verify download server</source>
-        <translation type="unfinished"></translation>
+        <translation>Download-Server konnte nicht verifiziert werden</translation>
     </message>
     <message>
         <location filename="../modManager/cmodlistview_moc.cpp" line="1666"/>
@@ -909,17 +917,17 @@ Exklusiver Vollbildmodus - das Spiel nimmt den gesamten Bildschirm ein und verwe
     <message>
         <location filename="../settingsView/csettingsview_moc.ui" line="819"/>
         <source>HTTP proxy</source>
-        <translation type="unfinished"></translation>
+        <translation>HTTP Proxy</translation>
     </message>
     <message>
         <location filename="../settingsView/csettingsview_moc.ui" line="826"/>
         <source>Open help</source>
-        <translation type="unfinished"></translation>
+        <translation>Hilfe öffnen</translation>
     </message>
     <message>
         <location filename="../settingsView/csettingsview_moc.ui" line="833"/>
         <source>Proxy server used for downloads, for example http://host:port or socks5h://host:port. If empty, proxy from environment variables is used</source>
-        <translation type="unfinished"></translation>
+        <translation>Für Downloads verwendeter Proxy-Server, zum Beispiel http://host:port oder socks5h://host:port. Ist das Feld leer, wird der Proxy aus den Umgebungsvariablen verwendet</translation>
     </message>
     <message>
         <location filename="../settingsView/csettingsview_moc.ui" line="1249"/>
@@ -2039,12 +2047,12 @@ Bin (%n Bytes):
     <message>
         <location filename="../modManager/modstatecontroller.cpp" line="223"/>
         <source>Mod is not located in user data directory and can not be managed by launcher</source>
-        <translation type="unfinished"></translation>
+        <translation>Mod befindet sich nicht im Benutzerdatenverzeichnis und kann nicht über den Launcher verwaltet werden</translation>
     </message>
     <message>
         <location filename="../modManager/modstatecontroller.cpp" line="227"/>
         <source>Mod directory is a git repository and can not be managed by launcher</source>
-        <translation type="unfinished"></translation>
+        <translation>Mod-Verzeichnis ist ein Git-Repository und kann nicht über den Launcher verwaltet werden</translation>
     </message>
     <message>
         <location filename="../modManager/modstatecontroller.cpp" line="245"/>
@@ -2090,12 +2098,12 @@ Bin (%n Bytes):
     <message>
         <location filename="../modManager/modstatecontroller.cpp" line="317"/>
         <source>Failed to remove directory %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Das Verzeichnis %1 konnte nicht gelöscht werden</translation>
     </message>
     <message>
         <location filename="../modManager/modstatecontroller.cpp" line="320"/>
         <source>Failed to create directory %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Das Verzeichnis %1 konnte nicht erstellt werden</translation>
     </message>
     <message>
         <location filename="../modManager/modstatecontroller.cpp" line="352"/>
@@ -2105,7 +2113,7 @@ Bin (%n Bytes):
     <message>
         <location filename="../modManager/modstatecontroller.cpp" line="359"/>
         <source>Failed to replace directory %1. Close all applications that may be using it, such as file explorer, and try again.</source>
-        <translation type="unfinished"></translation>
+        <translation>Das Verzeichnis %1 konnte nicht ersetzt werden. Schließen Sie alle Anwendungen, die es möglicherweise nutzen, wie z. B. den Datei-Explorer, und versuchen Sie es erneut.</translation>
     </message>
     <message>
         <location filename="../modManager/modstatecontroller.cpp" line="386"/>

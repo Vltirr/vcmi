@@ -68,12 +68,22 @@ set(lib_MAIN_SRCS
 	battle/CombatValue.cpp
 	battle/CPlayerBattleCallback.cpp
 	battle/CUnitState.cpp
+	battle/DamageEstimationTexts.cpp
 	battle/Destination.cpp
 	battle/IBattleState.cpp
 	battle/ReachabilityInfo.cpp
 	battle/SideInBattle.cpp
 	battle/SiegeInfo.cpp
 	battle/Unit.cpp
+	battle/actions/ForkActions.cpp
+	battle/actions/BattleActionType.cpp
+	battle/actions/CatapultAction.cpp
+	battle/actions/HealAction.cpp
+	battle/actions/MeleeAttackActions.cpp
+	battle/actions/NoTargetActions.cpp
+	battle/actions/ShootAction.cpp
+	battle/actions/SpellCastActions.cpp
+	battle/actions/WalkAction.cpp
 
 	bonuses/Bonus.cpp
 	bonuses/BonusCache.cpp
@@ -210,6 +220,8 @@ set(lib_MAIN_SRCS
 	modding/CModHandler.cpp
 	modding/CModVersion.cpp
 	modding/ContentTypeHandler.cpp
+	modding/IdentifierResolver.cpp
+	modding/LibraryLoadContext.cpp
 	modding/IdentifierStorage.cpp
 	modding/ModDescription.cpp
 	modding/ModIncompatibility.cpp
@@ -281,7 +293,6 @@ set(lib_MAIN_SRCS
 	serializer/JsonDeserializer.cpp
 	serializer/JsonSerializeFormat.cpp
 	serializer/JsonSerializer.cpp
-	serializer/JsonUpdater.cpp
 	serializer/SerializerReflection.cpp
 
 	scripting/ScriptVariablesStorage.cpp
@@ -476,21 +487,33 @@ set(lib_MAIN_HEADERS
 	battle/BattleStateInfoForRetreat.h
 	battle/BattleProxy.h
 	battle/BattleUnitTurnReason.h
+	battle/UnitTurnStatus.h
 	battle/CBattleInfoCallback.h
 	battle/CBattleInfoEssentials.h
 	battle/CObstacleInstance.h
 	battle/CombatValue.h
 	battle/CPlayerBattleCallback.h
 	battle/CUnitState.h
+	battle/DamageEstimationTexts.h
 	battle/Destination.h
 	battle/IBattleInfoCallback.h
 	battle/IBattleState.h
 	battle/IUnitInfo.h
-	battle/PossiblePlayerBattleAction.h
 	battle/ReachabilityInfo.h
 	battle/SideInBattle.h
 	battle/SiegeInfo.h
 	battle/Unit.h
+	battle/actions/ActionOption.h
+	battle/actions/ForkActions.h
+	battle/actions/BattleActionType.h
+	battle/actions/CatapultAction.h
+	battle/actions/HealAction.h
+	battle/actions/IBattleActionEnvironment.h
+	battle/actions/MeleeAttackActions.h
+	battle/actions/NoTargetActions.h
+	battle/actions/ShootAction.h
+	battle/actions/SpellCastActions.h
+	battle/actions/WalkAction.h
 
 	bonuses/Bonus.h
 	bonuses/BonusCache.h
@@ -668,6 +691,8 @@ set(lib_MAIN_HEADERS
 	modding/CModHandler.h
 	modding/CModVersion.h
 	modding/ContentTypeHandler.h
+	modding/IdentifierResolver.h
+	modding/LibraryLoadContext.h
 	modding/IdentifierStorage.h
 	modding/ModDescription.h
 	modding/ModIncompatibility.h
@@ -768,7 +793,6 @@ set(lib_MAIN_HEADERS
 	serializer/JsonDeserializer.h
 	serializer/JsonSerializeFormat.h
 	serializer/JsonSerializer.h
-	serializer/JsonUpdater.h
 	serializer/ESerializationVersion.h
 	serializer/PlayerConnectionID.h
 	serializer/RegisterTypes.h

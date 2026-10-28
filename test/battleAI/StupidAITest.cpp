@@ -17,7 +17,7 @@
 #endif
 #include "../../lib/mapObjects/CGHeroInstance.h"
 #include "../../lib/battle/BattleAction.h"
-#include "../../lib/battle/PossiblePlayerBattleAction.h"
+#include "../../lib/battle/actions/BattleActionType.h"
 #include "../../lib/battle/BattleInfo.h"
 #include "../../lib/battle/CPlayerBattleCallback.h"
 #include "../../lib/bonuses/BonusCustomTypes.h"
@@ -141,10 +141,11 @@ TEST_P(ReturningAbilityAITest, UsesVisibleHeroInfoToSelectCreatureAbilities)
 	callback->onBattleStarted(battle());
 	ASSERT_EQ(callback->getBattle(BattleID(0))->battleGetMySide(), BattleSide::ATTACKER);
 	const bool shouldActivate = enchanter || (enemyHasHero && enemyHasMana);
-	const auto actions = callback->getBattle(BattleID(0))->getClientActionsForStack(stack, BattleClientInterfaceData{});
+	std::vector<ActionOption> actions;
+	BattleActionType::collectAllOptions(*callback->getBattle(BattleID(0)), *stack, actions);
 	const bool offersAbility = std::ranges::any_of(actions, [&bonus](const auto & action)
 	{
-		return action.get() == PossiblePlayerBattleAction::CREATURE_ABILITY && action.ability() == bonus->activation->id;
+		return action.type == BattleActionType::find(EActionType::CREATURE_ABILITY) && action.activatedAbility == bonus->activation->id;
 	});
 	EXPECT_EQ(offersAbility, shouldActivate);
 	std::optional<BattleAction> selected;

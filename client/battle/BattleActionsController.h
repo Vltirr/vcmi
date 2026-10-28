@@ -9,13 +9,11 @@
  */
 #pragma once
 
+#include "BattleActionEntry.h"
+
 #include "../../lib/battle/CBattleInfoCallback.h"
 
 class BattleAction;
-namespace spells {
-class Caster;
-enum class Mode;
-}
 
 class BattleInterface;
 
@@ -25,26 +23,8 @@ class BattleActionsController
 {
 	BattleInterface & owner;
 	
-	/// all actions possible to call at the moment by player
-	std::vector<PossiblePlayerBattleAction> possibleActions;
-
-	/// spell for which player's hero is choosing destination
-	std::shared_ptr<BattleAction> heroSpellToCast;
-
-	// targets of multi-target spells cast by monsters
-	std::vector<BattleHex> monsterSpellTargets;
-
-	// the monster that casts the spell 
-	const CStack * monsterCaster = nullptr;
-
-	/// cached message that was set by this class in status bar
-	std::string currentConsoleMsg;
-
-	/// if true, active stack could possibly cast some target spell
-	std::vector<const CSpell *> creatureSpells;
-
-	/// stack that has been selected as first target for multi-target spells (Teleport & Sacrifice)
-	const CStack * selectedStack;
+	/// all entries possible to select at the moment by player
+	BattleActionEntries possibleActions;
 
 	/// locally selected firing position for a move-and-shoot action
 	std::optional<BattleHex> selectedMovementHex;
@@ -61,78 +41,82 @@ class BattleActionsController
 	};
 	HexActionContext evaluateHex(const BattleHex & hex) const;
 
-	bool isCastingPossibleHere (const CSpell * spell, const CStack *shere, const BattleHex & myNumber);
-	std::vector<PossiblePlayerBattleAction> getPossibleActionsForStack (const CStack *stack) const; //called when stack gets its turn
-	void reorderPossibleActionsPriority(const CStack * stack, const CStack * targetStack);
+	BattleHex getSelectedMeleeAttackHex(const BattleHex & targetHex) const;
+	void selectMovementDestination(const BattleHex & destination);
+	void chooseAreaShotOrMovement(const BattleHex & targetHex, const HexActionContext & context);
+	std::string getMoveAndShootSelectionPrompt() const;
+	bool mobileSelectionAllowed() const;
+	ActionPreview mobilePreview(const BattleHex & hex, const HexActionContext & context) const;
 
-	bool actionIsLegal(PossiblePlayerBattleAction action, const BattleHex & hoveredHex,
-		const HexActionContext & context);
+	/// Preview of the entry selected for a hex
+	struct HexSelection
+	{
+		BattleHex hex;
+		ActionPreview preview;
+	};
 
-	void actionSetCursor(PossiblePlayerBattleAction action, const BattleHex & hoveredHex,
-		const HexActionContext & context);
-	void actionSetCursorBlocked(PossiblePlayerBattleAction action, const BattleHex & hoveredHex);
+	/// Selection of the last queried hex, reused by the per-frame queries until the next hover or change of the controller state
+	std::optional<HexSelection> cachedSelection;
 
-	std::string actionGetStatusMessage(PossiblePlayerBattleAction action, const BattleHex & hoveredHex,
-		const HexActionContext & context);
-	std::string actionGetStatusMessageBlocked(PossiblePlayerBattleAction action, const BattleHex & hoveredHex);
+	/// true while the player chooses the target of a hero spell
+	bool heroSpellcasting = false;
 
-	void actionRealize(PossiblePlayerBattleAction action, const BattleHex & hoveredHex,
-		const HexActionContext & context, const std::function<void(const CStack *)> & showStackInfo);
+	/// Destinations chosen so far for the target of the only remaining entry
+	battle::Target partialTarget;
 
-	PossiblePlayerBattleAction selectAction(const BattleHex & myNumber);
-	PossiblePlayerBattleAction selectAction(const BattleHex & hex, const HexActionContext & context);
+	/// Active unit, deactivated while the partial target is not empty
+	const CStack * suspendedStack = nullptr;
 
-	const CStack * getStackForHex(const BattleHex & myNumber) ;
+	/// cached message that was set by this class in status bar
+	std::string currentConsoleMsg;
 
-	/// attempts to initialize spellcasting action for stack
-	/// will silently return if stack is not a spellcaster
+	/// Spell that the active unit rolled for its turn out of its weighted SPELLCASTER bonuses, if any
+	SpellID rolledCreatureSpell = SpellID::NONE;
+
+	BattleActionEntries getPossibleActionsForStack (const CStack *stack); //called when stack gets its turn
+
+	/// True if the entry wraps an option of the lib type of the action type
+	static bool isLibAction(const IBattleActionEntry & entry, EActionType actionType);
+
+	/// Highest priority entry that is legal for the hex, else the highest priority entry; nullptr if there are no entries
+	std::shared_ptr<const IBattleActionEntry> selectEntry(const BattleHex & myNumber);
+
+	/// Selection for the hex, taken from the cache when it holds the same hex
+	const HexSelection & getSelection(const BattleHex & hex);
+
+	/// Rolls the spell of the turn for a unit with weighted SPELLCASTER bonuses
 	void tryActivateStackSpellcasting(const CStack *casterStack);
-
-	/// returns spell that is currently being cast by hero or nullptr if none
-	const CSpell * getHeroSpellToCast() const;
-
-	/// if current stack is spellcaster, returns spell being cast, or null othervice
-	const CSpell * getStackSpellToCast(const BattleHex & hoveredHex);
 
 	/// returns true if current stack is a spellcaster
 	bool isActiveStackSpellcaster() const;
-	BattleHex getSelectedMeleeAttackHex(const BattleHex & targetHex) const;
-	void selectMovementDestination(const BattleHex & hex);
-	void chooseAreaShotOrMovement(const BattleHex & targetHex, const HexActionContext & context);
-	std::string getMoveAndShootSelectionPrompt() const;
 
 public:
 	BattleActionsController(BattleInterface & owner);
 
 	/// initialize list of potential actions for new active stack
 	void activateStack();
-
-	/// update activation costs without recreating controls or changing the selected action mode
 	void updateActivationAvailability();
+	bool moveAndShootSelectionActive() const;
+	std::optional<BattleHex> getSelectedMovementHex() const;
+	void cancelMoveAndShootSelection();
 
 	/// returns true if UI is currently in hero spell target selection mode
 	bool heroSpellcastingModeActive() const;
 	/// returns true if UI is currently in "F" hotkey creature spell target selection mode
 	bool creatureSpellcastingModeActive() const;
 
-	/// returns true if one of the following is true:
-	/// - we are casting spell by hero
-	/// - we are casting spell by creature in targeted mode (F hotkey)
-	/// - current creature is spellcaster and preferred action for current hex is spellcast
-	bool currentActionSpellcasting(const BattleHex & hoveredHex);
-
-	/// returns true if current hex action is "walk and spellcast" with active stack
-	bool currentActionWalkAndCast(const BattleHex& hoveredHex);
-
-	/// returns true if currently selected action allows long weapon reach for melee attacks
-	bool currentActionUsesLongWeapon(const BattleHex & hoveredHex);
-
-	/// returns true when the selected legal action uses a melee approach direction
-	bool currentActionHasAttackDirection(const BattleHex & hoveredHex);
+	/// Approaches of the legal entry selected for the hex, empty if it needs none
+	std::vector<ActionApproach> getApproaches(const BattleHex & hoveredHex);
 
 	/// Short presentation of the same legal action used by the pointer entry.
 	std::string primaryActionText(const BattleHex & hex);
 	std::string secondaryActionText(const BattleHex & hex, bool persistentInfo) const;
+
+	/// Hexes highlighted as the result of clicking the hovered hex
+	BattleHexArray getShadedHexes(const BattleHex & hoveredHex);
+
+	/// Units affected by clicking the hovered hex, besides the unit on the hex
+	std::vector<uint32_t> getAffectedUnits(const BattleHex & hoveredHex);
 
 	/// enter targeted spellcasting mode for creature, e.g. via "F" hotkey
 	void enterCreatureCastingMode();
@@ -142,6 +126,12 @@ public:
 
 	/// ends casting spell (eg. when spell has been cast or canceled)
 	void endCastingSpell();
+
+	const battle::Target & getPartialTarget() const;
+	/// Adds a destination chosen for the target of the entry, which stays the only entry until its action is sent or cancelled
+	void addTargetStep(const IBattleActionEntry & entry, const battle::Destination & destination);
+	/// Sends the action of the unit, or of the hero if there is no actor, and leaves the target selection of a spell
+	void sendAction(const BattleAction & action, const CStack * actor);
 
 	/// update cursor and status bar according to new active hex
 	void onHexHovered(const BattleHex & hoveredHex);
@@ -156,19 +146,8 @@ public:
 	/// performs action according to selected hex
 	void onHexRightClicked(const BattleHex & clickedHex, const std::function<void(const CStack *)> & showStackInfo = {}, const std::function<void(const std::string &)> & showTextInfo = {});
 
-	bool moveAndShootSelectionActive() const;
-	std::optional<BattleHex> getSelectedMovementHex() const;
-	void cancelMoveAndShootSelection();
-
-	const spells::Caster * getCurrentSpellcaster() const;
-	const CSpell * getCurrentSpell(const BattleHex & hoveredHex);
-	spells::Mode getCurrentCastMode() const;
-
-	/// methods to work with array of possible actions, needed to control special creatures abilities
-	const std::vector<PossiblePlayerBattleAction> & getPossibleActions() const;
-	
-	/// sets list of high-priority actions that should be selected before any other actions
-	void setPriorityActions(const std::vector<PossiblePlayerBattleAction> &);
+	/// Replaces the entries and drops the cached selection
+	void setEntries(BattleActionEntries entries);
 
 	/// resets possible actions to original state
 	void resetCurrentStackPossibleActions();

@@ -20,6 +20,7 @@
 #include "../../../lib/bonuses/Propagators.h"
 #include "../../../lib/bonuses/Updaters.h"
 #include "../../../lib/json/JsonBonus.h"
+#include "../../../lib/modding/IdentifierResolver.h"
 #include "../../../lib/serializer/CMemorySerializer.h"
 #include "../../../lib/mapping/CMap.h"
 #include "../../../lib/mapObjects/CGHeroInstance.h"
@@ -368,7 +369,7 @@ TEST_F(MobileShooterTest, IncapacitatingObstacleConsumesActionWithoutShooting)
 	EXPECT_TRUE(moveAndShoot(shooter, target));
 	EXPECT_EQ(shooter->getPosition(), BattleHex(destinationHex));
 	EXPECT_TRUE(shooter->hasBonusOfType(BonusType::NOT_ACTIVE));
-	EXPECT_TRUE(shooter->movedThisRound);
+	EXPECT_TRUE(shooter->moved());
 	EXPECT_EQ(shooter->shots.available(), shotsBefore);
 	EXPECT_EQ(target->getAvailableHealth(), healthBefore);
 	EXPECT_FALSE(battle()->battleCanShootAfterMoving(shooter, target->getPosition()));
@@ -385,7 +386,7 @@ TEST_F(MobileShooterTest, StoppingObstacleConsumesActionWithoutShooting)
 
 	EXPECT_TRUE(moveAndShoot(shooter, target));
 	EXPECT_EQ(shooter->getPosition(), BattleHex(destinationHex));
-	EXPECT_TRUE(shooter->movedThisRound);
+	EXPECT_TRUE(shooter->moved());
 	EXPECT_EQ(shooter->shots.available(), shotsBefore);
 	EXPECT_EQ(target->getAvailableHealth(), healthBefore);
 }
@@ -454,7 +455,8 @@ TEST_F(MobileShooterTest, ParsesOptionalMobileProfileFromJson)
 	constexpr char json[] = R"({"type":"SHOOTER","subtype":"bonusSubtype.mobileShooter","addInfo":3})";
 	JsonNode node(json, std::size(json), "Mobile shooter test");
 	node.setModScope("core");
-	const auto bonus = JsonUtils::parseBonus(node);
+	InstantIdentifierResolver resolver(*LIBRARY->identifiers());
+	const auto bonus = JsonUtils::parseBonus(node, resolver);
 	ASSERT_NE(bonus, nullptr);
 	EXPECT_EQ(bonus->type, BonusType::SHOOTER);
 	EXPECT_EQ(bonus->subtype, BonusSubtypeID(BonusCustomSubtype::mobileShooter));
@@ -492,7 +494,8 @@ TEST_F(MobileShooterTest, LegacyNumericAndMissingShooterSubtypesStayStationary)
 		SCOPED_TRACE(json);
 		JsonNode node(json.data(), json.size(), "Legacy shooter test");
 		node.setModScope("core");
-		const auto bonus = JsonUtils::parseBonus(node);
+		InstantIdentifierResolver resolver(*LIBRARY->identifiers());
+		const auto bonus = JsonUtils::parseBonus(node, resolver);
 		ASSERT_NE(bonus, nullptr);
 		EXPECT_NE(bonus->subtype, BonusSubtypeID(BonusCustomSubtype::mobileShooter));
 		shooter->addNewBonus(bonus);
@@ -613,7 +616,7 @@ TEST_P(TowerShootingTest, AutomaticShotFromSpecialPosition)
 	const auto healthBefore = target->getAvailableHealth();
 	beginCombat();
 
-	EXPECT_TRUE(tower->movedThisRound);
+	EXPECT_TRUE(tower->moved());
 	EXPECT_LT(target->getAvailableHealth(), healthBefore);
 }
 
@@ -643,11 +646,11 @@ TEST_P(AutomaticShooterTest, ManualControlDecisionIsSharedByRangedAndMeleeRoutes
 		EXPECT_EQ(battle()->battleActiveUnit(), shooter);
 		EXPECT_EQ(shooter->getPosition(), BattleHex(shooterHex));
 		EXPECT_EQ(shooter->shots.available(), shotsBefore);
-		EXPECT_FALSE(shooter->movedThisRound);
+		EXPECT_FALSE(shooter->moved());
 	}
 	else
 	{
-		EXPECT_TRUE(shooter->movedThisRound);
+		EXPECT_TRUE(shooter->moved());
 		EXPECT_EQ(shooter->shots.available(), shotsBefore - (mobile ? 1 : 0));
 	}
 }

@@ -57,6 +57,7 @@
 #include "../mapping/CMap.h"
 #include "../mapping/CMapEditManager.h"
 #include "../mapping/CMapService.h"
+#include "../modding/IdentifierResolver.h"
 #include "../modding/IdentifierStorage.h"
 #include "../modding/ModScope.h"
 #include "../networkPacks/NetPacksBase.h"
@@ -234,6 +235,7 @@ void CGameState::init(const IMapService * mapService, StartInfo * si, IGameRando
 	initTowns(randomGenerator);
 	initTownNames(randomGenerator);
 	placeHeroesInTowns();
+	initHeroBoats(gameRandomizer);
 	initMapObjects(gameRandomizer);
 	buildBonusSystemTree();
 	initVisitingAndGarrisonedHeroes();
@@ -458,14 +460,14 @@ void CGameState::initGlobalBonuses()
 {
 	const JsonNode & baseBonuses = getSettings().getValue(EGameSettings::BONUSES_GLOBAL);
 	logGlobal->debug("\tLoading global bonuses");
+	InstantIdentifierResolver resolver(*LIBRARY->identifiers());
 	for(const auto & b : baseBonuses.Struct())
 	{
-		auto bonus = JsonUtils::parseBonus(b.second);
+		auto bonus = JsonUtils::parseBonus(b.second, resolver);
 		bonus->source = BonusSource::GLOBAL;//for all
 		bonus->sid = BonusSourceID(); //there is one global object
 		globalEffects.addNewBonus(bonus);
 	}
-	LIBRARY->creh->loadCrExpBon(globalEffects);
 }
 
 void CGameState::initDifficulty()
@@ -476,11 +478,17 @@ void CGameState::initDifficulty()
 
 	const JsonNode & difficultyAI(config["ai"][GameConstants::DIFFICULTY_NAMES[scenarioOps->difficulty]]);
 	const JsonNode & difficultyHuman(config["human"][GameConstants::DIFFICULTY_NAMES[scenarioOps->difficulty]]);
+	const bool isTutorialScenario = boost::iequals(scenarioOps->mapname, "Maps/Tutorial");
 
-	auto setDifficulty = [this](PlayerState & state, const JsonNode & json)
+	auto setDifficulty = [this, &config, isTutorialScenario](PlayerState & state, const JsonNode & json)
 	{
+		InstantIdentifierResolver resolver(*LIBRARY->identifiers());
+
 		//set starting resources
-		state.resources.resolveFromJson(json["resources"]);
+		if (isTutorialScenario && state.human)
+			state.resources.resolveFromJson(config["tutorial"]["resources"], resolver);
+		else
+			state.resources.resolveFromJson(json["resources"], resolver);
 
 		//handicap
 		const PlayerSettings &ps = scenarioOps->getIthPlayersSettings(state.color);
@@ -488,12 +496,12 @@ void CGameState::initDifficulty()
 
 		//set global bonuses
 		for(auto & jsonBonus : json["globalBonuses"].Vector())
-			if(auto bonus = JsonUtils::parseBonus(jsonBonus))
+			if(auto bonus = JsonUtils::parseBonus(jsonBonus, resolver))
 				state.addNewBonus(bonus);
 
 		//set battle bonuses
 		for(auto & jsonBonus : json["battleBonuses"].Vector())
-			if(auto bonus = JsonUtils::parseBonus(jsonBonus))
+			if(auto bonus = JsonUtils::parseBonus(jsonBonus, resolver))
 				state.battleBonuses.push_back(*bonus);
 
 	};
@@ -729,40 +737,6 @@ void CGameState::initHeroes(IGameRandomizer & gameRandomizer)
 		}
 		hero->initHero(gameRandomizer);
 		hero->armyChanged();
-	}
-
-	// generate boats for all heroes on water
-	for (auto heroID : map->getHeroesOnMap())
-	{
-		auto hero = getHero(heroID);
-		const auto pos = hero->visitablePos();
-
-		if(!map->isInTheMap(pos))
-		{
-			logGlobal->warn(
-				"initHeroes: hero %s has invalid visitablePos %s (outside map) – skipping boat generation",
-				hero->getNameTextID(), pos.toString());
-			continue;
-		}
-
-		const auto & tile = map->getTile(hero->visitablePos());
-
-		if (hero->ID == Obj::PRISON)
-			continue;
-
-		if (tile.isWater())
-		{
-			auto handler = LIBRARY->objtypeh->getHandlerFor(Obj::BOAT, hero->getBoatType().getNum());
-			auto boat = std::dynamic_pointer_cast<CGBoat>(handler->create(this, nullptr));
-			handler->configureObject(boat.get(), gameRandomizer);
-
-			boat->setAnchorPos(hero->anchorPos());
-			boat->appearance = handler->getTemplates().front();
-			map->generateUniqueInstanceName(boat.get());
-			map->addNewObject(boat);
-			map->hideObject(boat.get());
-			hero->setBoat(boat.get());
-		}
 	}
 
 	std::set<HeroTypeID> heroesToCreate = getUnusedAllowedHeroes(); //ids of heroes to be created and put into the pool
@@ -1072,6 +1046,42 @@ void CGameState::initMapObjects(IGameRandomizer & gameRandomizer)
 	map->calculateGuardingGreaturePositions(); //calculate once again when all the guards are placed and initialized
 }
 
+void CGameState::initHeroBoats(IGameRandomizer & gameRandomizer)
+{
+	for (auto heroID : map->getHeroesOnMap())
+	{
+		auto hero = getHero(heroID);
+		const auto pos = hero->visitablePos();
+
+		if(!map->isInTheMap(pos))
+		{
+			logGlobal->warn(
+				"initHeroBoats: hero %s has invalid visitablePos %s (outside map) – skipping boat generation",
+				hero->getNameTextID(), pos.toString());
+			continue;
+		}
+
+		const auto & tile = map->getTile(hero->visitablePos());
+
+		if (hero->ID == Obj::PRISON)
+			continue;
+
+		if (tile.isWater())
+		{
+			auto handler = LIBRARY->objtypeh->getHandlerFor(Obj::BOAT, hero->getBoatType().getNum());
+			auto boat = std::dynamic_pointer_cast<CGBoat>(handler->create(this, nullptr));
+			handler->configureObject(boat.get(), gameRandomizer);
+
+			boat->setAnchorPos(hero->anchorPos());
+			boat->appearance = handler->getTemplates().front();
+			map->generateUniqueInstanceName(boat.get());
+			map->addNewObject(boat);
+			map->hideObject(boat.get());
+			hero->setBoat(boat.get());
+		}
+	}
+}
+
 void CGameState::placeHeroesInTowns()
 {
 	for(auto & player : players)
@@ -1155,6 +1165,28 @@ BattleInfo * CGameState::getBattle(const BattleID & battle)
 	return nullptr;
 }
 
+BattleField CGameState::getSpecialTerrainAt(const int3 & tile) const
+{
+	//look only for magical terrain-like objects covering given tile
+	for(auto & obj : map->getObjects<CGTerrainPatch>())
+		if(obj->coveringAt(tile) && obj->getBattlefield() != BattleField::NONE)
+			return obj->getBattlefield();
+
+	return BattleField::NONE;
+}
+
+CBonusSystemNode & CGameState::getSpecialTerrainNode(BattleField terrain)
+{
+	auto & node = specialTerrainNodes[terrain];
+	if(!node)
+	{
+		node = std::make_unique<CBonusSystemNode>(BonusNodeType::UNKNOWN);
+		for(const auto & bonus : terrain.getInfo()->bonuses)
+			node->addNewBonus(bonus);
+	}
+	return *node;
+}
+
 BattleField CGameState::battleGetBattlefieldType(int3 tile, vstd::RNG & randomGenerator) const
 {
 	assert(tile.isValid());
@@ -1171,17 +1203,9 @@ BattleField CGameState::battleGetBattlefieldType(int3 tile, vstd::RNG & randomGe
 		return topObject->getBattlefield();
 	}
 
-	for(auto & obj : map->getObjects<CGTerrainPatch>())
-	{
-		//look only for magical terrain-like objects covering given tile
-		if(!obj->coveringAt(tile))
-			continue;
-
-		auto customBattlefield = obj->getBattlefield();
-
-		if(customBattlefield != BattleField::NONE)
-			return customBattlefield;
-	}
+	BattleField specialTerrain = getSpecialTerrainAt(tile);
+	if(specialTerrain != BattleField::NONE)
+		return specialTerrain;
 
 	if(map->isCoastalTile(tile)) //coastal tile is always ground
 		return BattleField(*LIBRARY->identifiers()->getIdentifier("core", "battlefield.sand_shore"));

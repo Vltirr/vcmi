@@ -17,6 +17,7 @@
 #include "../battle/BattleInfo.h"
 #include "../battle/BattleHexArray.h"
 #include "../battle/BattleUnitTurnReason.h"
+#include "../battle/UnitTurnStatus.h"
 #include "../filesystem/ResourcePath.h"
 #include "../mapObjects/army/CStackBasicDescriptor.h"
 #include "../texts/MetaString.h"
@@ -44,6 +45,20 @@ struct DLL_LINKAGE BattleStart : public CPackForClient
 };
 
 struct DLL_LINKAGE BattleNextRound : public CPackForClient
+{
+	BattleID battleID = BattleID::NONE;
+
+	void visitTyped(ICPackVisitor & visitor) override;
+
+	template <typename Handler> void serialize(Handler & h)
+	{
+		h & battleID;
+		assert(battleID != BattleID::NONE);
+	}
+};
+
+/// Ends the tactics phase of the battle
+struct DLL_LINKAGE BattleTacticsEnded : public CPackForClient
 {
 	BattleID battleID = BattleID::NONE;
 
@@ -306,6 +321,10 @@ struct DLL_LINKAGE StartAction : public CPackForClient
 
 	BattleID battleID = BattleID::NONE;
 	BattleAction ba;
+	/// New turn status of the acting unit, if the action changes it
+	std::optional<battle::UnitTurnStatus> turnStatus;
+	/// The acting unit uses up its spellcasting for this turn
+	bool castSpellThisTurn = false;
 
 	void visitTyped(ICPackVisitor & visitor) override;
 
@@ -313,6 +332,8 @@ struct DLL_LINKAGE StartAction : public CPackForClient
 	{
 		h & battleID;
 		h & ba;
+		h & turnStatus;
+		h & castSpellThisTurn;
 		assert(battleID != BattleID::NONE);
 	}
 };

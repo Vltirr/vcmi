@@ -45,6 +45,7 @@
 #include "../../lib/CStack.h"
 #include "../../lib/GameLibrary.h"
 #include "../../lib/StartInfo.h"
+#include "../../lib/battle/BattleAction.h"
 #include "../../lib/battle/BattleInfo.h"
 #include "../../lib/bonuses/BonusEnum.h"
 #include "../../lib/battle/CPlayerBattleCallback.h"
@@ -258,7 +259,8 @@ void BattleWindow::createQuickSpellWindow()
 	quickSpellWindow = std::make_shared<QuickSpellPanel>(owner);
 	quickSpellWindow->moveTo(Point(pos.x - 52, pos.y));
 
-	unitActionWindow = std::make_shared<UnitActionPanel>(owner);
+	if(!unitActionWindow)
+		unitActionWindow = std::make_shared<UnitActionPanel>(owner);
 	unitActionWindow->moveTo(Point(pos.x + pos.w, pos.y));
 
 	if(settings["battle"]["enableQuickSpellPanel"].Bool())
@@ -300,9 +302,6 @@ void BattleWindow::showStickyQuickSpellWindow()
 
 	quickSpellWindow->setEnabled(quickSpellWindowVisible);
 	unitActionWindow->setEnabled(unitActionWindowVisible);
-
-	if(owner.actionsController && unitActionWindowVisible) // needed after resize of window
-		owner.actionsController->activateStack();
 
 	createTimerInfoWindows();
 	setPositionInfoWindow();
@@ -768,7 +767,7 @@ void BattleWindow::bFleef()
 
 void BattleWindow::reallyFlee()
 {
-	owner.giveCommand(EActionType::RETREAT);
+	owner.sendCommand(BattleAction::makeRetreat(owner.getBattle()->battleGetMySide()));
 	ENGINE->cursor().set(Cursor::Map::POINTER);
 }
 
@@ -835,17 +834,17 @@ void BattleWindow::reallySurrender(bool allowMarketplaceOffer, bool marketplaceS
 	}
 	else
 	{
-		owner.giveCommand(EActionType::SURRENDER);
+		owner.sendCommand(BattleAction::makeSurrender(owner.getBattle()->battleGetMySide()));
 		ENGINE->cursor().set(Cursor::Map::POINTER);
 	}
 }
 
-void BattleWindow::setPossibleActions(const std::vector<PossiblePlayerBattleAction> & actions)
+void BattleWindow::setPossibleActions(const BattleActionEntries & actions)
 {
 	unitActionWindow->setPossibleActions(actions);
 }
 
-void BattleWindow::updateActivationAvailability(const std::vector<PossiblePlayerBattleAction> & actions)
+void BattleWindow::updateActivationAvailability(const BattleActionEntries & actions)
 {
 	unitActionWindow->updateActivationAvailability(actions);
 }
@@ -944,8 +943,9 @@ void BattleWindow::bWaitf()
 	if (owner.actionsController->heroSpellcastingModeActive())
 		return;
 
-	if (owner.stacksController->getActiveStack() != nullptr)
-		owner.giveCommand(EActionType::WAIT);
+	const CStack * stack = owner.stacksController->getActiveStack();
+	if (stack != nullptr)
+		owner.sendCommand(BattleAction::makeWait(stack), stack);
 }
 
 void BattleWindow::bDefencef()
@@ -953,8 +953,9 @@ void BattleWindow::bDefencef()
 	if (owner.actionsController->heroSpellcastingModeActive())
 		return;
 
-	if (owner.stacksController->getActiveStack() != nullptr)
-		owner.giveCommand(EActionType::DEFEND);
+	const CStack * stack = owner.stacksController->getActiveStack();
+	if (stack != nullptr)
+		owner.sendCommand(BattleAction::makeDefend(stack), stack);
 }
 
 void BattleWindow::bConsoleUpf()
@@ -996,7 +997,7 @@ void BattleWindow::blockUI(bool on)
 		canCastSpells = spellcastingProblem == ESpellCastProblem::OK || spellcastingProblem == ESpellCastProblem::MAGIC_IS_BLOCKED;
 	}
 
-	bool canWait = owner.stacksController->getActiveStack() ? !owner.stacksController->getActiveStack()->waitedThisTurn : false;
+	bool canWait = owner.stacksController->getActiveStack() ? !owner.stacksController->getActiveStack()->waitedThisRound() : false;
 	bool tacticsMode = owner.isInTacticsMode();
 
 	setShortcutBlocked(EShortcut::GLOBAL_OPTIONS, on);

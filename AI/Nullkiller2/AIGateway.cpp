@@ -668,9 +668,10 @@ void AIGateway::showBlockingDialog(const std::string & text, const std::vector<C
 		{
 			//yes&no -> always answer yes, we are a brave AI :)
 			bool answer = true;
-			auto objects = cc->getVisitableObjs(target);
+			// dialogs that are not caused by visit, e.g. commander resurrection, have no target tile
+			auto objects = target.isValid() && cc->isVisible(target) ? cc->getVisitableObjs(target) : std::vector<const CGObjectInstance *>();
 
-			if(heroPtr.isVerified() && target.isValid() && !objects.empty())
+			if(heroPtr.isVerified() && !objects.empty())
 			{
 				auto topObj = objects.front()->id == heroPtr->id ? objects.back() : objects.front();
 				auto objType = topObj->ID; // top object should be our hero
@@ -781,18 +782,18 @@ void AIGateway::showTeleportDialog(const CGHeroInstance * hero, TeleportChannelI
 	});
 }
 
-void AIGateway::showGarrisonDialog(const CArmedInstance * up, const CGHeroInstance * down, bool removableUnits, QuestionID questionID, const MetaString & customTitle)
+void AIGateway::showGarrisonDialog(const CArmedInstance * up, const CGHeroInstance * down, QuestionID questionID, const MetaString & customTitle)
 {
-	LOG_TRACE_PARAMS(logAi, "removableUnits '%i', questionID '%i'", removableUnits % questionID);
+	LOG_TRACE_PARAMS(logAi, "questionID '%i'", questionID);
 	std::string s1 = up->nodeName();
 	std::string s2 = down->nodeName();
 
 	status.addQuestion(questionID, boost::str(boost::format("Garrison dialog with %s and %s") % s1 % s2));
 
 	//you can't request action from action-response thread
-	executeActionAsync("showGarrisonDialog", [this, up, down, removableUnits, questionID]()
+	executeActionAsync("showGarrisonDialog", [this, up, down, questionID]()
 	{
-		if(removableUnits && up->tempOwner == down->tempOwner && nullkiller->settings->isGarrisonTroopsUsageAllowed() && !cc->getStartInfo()->restrictedGarrisonsForAI())
+		if(!up->isLocked() && up->tempOwner == down->tempOwner && nullkiller->settings->isGarrisonTroopsUsageAllowed() && !cc->getStartInfo()->restrictedGarrisonsForAI())
 		{
 			pickBestCreatures(down, up);
 		}
@@ -1048,8 +1049,17 @@ void AIGateway::recruitCreatures(const CGDwelling * d, const CArmedInstance * re
 
 		int count = d->creatures[i].first;
 		CreatureID creID = d->creatures[i].second.back();
+		ArtifactID warMachine = creID.toCreature()->warMachine;
 
-		if(!recruiter->getSlotFor(creID).validSlot())
+		if(warMachine.hasValue())
+		{
+			const auto * hero = dynamic_cast<const CGHeroInstance *>(recruiter);
+			if(!hero || !hero->canRecruitWarMachine(warMachine))
+				continue;
+
+			vstd::amin(count, 1);
+		}
+		else if(!recruiter->getSlotFor(creID).validSlot())
 		{
 			for(const auto & stack : recruiter->Slots())
 			{
@@ -1071,7 +1081,7 @@ void AIGateway::recruitCreatures(const CGDwelling * d, const CArmedInstance * re
 			}
 		}
 
-		vstd::amin(count, cc->getResourceAmount() / creID.toCreature()->getFullRecruitCost());
+		vstd::amin(count, cc->getResourceAmount().affordableCount(creID.toCreature()->getFullRecruitCost()));
 		if(count > 0)
 			cc->recruitCreatures(d, recruiter, creID, count, i);
 	}
@@ -1081,7 +1091,8 @@ void AIGateway::battleStart(const BattleID & battleID, const CCreatureSet * army
 {
 	assert(!playerID.isValidPlayer() || status.getBattle() == UPCOMING_BATTLE);
 	status.setBattle(ONGOING_BATTLE);
-	const CGObjectInstance * presumedEnemy = vstd::backOrNull(cc->getVisitableObjs(tile)); //may be nullptr in some very are cases -> eg. visited monolith and fighting with an enemy at the FoW covered exit
+	// battle tile may be hidden, e.g. when teleporting via monolith into enemy hero on fog-covered exit
+	const CGObjectInstance * presumedEnemy = cc->isVisible(tile) ? vstd::backOrNull(cc->getVisitableObjs(tile)) : nullptr;
 	battlename = boost::str(boost::format("Starting battle of %s attacking %s at %s") % (hero1 ? hero1->getNameTextID() : "a army") % (presumedEnemy ? presumedEnemy->getObjectNameTextID() : "unknown enemy") % tile.toString());
 	CAdventureAI::battleStart(battleID, army1, army2, tile, hero1, hero2, side, replayAllowed);
 }
@@ -1459,21 +1470,20 @@ void AIGateway::tryRealize(Goals::Trade & g) //trade
 		if(const auto * m = dynamic_cast<const IMarket*>(obj))
 		{
 			auto freeRes = cc->getResourceAmount(); //trade only resources which are not reserved
-			for(auto it = ResourceSet::nziterator(freeRes); it.valid(); it++)
+			for(const auto & [res, amount] : freeRes.nonZeroEntries())
 			{
-				auto res = it->resType;
 				if(res.getNum() == g.resID) //sell any other resource
 					continue;
 
 				int toGive;
 				int toGet;
 				m->getOffer(res.getNum(), g.resID, toGive, toGet, EMarketMode::RESOURCE_RESOURCE);
-				toGive = static_cast<int>(toGive * (it->resVal / toGive)); //round down
+				toGive = static_cast<int>(toGive * (amount / toGive)); //round down
 				//TODO trade only as much as needed
 				if (toGive) //don't try to sell 0 resources
 				{
 					cc->trade(m->getObjInstanceID(), EMarketMode::RESOURCE_RESOURCE, res, GameResID(g.resID), toGive);
-					acquiredResources = static_cast<int>(toGet * (it->resVal / toGive));
+					acquiredResources = static_cast<int>(toGet * (amount / toGive));
 					logAi->debug("Traded %d of %s for %d of %s at %s", toGive, res, acquiredResources, g.resID, obj->getObjectNameTextID());
 				}
 				if (cc->getResourceAmount(GameResID(g.resID)))

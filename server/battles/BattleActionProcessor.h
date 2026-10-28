@@ -36,6 +36,7 @@ class ICombatEventScript;
 namespace spells
 {
 class Spell;
+class Problem;
 }
 
 /// Processes incoming battle action requests and applies requested action(s)
@@ -51,6 +52,8 @@ class BattleActionProcessor : boost::noncopyable
 		std::optional<ActivationStateKey> cooldown;
 		int32_t previousCooldownReadyRound = 0;
 	};
+	/// IBattleActionEnvironment for actions applied to one battle
+	class ActionEnvironment;
 
 	struct MovementResult
 	{
@@ -131,6 +134,7 @@ class BattleActionProcessor : boost::noncopyable
 	};
 
 	MovementResult moveStack(const CBattleInfoCallback & battle, int stack, BattleHex dest);
+	void makeRangedAttack(const CBattleInfoCallback & battle, const CStack * stack, const BattleHex & destination, bool mobileShooting = false);
 	TrivialRetaliation makeAttack(const CBattleInfoCallback & battle, const CStack * attacker, const CStack * defender, const AttackDescriptor & attack);
 
 	/// Runs one melee attack to completion: first strike, every attacker hit, the retaliation,
@@ -159,30 +163,12 @@ class BattleActionProcessor : boost::noncopyable
 	void addGenericKilledLog(BattleLogMessage & blm, const CStack * defender, int32_t killed, bool multiple) const;
 	void addGenericDamageLog(BattleLogMessage& blm, const std::shared_ptr<battle::CUnitState> &attackerState, int64_t damageDealt) const;
 
-	bool canStackAct(const CBattleInfoCallback & battle, const CStack * stack);
+	/// Reports every text of the problem, or `fallback` if it has none
+	void complain(const spells::Problem & problem, const std::string & fallback);
 
-	bool doEmptyAction(const CBattleInfoCallback & battle, const BattleAction & ba);
-	bool doEndTacticsAction(const CBattleInfoCallback & battle, const BattleAction & ba);
-	bool doRetreatAction(const CBattleInfoCallback & battle, const BattleAction & ba);
-	bool doSurrenderAction(const CBattleInfoCallback & battle, const BattleAction & ba);
-	bool doHeroSpellAction(const CBattleInfoCallback & battle, const BattleAction & ba);
-	bool doWalkAction(const CBattleInfoCallback & battle, const BattleAction & ba);
-	bool doWaitAction(const CBattleInfoCallback & battle, const BattleAction & ba);
-	bool doDefendAction(const CBattleInfoCallback & battle, const BattleAction & ba);
-	bool doAttackAction(const CBattleInfoCallback & battle, const BattleAction & ba);
-	bool doWalkAndSpellcastAction(const CBattleInfoCallback & battle, const BattleAction & ba);
-	bool doWalkAndShootAction(const CBattleInfoCallback & battle, const BattleAction & ba);
-	bool doShootAction(const CBattleInfoCallback & battle, const BattleAction & ba);
-	bool executeShot(const CBattleInfoCallback & battle, const CStack * stack, const BattleHex & destination,
-		BattleSide side, bool mobileShooting = false);
-	bool doCatapultAction(const CBattleInfoCallback & battle, const BattleAction & ba);
-	bool doUnitSpellAction(const CBattleInfoCallback & battle, const BattleAction & ba);
-	bool doHealAction(const CBattleInfoCallback & battle, const BattleAction & ba);
-	bool doCreatureAbilityAction(const CBattleInfoCallback & battle, const BattleAction & ba);
-	/// Validates and records an action's generic activation policy before its effect is dispatched.
 	ActivationConsumption consumeActivation(const CBattleInfoCallback & battle, const CStack * stack, const BattleAction & ba);
-
-	bool dispatchBattleAction(const CBattleInfoCallback & battle, const BattleAction & ba);
+	bool doCreatureAbilityAction(const CBattleInfoCallback & battle, const BattleAction & ba);
+	/// Applies a valid action, or a turn skip of the unit of an invalid unit action. Returns false for an invalid action
 	bool makeBattleActionImpl(const CBattleInfoCallback & battle, const BattleAction & ba);
 	void removeBonuses(const CBattleInfoCallback & battle, const battle::Unit * stack, const BonusList & bonuses);
 

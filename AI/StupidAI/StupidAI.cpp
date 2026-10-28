@@ -128,11 +128,11 @@ static std::optional<BattleAction> findReturningCreatureAbility(const std::share
 			continue;
 		if(!battle::isActivationAvailable(*battle, stack, EActionType::CREATURE_ABILITY, SpellID::NONE, bonus->activation->id))
 			continue;
-		if(bonus->type == BonusType::ENCHANTER && !bonus->activation->cooldown && battle->battleGetEnchanterCounter(stack->unitSide()) != 0)
+		if(bonus->type == BonusType::ENCHANTER && !bonus->activation->cooldown && battle->battleGetEnchanterCounter(stack->controllingSide()) != 0)
 			continue;
 		if(bonus->type == BonusType::MANA_DRAIN)
 		{
-			const auto opponentHero = battle->battleGetHeroInfo(battle->otherSide(stack->unitSide()));
+			const auto opponentHero = battle->battleGetHeroInfo(battle->otherSide(stack->controllingSide()));
 			if(!opponentHero.details || opponentHero.details->mana == 0)
 				continue;
 		}
@@ -174,19 +174,15 @@ void CStupidAI::activeStack(const BattleID & battleID, const CStack * stack)
 
 	if(stack->isCatapult())
 	{
-		if(!battle::isActivationAvailable(*cb->getBattle(battleID), stack, EActionType::CATAPULT, SpellID::NONE))
-		{
+		if(!battle::isActivationAvailable(*cb->getBattle(battleID), stack, EActionType::CATAPULT, SpellID::NONE) || cb->getBattle(battleID)->getAttackableWallParts().empty())
 			cb->battleMakeUnitAction(battleID, BattleAction::makeDefend(stack));
-			return;
-		}
-
-		// Action has no target - catapult will pick one on its own, according to its targeting rules
-		BattleAction attack;
-		attack.actionType = EActionType::CATAPULT;
-		attack.side = side;
-		attack.stackNumber = stack->unitId();
-
-		cb->battleMakeUnitAction(battleID, attack);
+		else
+			cb->battleMakeUnitAction(battleID, BattleAction::makeCatapultShot(stack));
+		return;
+	}
+	else if(stack->isFirstAidTent())
+	{
+		cb->battleMakeUnitAction(battleID, battle::isActivationAvailable(*cb->getBattle(battleID), stack, EActionType::STACK_HEAL, SpellID::NONE) ? BattleAction::makeHeal(stack) : BattleAction::makeDefend(stack));
 		return;
 	}
 	else if(stack->hasBonusOfType(BonusType::SIEGE_WEAPON))

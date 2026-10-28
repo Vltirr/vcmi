@@ -17,7 +17,7 @@
 #include "../mapObjects/army/CStackInstance.h"
 #include "../mapObjects/CGDwelling.h"
 #include "../mapObjects/ObjectTemplate.h"
-#include "../modding/IdentifierStorage.h"
+#include "../modding/LibraryLoadContext.h"
 #include "../CConfigHandler.h"
 
 bool DwellingInstanceConstructor::hasNameTextID() const
@@ -25,12 +25,12 @@ bool DwellingInstanceConstructor::hasNameTextID() const
 	return true;
 }
 
-void DwellingInstanceConstructor::initTypeData(const JsonNode & input)
+void DwellingInstanceConstructor::initTypeData(LibraryLoadContext & context, const JsonNode & input)
 {
 	if (input.Struct().count("name") == 0)
 		logMod->warn("Dwelling %s missing name!", getJsonKey());
 
-	LIBRARY->generaltexth->registerString( input.getModScope(), getNameTextID(), input["name"]);
+	context.lib.generaltexth->registerString( input.getModScope(), getNameTextID(), input["name"]);
 
 	const JsonVector & levels = input["creatures"].Vector();
 	const auto totalLevels = levels.size();
@@ -44,7 +44,7 @@ void DwellingInstanceConstructor::initTypeData(const JsonNode & input)
 
 		for(int currentCreature = 0; currentCreature < creaturesNumber; currentCreature++)
 		{
-			LIBRARY->identifiers()->requestIdentifier("creature", creaturesOnLevel[currentCreature], [this, currentLevel, currentCreature] (si32 index)
+			context.resolver.requestIdentifier("creature", creaturesOnLevel[currentCreature], [this, currentLevel, currentCreature] (si32 index)
 			{
 				availableCreatures.at(currentLevel).at(currentCreature) = CreatureID(index).toCreature();
 			});
@@ -130,6 +130,11 @@ void DwellingInstanceConstructor::randomizeObject(CGDwelling * dwelling, IGameRa
 		JsonRandom::Variables emptyVariables;
 		for(auto & stack : randomizer.loadCreatures(guards, emptyVariables))
 		{
+			if(stack.getCount() <= 0)
+			{
+				logMod->error("Dwelling %s: guards have %d units of %s, skipped", getJsonKey(), stack.getCount(), stack.getCreature()->getJsonKey());
+				continue;
+			}
 			dwelling->putStack(SlotID(dwelling->stacksCount()), std::make_unique<CStackInstance>(dwelling->cb, stack.getId(), stack.getCount()));
 		}
 	}
@@ -151,7 +156,13 @@ void DwellingInstanceConstructor::randomizeObject(CGDwelling * dwelling, IGameRa
 		for(auto creatureEntry : availableCreatures)
 		{
 			const CCreature * crea = creatureEntry.at(0);
-			dwelling->putStack(SlotID(dwelling->stacksCount()), std::make_unique<CStackInstance>(dwelling->cb, crea->getId(), crea->getGrowth() * 3));
+			const TQuantity guardsCount = crea->getGrowth() * 3;
+
+			// special creatures, such as war machines, may have no growth
+			if (guardsCount <= 0)
+				continue;
+
+			dwelling->putStack(SlotID(dwelling->stacksCount()), std::make_unique<CStackInstance>(dwelling->cb, crea->getId(), guardsCount));
 		}
 	}
 }

@@ -9,6 +9,7 @@
  */
 
 #include "StdInc.h"
+
 #include "callback/CBattleCallback.h"
 #include "callback/IGameInfoCallback.h"
 #include "filesystem/Filesystem.h"
@@ -19,10 +20,10 @@
 #include "../../StupidAI/StupidAI.h"
 
 #include "BAI/factory.h"
-#include "BAI/fallback/scripted_model.h"
 #include "BAI/router.h"
+#include "BAI/scripted/scripted_model.h"
 
-#include "common.h"
+#include "AI/MMAI/common.h"
 
 namespace MMAI::BAI
 {
@@ -37,6 +38,7 @@ namespace
 		mutable ModelStorage models;
 		float temperature = 1.0;
 		uint64_t seed = 0;
+		bool useCreatureSpells = false;
 		std::map<std::string, std::string> paths;
 		std::shared_ptr<ScriptedModel> fallbackModel;
 		std::string fallbackName;
@@ -52,13 +54,14 @@ namespace
 		{
 			JsonUtils::validate(json, "vcmi:mmaiSettings", "mmai");
 			repo->temperature = static_cast<float>(json["temperature"].Float());
+			repo->useCreatureSpells = json["useCreatureSpells"].Bool();
 
 			repo->seed = json["seed"].Integer();
 			if(repo->seed == 0)
 				repo->seed = CRandomGenerator::getDefault().nextInt();
 
 			for(const auto & [key, node] : json["models"].Struct())
-				repo->paths.try_emplace(key, "MMAI/models/" + node.String());
+				repo->paths.try_emplace(key, node.String());
 
 			fallback = json["fallback"].isNull() ? "BattleAI" : json["fallback"].String();
 		}
@@ -108,9 +111,9 @@ namespace
 			keysToAdd.push_back(currentKey);
 
 			auto itPath = repo->paths.find(currentKey);
-			if(itPath != repo->paths.end())
+			if(itPath != repo->paths.end() && !itPath->second.empty())
 			{
-				const auto & path = itPath->second;
+				const auto & path = "MMAI/models/" + itPath->second;
 				logAi->debug("MMAI: Loading %s model from: %s", currentKey, path);
 				try
 				{
@@ -129,7 +132,7 @@ namespace
 			}
 			else
 			{
-				logAi->warn("MMAI: load error: %s: no path configured", currentKey);
+				logAi->info("MMAI: skip model %s: no path configured", currentKey);
 			}
 
 			// Try next key (if any)
@@ -143,7 +146,7 @@ namespace
 		if(!model)
 		{
 			logAi->error("MMAI: %s: falling back to %s", key, repo->fallbackName);
-			ASSERT(repo->fallbackModel, "fallback error: model is null");
+			ASSERT(repo->fallbackModel != nullptr, "fallback error: model is null");
 			model = repo->fallbackModel;
 		}
 
@@ -303,7 +306,13 @@ void Router::battleStart(
 	auto realside = static_cast<Schema::Side>(EI(side));
 
 	if(modelside != realside && modelside != Schema::Side::BOTH)
-		logAi->warn("The loaded '%s' model was not trained to play as %s", modelkey, modelkey);
+		logAi->warn(
+			"The loaded '%s' model was not trained to play as %s (modelside=%d, realside=%d)",
+			modelkey,
+			modelkey,
+			static_cast<int>(modelside),
+			static_cast<int>(realside)
+		);
 
 	switch(model->getType())
 	{
@@ -325,9 +334,10 @@ void Router::battleStart(
 			break;
 		case Schema::ModelType::NN:
 			// XXX: must not call initBattleInterface here
-			bai = CreateBAI(model, env, cb, autocombatPreferences.enableSpellsUsage);
+			bai = CreateBAI(
+				model, env, cb, GetModelRepository()->useCreatureSpells, autocombatPreferences.enableSpellsUsage, autocombatPreferences.enableTacticsUsage
+			);
 			break;
-
 		default:
 			THROW_FORMAT("Unexpected model type: %d", EI(model->getType()));
 	}

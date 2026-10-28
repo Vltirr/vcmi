@@ -29,6 +29,7 @@
 #include "../mapObjects/FlaggableMapObject.h"
 #include "../mapObjects/MiscObjects.h"
 #include "../mapObjects/TownBuildingInstance.h"
+#include "../mapping/CCastleEvent.h"
 #include "../mapping/CMap.h"
 #include "../networkPacks/StackLocation.h"
 #include "../spells/CSpell.h"
@@ -82,7 +83,7 @@ void GameStatePackVisitor::visitSetResources(SetResources & pack)
 	//just ensure that player resources are not negative
 	//server is responsible to check if player can afford deal
 	//but events on server side are allowed to take more than player have
-	gs.getPlayerState(pack.player)->resources.positive();
+	gs.getPlayerState(pack.player)->resources.removeNegative();
 }
 
 void GameStatePackVisitor::visitSetPrimarySkill(SetPrimarySkill & pack)
@@ -319,6 +320,9 @@ void GameStatePackVisitor::visitChangeObjPos(ChangeObjPos & pack)
 		return;
 	}
 	gs.getMap().moveObject(pack.objid, pack.nPos + obj->getVisitableOffset());
+
+	if(auto * hero = dynamic_cast<CGHeroInstance *>(obj))
+		hero->updateSpecialTerrain(gs);
 }
 
 void GameStatePackVisitor::visitChangeObjectVisitors(ChangeObjectVisitors & pack)
@@ -617,6 +621,7 @@ void GameStatePackVisitor::visitTryMoveHero(TryMoveHero & pack)
 		if(auto * b = h->getBoat())
 			b->setAnchorPos(pack.end);
 		gs.getMap().showObject(h);
+		h->updateSpecialTerrain(gs);
 	}
 
 	auto & fogOfWarMap = gs.getPlayerTeam(h->getOwner())->fogOfWarMap;
@@ -753,6 +758,7 @@ void GameStatePackVisitor::visitGiveHero(GiveHero & pack)
 
 	gs.getMap().showObject(h);
 	h->setVisitedTown(nullptr, false);
+	h->updateSpecialTerrain(gs);
 }
 
 void GameStatePackVisitor::visitNewObject(NewObject & pack)
@@ -788,6 +794,13 @@ void GameStatePackVisitor::visitChangeStackCount(ChangeStackCount & pack)
 	if(!srcObj)
 		throw std::runtime_error("ChangeStackCount: invalid army object " + std::to_string(pack.army.getNum()) + ", possible game state corruption.");
 
+	if(!srcObj->hasStackAtSlot(pack.slot))
+		throw std::runtime_error("ChangeStackCount: no stack at slot " + std::to_string(pack.slot.getNum()) + " of " + srcObj->describeArmy());
+
+	const TQuantity newCount = pack.mode == ChangeValueMode::ABSOLUTE ? pack.count : srcObj->getStackCount(pack.slot) + pack.count;
+	if(newCount <= 0)
+		throw std::runtime_error("ChangeStackCount: cannot set stack at slot " + std::to_string(pack.slot.getNum()) + " of " + srcObj->describeArmy() + " to " + std::to_string(newCount) + " units");
+
 	if(pack.mode == ChangeValueMode::ABSOLUTE)
 		srcObj->setStackCount(pack.slot, pack.count);
 	else
@@ -800,6 +813,9 @@ void GameStatePackVisitor::visitSetStackType(SetStackType & pack)
 	if(!srcObj)
 		throw std::runtime_error("SetStackType: invalid army object " + std::to_string(pack.army.getNum()) + ", possible game state corruption.");
 
+	if(!srcObj->hasStackAtSlot(pack.slot) || !pack.type.hasValue())
+		throw std::runtime_error("SetStackType: cannot change stack at slot " + std::to_string(pack.slot.getNum()) + " of " + srcObj->describeArmy() + " into creature " + std::to_string(pack.type.getNum()));
+
 	srcObj->setStackType(pack.slot, pack.type);
 }
 
@@ -808,6 +824,9 @@ void GameStatePackVisitor::visitEraseStack(EraseStack & pack)
 	auto * srcObj = gs.getArmyInstance(pack.army);
 	if(!srcObj)
 		throw std::runtime_error("EraseStack: invalid army object " + std::to_string(pack.army.getNum()) + ", possible game state corruption.");
+
+	if(!srcObj->hasStackAtSlot(pack.slot))
+		throw std::runtime_error("EraseStack: no stack at slot " + std::to_string(pack.slot.getNum()) + " of " + srcObj->describeArmy());
 
 	srcObj->eraseStack(pack.slot);
 }
@@ -822,6 +841,9 @@ void GameStatePackVisitor::visitSwapStacks(SwapStacks & pack)
 	if(!dstObj)
 		throw std::runtime_error("SwapStacks: invalid army object " + std::to_string(pack.dstArmy.getNum()) + ", possible game state corruption.");
 
+	if(!srcObj->hasStackAtSlot(pack.srcSlot) || !dstObj->hasStackAtSlot(pack.dstSlot) || (srcObj == dstObj && pack.srcSlot == pack.dstSlot))
+		throw std::runtime_error("SwapStacks: cannot swap slot " + std::to_string(pack.srcSlot.getNum()) + " of " + srcObj->describeArmy() + " with slot " + std::to_string(pack.dstSlot.getNum()) + " of " + dstObj->describeArmy());
+
 	auto s1 = srcObj->detachStack(pack.srcSlot);
 	auto s2 = dstObj->detachStack(pack.dstSlot);
 
@@ -831,10 +853,14 @@ void GameStatePackVisitor::visitSwapStacks(SwapStacks & pack)
 
 void GameStatePackVisitor::visitInsertNewStack(InsertNewStack & pack)
 {
-	if(auto * obj = gs.getArmyInstance(pack.army))
-		obj->putStack(pack.slot, std::make_unique<CStackInstance>(&gs, pack.type, pack.count));
-	else
+	auto * obj = gs.getArmyInstance(pack.army);
+	if(!obj)
 		throw std::runtime_error("InsertNewStack: invalid army object " + std::to_string(pack.army.getNum()) + ", possible game state corruption.");
+
+	if(!pack.slot.validSlot() || obj->hasStackAtSlot(pack.slot) || !pack.type.hasValue() || pack.count <= 0)
+		throw std::runtime_error("InsertNewStack: cannot insert " + std::to_string(pack.count) + " units of creature " + std::to_string(pack.type.getNum()) + " into slot " + std::to_string(pack.slot.getNum()) + " of " + obj->describeArmy());
+
+	obj->putStack(pack.slot, std::make_unique<CStackInstance>(&gs, pack.type, pack.count));
 }
 
 void GameStatePackVisitor::visitRebalanceStacks(RebalanceStacks & pack)
@@ -850,15 +876,25 @@ void GameStatePackVisitor::visitRebalanceStacks(RebalanceStacks & pack)
 	StackLocation src(srcObj->id, pack.srcSlot);
 	StackLocation dst(dstObj->id, pack.dstSlot);
 
-	[[maybe_unused]] const CCreature * srcType = srcObj->getCreature(src.slot);
+	const CCreature * srcType = srcObj->getCreature(src.slot);
 	const CCreature * dstType = dstObj->getCreature(dst.slot);
 	TQuantity srcCount = srcObj->getStackCount(src.slot);
+
+	if(!srcType
+		|| pack.count <= 0
+		|| pack.count > srcCount
+		|| !pack.dstSlot.validSlot()
+		|| (srcObj == dstObj && pack.srcSlot == pack.dstSlot)
+		|| (dstType && dstType != srcType))
+	{
+		throw std::runtime_error("RebalanceStacks: cannot move " + std::to_string(pack.count) + " units from slot " + std::to_string(pack.srcSlot.getNum()) + " of " + srcObj->describeArmy()
+			+ " to slot " + std::to_string(pack.dstSlot.getNum()) + " of " + dstObj->describeArmy() + ", possible game state corruption.");
+	}
 
 	if(srcCount == pack.count) //moving whole stack
 	{
 		if(dstType) //stack at dest -> merge
 		{
-			assert(dstType == srcType);
 			const auto srcHero = dynamic_cast<CGHeroInstance*>(srcObj);
 			const auto dstHero = dynamic_cast<CGHeroInstance*>(dstObj);
 			auto srcStack = srcObj->getStackPtr(src.slot);
@@ -911,7 +947,6 @@ void GameStatePackVisitor::visitRebalanceStacks(RebalanceStacks & pack)
 		auto movedStack = srcObj->splitStack(src.slot, pack.count);
 		if(dstType) //stack at dest -> rebalance
 		{
-			assert(dstType == srcType);
 			dstObj->joinStack(dst.slot, std::move(movedStack));
 		}
 		else //move new stack to an empty slot
@@ -1063,7 +1098,7 @@ void GameStatePackVisitor::visitAssembledArtifact(AssembledArtifact & pack)
 	const auto transformedArt = artSet->getArt(pack.al.slot);
 	assert(transformedArt);
 	const auto builtArt = pack.artId.toArtifact();
-	assert(vstd::contains_if(ArtifactUtils::assemblyPossibilities(artSet, transformedArt->getTypeId()), [=](const CArtifact * art)->bool
+	assert(vstd::contains_if(ArtifactUtils::assemblyPossibilities(gs.getSettings(), artSet, transformedArt->getTypeId()), [=](const CArtifact * art)->bool
 	{
 		return art->getId() == builtArt->getId();
 	}));
@@ -1233,6 +1268,31 @@ void GameStatePackVisitor::visitSetQuestHint(SetQuestHint & pack)
 		throw std::runtime_error("SetQuestHint: object is not a quest source!");
 
 	questSource->getQuest().scriptHintText = pack.hint;
+	questSource->getQuest().scriptHintComponents = pack.components;
+}
+
+void GameStatePackVisitor::visitDisableMapEvent(DisableMapEvent & pack)
+{
+	bool found = false;
+	auto disable = [&](auto & events)
+	{
+		for(auto & event : events)
+		{
+			if(event.scriptHandler == pack.scriptHandler)
+			{
+				event.disabled = true;
+				found = true;
+			}
+		}
+	};
+
+	if(pack.town.hasValue())
+		disable(gs.getTown(pack.town)->events);
+	else
+		disable(gs.getMap().events);
+
+	if(!found)
+		throw std::runtime_error("DisableMapEvent: no event with handler " + pack.scriptHandler);
 }
 
 void GameStatePackVisitor::visitSetObjectProperty(SetObjectProperty & pack)
@@ -1329,6 +1389,8 @@ void GameStatePackVisitor::visitBattleStart(BattleStart & pack)
 		{
 			CGHeroInstance * hero = gs.getHero(pack.info->getSideHero(i)->id);
 			hero->mana = pack.info->getSide(i).initialMana + pack.info->getSide(i).additionalMana;
+			// battle has its own battlefield, which may differ from terrain under the hero
+			hero->leaveSpecialTerrain(gs);
 		}
 	}
 
@@ -1422,73 +1484,35 @@ void GameStatePackVisitor::visitBattleAttack(BattleAttack & pack)
 		attacker->removeBonusesRecursive(Bonus::UntilOwnAttack);
 }
 
+void GameStatePackVisitor::visitBattleTacticsEnded(BattleTacticsEnded & pack)
+{
+	gs.getBattle(pack.battleID)->tacticDistance = 0;
+}
+
 void GameStatePackVisitor::visitStartAction(StartAction & pack)
 {
 	CStack *st = gs.getBattle(pack.battleID)->getStack(pack.ba.stackNumber);
 
-	if(pack.ba.actionType == EActionType::END_TACTIC_PHASE)
+	if(pack.turnStatus || pack.castSpellThisTurn)
 	{
-		gs.getBattle(pack.battleID)->tacticDistance = 0;
-		return;
-	}
+		if(!st)
+			throw std::runtime_error("StartAction changes the turn state of a unit that does not exist: " + pack.ba.toString());
 
-	if(gs.getBattle(pack.battleID)->tacticDistance)
-	{
-		// moves in tactics phase do not affect creature status
-		// (tactics stack queue is managed by client)
-		return;
-	}
-
-	if (pack.ba.isUnitAction())
-	{
-		assert(st); // stack must exists for all non-hero actions
-
-		switch(pack.ba.actionType)
-		{
-			case EActionType::DEFEND:
-				st->defending = true;
-				st->waiting = false;
-				break;
-			case EActionType::WAIT:
-				st->waiting = true;
-				st->waitedThisTurn = true;
-				break;
-			case EActionType::MONSTER_SPELL:
-			case EActionType::CATAPULT:
-			case EActionType::CREATURE_ABILITY:
-			{
-				if(!battle::actionReturnsControl(st, pack.ba.actionType, pack.ba.spell, pack.ba.activatedAbility))
-				{
-					st->waiting = false;
-					st->movedThisRound = true;
-				}
-				// An activation owns its repetition policy through its resolved limits.  It
-				// must not acquire the native per-turn spell marker as a hidden second cap.
-				const auto source = battle::getActivationSource(st, pack.ba.actionType, pack.ba.spell, pack.ba.activatedAbility);
-				if((!source || !source->activation) &&
-					(pack.ba.actionType != EActionType::CATAPULT || battle::actionReturnsControl(st, pack.ba.actionType, pack.ba.spell, pack.ba.activatedAbility)))
-					st->castSpellThisTurn = true;
-				break;
-			}
-			case EActionType::HERO_SPELL: //no change in current stack state
-				break;
-			default: //any active stack action - attack, catapult, heal, spell...
-				st->waiting = false;
-				st->movedThisRound = true;
-				break;
-		}
-	}
-	else
-	{
-		if(pack.ba.actionType == EActionType::HERO_SPELL)
-			gs.getBattle(pack.battleID)->getSide(pack.ba.side).usedSpellsHistory.push_back(pack.ba.spell);
+		if(pack.turnStatus)
+			st->setTurnStatus(*pack.turnStatus);
+		if(pack.castSpellThisTurn)
+			st->setCastSpellThisTurn(true);
 	}
 }
 
 void GameStatePackVisitor::visitBattleSpellCast(BattleSpellCast & pack)
 {
 	if(pack.castByHero && pack.side != BattleSide::NONE)
-		gs.getBattle(pack.battleID)->getSide(pack.side).castSpellsCount++;
+	{
+		auto & side = gs.getBattle(pack.battleID)->getSide(pack.side);
+		side.castSpellsCount++;
+		side.usedSpellsHistory.push_back(pack.spellID);
+	}
 }
 
 void GameStatePackVisitor::visitSetStackEffect(SetStackEffect & pack)
@@ -1540,6 +1564,11 @@ void GameStatePackVisitor::restorePreBattleState(BattleID battleID)
 	});
 
 	const auto & currentBattle = **battleIter;
+
+	for(auto side : {BattleSide::ATTACKER, BattleSide::DEFENDER})
+		if(currentBattle.getSide(side).heroID.hasValue())
+			if(CGHeroInstance * hero = gs.getHero(currentBattle.getSide(side).heroID))
+				hero->updateSpecialTerrain(gs);
 
 	if (currentBattle.getDefendedTown() && currentBattle.getSideHero(BattleSide::DEFENDER))
 	{
@@ -1669,7 +1698,7 @@ void GameStatePackVisitor::visitBattleSetStackProperty(BattleSetStackProperty & 
 		}
 		case BattleSetStackProperty::ENCHANTER_COUNTER:
 		{
-			auto & counter = gs.getBattle(pack.battleID)->getSide(gs.getBattle(pack.battleID)->whatSide(stack->unitOwner())).enchanterCounter;
+			auto & counter = gs.getBattle(pack.battleID)->getSide(stack->controllingSide()).enchanterCounter;
 			if(pack.absolute)
 				counter = pack.val;
 			else

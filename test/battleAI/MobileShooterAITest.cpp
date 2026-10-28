@@ -166,8 +166,7 @@ TEST_F(MobileShooterAITest, FullActionSelectionPrefersStrongerMeleeToPenalizedMo
 	blockRetaliation(shooter);
 	beginCombat();
 	// Exercise attack selection in the waiting phase, when another WAIT is not an option.
-	shooter->waiting = true;
-	shooter->waitedThisTurn = true;
+	shooter->setTurnStatus(battle::UnitTurnStatus::WAITING);
 	battle()->activeStack = shooter->unitId();
 	ASSERT_FALSE(battle()->battleCanShoot(shooter));
 	ASSERT_TRUE(battle()->battleCanMoveAndShoot(shooter, BattleHex(origin - 1), target->getPosition()));

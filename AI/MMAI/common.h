@@ -10,8 +10,12 @@
 
 #pragma once
 
-#include "StdInc.h"
+#include "StdInc.h" // IWYU pragma: keep
+
 #include "CThreadHelper.h"
+
+#include <charconv>
+#include <cstring>
 
 namespace MMAI
 {
@@ -19,11 +23,147 @@ namespace MMAI
 // https://en.cppreference.com/w/cpp/utility/to_underlying
 #define EI(enum_value) static_cast<int>(enum_value)
 
-#define ASSERT(cond, msg) \
-	if(!(cond))           \
-	throw std::runtime_error(std::string("Assertion failed in ") + boost::filesystem::path(__FILE__).filename().string() + ": " + msg)
+inline void assertImpl(bool cond, std::string_view msg, std::string_view file, int line, std::string_view function)
+{
+	if(!cond)
+	{
+		throw std::runtime_error(
+			std::string("Assertion failed in ") + boost::filesystem::path(std::string(file)).filename().string() + ":" + std::to_string(line) + " in "
+			+ std::string(function) + ": " + std::string(msg)
+		);
+	}
+}
 
-#define THROW_FORMAT(message, formatting_elems) throw std::runtime_error(boost::str(boost::format(message) % formatting_elems))
+#define ASSERT(condition, message) ::MMAI::assertImpl((condition), (message), __FILE__, __LINE__, BOOST_CURRENT_FUNCTION)
+
+#define THROW_FORMAT(message, formatting_elems) \
+	throw std::runtime_error(boost::str(boost::format(message) % formatting_elems)) // NOLINT(bugprone-macro-parentheses)
+
+template<class... Args>
+[[noreturn]] void throwf(std::string_view format, Args &&... args)
+{
+	boost::format formatter{std::string(format)};
+	((formatter % std::forward<Args>(args)), ...);
+	throw std::runtime_error(formatter.str());
+}
+
+// constexpr version of EI with proper underlying type conversion
+// underlying_type_t requires C++23, but Global.h uses it already
+template<typename E>
+requires std::is_enum_v<E>
+constexpr std::underlying_type_t<E> EU(E value) noexcept
+{
+	return static_cast<std::underlying_type_t<E>>(value);
+}
+
+inline std::unordered_set<std::string_view> MMAIGraphDebugFlags()
+{
+	static const std::unordered_set<std::string_view> value = []
+	{
+		const char * envvar = std::getenv("MMAI_GRAPH_DEBUG_FLAGS");
+		auto res = std::unordered_set<std::string_view>{};
+		if(envvar == nullptr)
+			return res;
+
+		auto csv = std::string_view{envvar};
+		while(!csv.empty())
+		{
+			auto pos = csv.find(',');
+			res.insert(csv.substr(0, pos));
+
+			if(pos == std::string_view::npos)
+				break;
+
+			csv.remove_prefix(pos + 1);
+		}
+
+		return res;
+	}();
+	return value;
+}
+
+inline bool isMMAIGraphDebug(const std::string_view flag)
+{
+	return MMAIGraphDebugFlags().contains(flag) || MMAIGraphDebugFlags().contains("all");
+}
+
+inline bool isMMAIVerbose()
+{
+	static const bool value = []
+	{
+		const char * envvar = std::getenv("MMAI_VERBOSE");
+		return envvar != nullptr && std::strcmp(envvar, "1") == 0;
+	}();
+	return value;
+}
+
+inline bool isMMAIAutoRender()
+{
+	static const bool value = []
+	{
+		const char * envvar = std::getenv("MMAI_AUTO_RENDER");
+		return envvar != nullptr && std::strcmp(envvar, "1") == 0;
+	}();
+	return value;
+}
+
+inline bool isMMAIAutoVerify()
+{
+	static const bool value = []
+	{
+		const char * envvar = std::getenv("MMAI_AUTO_VERIFY");
+		return envvar != nullptr && std::strcmp(envvar, "1") == 0;
+	}();
+
+	return value;
+}
+
+inline bool isMMAILegacyValue()
+{
+	static const bool value = []
+	{
+		const char * envvar = std::getenv("MMAI_LEGACY_VALUE");
+		return envvar != nullptr && std::strcmp(envvar, "1") == 0;
+	}();
+	return value;
+}
+
+// Value is percentage of stack's HP
+inline int MMAIMoatfixTrigger()
+{
+	constexpr int triggerDefault = 8;
+	static const int value = []
+	{
+		const char * envvar = std::getenv("MMAI_MOATFIX_TRIGGER");
+
+		if(envvar == nullptr)
+			return triggerDefault;
+
+		int result = triggerDefault;
+		const char * end = std::strchr(envvar, '\0');
+		const auto [ptr, error] = std::from_chars(envvar, end, result);
+		return (error == std::errc{} && ptr == end && result >= 0 && result <= 100) ? result : triggerDefault;
+	}();
+	return value;
+}
+
+inline int MMAIFallbackTrigger()
+{
+	constexpr int triggerDefault = 150;
+	static const int value = []
+	{
+		const char * envvar = std::getenv("MMAI_FALLBACK_TRIGGER");
+
+		if(envvar == nullptr)
+			return triggerDefault;
+
+		int result = triggerDefault;
+		const char * end = std::strchr(envvar, '\0');
+		const auto [ptr, error] = std::from_chars(envvar, end, result);
+		return (error == std::errc{} && ptr == end && result >= 0) ? result : triggerDefault;
+	}();
+	return value;
+}
 
 /*
  * RAII for temporarily setting a new name for the current thread.

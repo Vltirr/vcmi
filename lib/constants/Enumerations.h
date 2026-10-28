@@ -145,8 +145,11 @@ enum class EActionType : int8_t
 	BAD_MORALE,
 	STACK_HEAL,
 	WALK_AND_CAST,
-	CREATURE_ABILITY = 15,
-	WALK_AND_SHOOT = 16,
+	WALK_AND_ATTACK_NO_RETURN, ///< WALK_AND_ATTACK of a unit that stays at the target instead of returning
+	LONG_WEAPON_ATTACK,
+	RANDOM_SPELL, ///< spell of a RANDOM_SPELLCASTER unit, rolled by the server
+	CREATURE_ABILITY = 18,
+	WALK_AND_SHOOT = 19,
 };
 
 enum class EDiggingStatus : int8_t

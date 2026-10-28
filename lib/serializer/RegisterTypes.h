@@ -316,6 +316,8 @@ void registerTypes(Serializer &s)
 	s.template registerType<SetQuestHint>(268);
 	s.template registerType<BattleAnimationPlayed>(269);
 	s.template registerType<SimturnsContactStatus>(270);
+	s.template registerType<BattleTacticsEnded>(271);
+	s.template registerType<DisableMapEvent>(272);
 	// Fork packets use a separate range from upstream packet IDs.
 	s.template registerType<BattleFocusChanged>(60000);
 	s.template registerType<BattleActivationUsageChanged>(60001);

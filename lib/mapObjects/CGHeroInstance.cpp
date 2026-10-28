@@ -41,6 +41,7 @@
 #include "../entities/hero/CHeroHandler.h"
 #include "../entities/hero/CHeroClass.h"
 #include "../entities/ResourceTypeHandler.h"
+#include "../battle/BattleInfo.h"
 #include "../battle/CBattleInfoEssentials.h"
 #include "../bonuses/BonusParameters.h"
 #include "../campaign/CampaignState.h"
@@ -491,9 +492,10 @@ void CGHeroInstance::initHero(IGameRandomizer & gameRandomizer, bool isFake)
 	// e.g. MANA_PER_KNOWLEDGE_PERCENTAGE for correct preview and initial state after recruit	for(const auto & ob : LIBRARY->modh->heroBaseBonuses)
 	// or MOVEMENT to compute initial movement before recruiting is finished
 	const JsonNode & baseBonuses = cb->getSettings().getValue(EGameSettings::BONUSES_PER_HERO);
+	InstantIdentifierResolver resolver(*LIBRARY->identifiers());
 	for(const auto & b : baseBonuses.Struct())
 	{
-		auto bonus = JsonUtils::parseBonus(b.second);
+		auto bonus = JsonUtils::parseBonus(b.second, resolver);
 		bonus->source = BonusSource::HERO_BASE_SKILL;
 		bonus->sid = BonusSourceID(id);
 		bonus->duration = BonusDuration::PERMANENT;
@@ -590,6 +592,11 @@ CGHeroInstance::~CGHeroInstance() = default;
 bool CGHeroInstance::needsLastStack() const
 {
 	return true;
+}
+
+bool CGHeroInstance::canRecruitWarMachine(const ArtifactID & warMachine) const
+{
+	return warMachine != ArtifactID::CATAPULT && !hasArt(warMachine);
 }
 
 void CGHeroInstance::onHeroVisit(IGameEventCallback & gameEvents, const CGHeroInstance * h) const
@@ -1640,6 +1647,44 @@ void CGHeroInstance::restoreBonusSystem(CGameState & gs)
 		if (boat)
 			attachTo(dynamic_cast<CGBoat&>(*boat));
 	}
+
+	// battle participants are detached from special terrain until the battle ends
+	const auto * battle = gs.getBattle(getOwner());
+	if(!battle || (battle->getSide(BattleSide::ATTACKER).heroID != id && battle->getSide(BattleSide::DEFENDER).heroID != id))
+		updateSpecialTerrain(gs);
+}
+
+void CGHeroInstance::attachToBonusSystem(CGameState & gs)
+{
+	CArmedInstance::attachToBonusSystem(gs);
+	updateSpecialTerrain(gs);
+}
+
+void CGHeroInstance::detachFromBonusSystem(CGameState & gs)
+{
+	leaveSpecialTerrain(gs);
+	CArmedInstance::detachFromBonusSystem(gs);
+}
+
+void CGHeroInstance::updateSpecialTerrain(CGameState & gs)
+{
+	// prisons are heroes too, but are not affected by terrain
+	BattleField newTerrain = ID == Obj::HERO ? gs.getSpecialTerrainAt(visitablePos()) : BattleField::NONE;
+
+	if(newTerrain == specialTerrain)
+		return;
+
+	leaveSpecialTerrain(gs);
+	specialTerrain = newTerrain;
+	if(specialTerrain != BattleField::NONE)
+		attachTo(gs.getSpecialTerrainNode(specialTerrain));
+}
+
+void CGHeroInstance::leaveSpecialTerrain(CGameState & gs)
+{
+	if(specialTerrain != BattleField::NONE)
+		detachFrom(gs.getSpecialTerrainNode(specialTerrain));
+	specialTerrain = BattleField::NONE;
 }
 
 CBonusSystemNode & CGHeroInstance::whereShouldBeAttached(CGameState & gs)
@@ -2161,18 +2206,18 @@ int CGHeroInstance::getBasePrimarySkillValue(PrimarySkill which) const
 
 ArtifactID CGHeroInstance::getReplacedWarMachine(ArtifactID artifactID) const
 {
-	ArtifactID replacedArtifact;
-	auto art = artifactID.toArtifact();
+	const auto * currentArtifact = getArt(getWarMachineSlot(artifactID));
+	return currentArtifact ? currentArtifact->getTypeId() : ArtifactID();
+}
 
-	for(auto slot : art->getPossibleSlots().at(ArtBearer::HERO))
-	{
-		const auto * currentArtifact = getArt(slot);
+ArtifactPosition CGHeroInstance::getWarMachineSlot(ArtifactID warMachine) const
+{
+	const auto & possibleSlots = warMachine.toArtifact()->getPossibleSlots().at(ArtBearer::HERO);
 
-		if(currentArtifact == nullptr)
-			return ArtifactID();
-		else
-			replacedArtifact = currentArtifact->getTypeId();
-	}
-	return replacedArtifact;
+	for(const auto & slot : possibleSlots)
+		if(getArt(slot) == nullptr)
+			return slot;
+
+	return possibleSlots.front();
 }
 

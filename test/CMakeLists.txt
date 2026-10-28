@@ -63,6 +63,7 @@ set(test_SRCS
 		map/CGArtifactRegressionTest.cpp
 		map/MapScriptTest.cpp
 		map/MapObjectDrawOrderTest.cpp
+		map/PlayerFactionsTest.cpp
 		map/TinyH3MBuilderTest.cpp
 
 		quest/QuestTest.cpp
@@ -128,6 +129,7 @@ set(test_SRCS
 		server/battles/EnchantedTest.cpp
 		server/battles/FireShieldTest.cpp
 		server/battles/HotaAbilitiesTest.cpp
+		server/battles/HypnotizeTest.cpp
 		server/battles/LifeDrainTest.cpp
 		server/battles/MobileShooterTest.cpp
 		server/battles/WarMachineResurrectionTest.cpp
@@ -139,11 +141,14 @@ set(test_SRCS
 		server/battles/RebirthTest.cpp
 		server/battles/SoulStealTest.cpp
 		server/battles/SpellcastActionTest.cpp
+		server/battles/SpellTargetStepTest.cpp
 		server/battles/SummonGuardiansTest.cpp
 		server/battles/TurnOrderTest.cpp
 		server/battles/TransmutationTest.cpp
 		server/battles/WalkActionTest.cpp
 		server/activities/ActivityProcessorTest.cpp
+		server/ArmyManagementTest.cpp
+		server/NeutralTownEventsTest.cpp
 
 		texts/TextOperationsTest.cpp
 
@@ -212,6 +217,7 @@ if(ENABLE_NULLKILLER2_AI)
 	endif()
 
 	list(APPEND test_SRCS
+		nullkiller2/AIGatewayDialogTest.cpp
 		nullkiller2/AIGatewayMovementTest.cpp
 		nullkiller2/AIUtilityTest.cpp
 		nullkiller2/Analyzers/ArmyManagerTest.cpp

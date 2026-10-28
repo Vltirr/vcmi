@@ -14,7 +14,7 @@
 /// When integrating upstream, advance UPSTREAM_CURRENT. For fork layout changes, append a
 /// fork feature and advance FORK_CURRENT. Keep old gates and supply defaults for absent fields.
 /// Always use h.hasFeature(Handler::Version::FEATURE), never compare encoded versions directly.
-/// MINIMAL is the oldest official format accepted; unmarked prototype fork saves are unsupported.
+/// MINIMAL is the oldest official format accepted; fork formats before REGISTRY_BATTLE_ACTIONS are unsupported.
 enum class ESerializationVersion : int32_t
 {
 	NONE = 0,
@@ -54,6 +54,13 @@ enum class ESerializationVersion : int32_t
 	HOTA_HERO_LEVEL_OPTIONS, // persist HotA per-hero experience lock
 	BOAT_LAST_HERO, // boat remembers the last hero that used it, so Summon Boat can prefer boat of the caster
 	SAVE_CHUNKS, // saved game is stored as compressed chunks: metadata, map header, game state
+	GARRISON_DIALOG_REMOVABLE_UNITS_REMOVED, // GarrisonDialog pack no longer carries removableUnits, the client checks CArmedInstance::isLocked
+	MAP_EVENT_DISABLED, // map events can be disabled by map scripts
+	RANK_LIMITER_INCLUSIVE_MIN, // RankRangeLimiter accepts stacks of its minimal rank
+	SPARSE_RESOURCE_SET, // ResourceSet stores only resources present in the set
+	QUEST_HINT_COMPONENTS, // HotA scripted quests store components shown with their hint
+	TOWN_ALIGNMENT_EXCLUSION, // random town can be set to not match faction of a player
+	NEUTRAL_TOWN_EVENTS, // town events can affect neutral towns
 
 	BATTLE_FOCUS = 0x40000001, // shared focus state and activation descriptors
 	ACTIVATION_LIMITS, // shared per-side battle and round usage counters
@@ -64,12 +71,14 @@ enum class ESerializationVersion : int32_t
 	MOBILE_SHOOTER_SUBTYPE, // distinguish explicitly enabled mobile shooters from legacy serialized SHOOTER subtypes
 	VERSIONED_REPLAY_CHAPTERS, // preserve the format of embedded snapshots and packs
 
+	REGISTRY_BATTLE_ACTIONS = 0x40000009, // new fork action IDs and explicit turn state; older fork files are unsupported
+
 	RELEASE_170 = HOTA_MAP_STACK_COUNT,
 	RELEASE_174 = CUSTOM_GARRISON_TITLE,
 
 	MINIMAL = RELEASE_170,
-	UPSTREAM_CURRENT = SAVE_CHUNKS,
-	FORK_CURRENT = VERSIONED_REPLAY_CHAPTERS,
+	UPSTREAM_CURRENT = NEUTRAL_TOWN_EVENTS,
+	FORK_CURRENT = REGISTRY_BATTLE_ACTIONS,
 	CURRENT = 0x40000000 | (static_cast<int32_t>(UPSTREAM_CURRENT) << 8) | (static_cast<int32_t>(FORK_CURRENT) & 0xff),
 };
 
@@ -100,7 +109,7 @@ constexpr bool isSupportedSerializationVersion(ESerializationVersion version)
 	const auto value = static_cast<int32_t>(version);
 	const bool official = value < 0x40000000;
 	const bool validFork = (value & 0x7f000000) == 0x40000000
-		&& serializationForkVersion(version) >= serializationForkVersion(ESerializationVersion::VERSIONED_REPLAY_CHAPTERS)
+		&& serializationForkVersion(version) >= serializationForkVersion(ESerializationVersion::REGISTRY_BATTLE_ACTIONS)
 		&& serializationForkVersion(version) <= serializationForkVersion(ESerializationVersion::FORK_CURRENT);
 	return (official || validFork)
 		&& serializationUpstreamVersion(version) >= static_cast<int32_t>(ESerializationVersion::MINIMAL)

@@ -89,7 +89,7 @@ void CGMine::onHeroVisit(IGameEventCallback & gameEvents, const CGHeroInstance *
 
 	if(relations == PlayerRelations::SAME_PLAYER) //we're visiting our mine
 	{
-		gameEvents.showGarrisonDialog(id, h->id, true, MetaString());
+		gameEvents.showGarrisonDialog(id, h->id, MetaString());
 		return;
 	}
 	else if (relations == PlayerRelations::ALLIES)//ally
@@ -116,14 +116,15 @@ void CGMine::onHeroVisit(IGameEventCallback & gameEvents, const CGHeroInstance *
 
 void CGMine::initObj(IGameRandomizer & gameRandomizer)
 {
-	const auto configuredGuards = getResourceHandler()->getGuards(cb, gameRandomizer);
-	if(!configuredGuards.empty())
+	if(abandonedMineGuards.creature.hasValue())
 	{
-		for(const auto & stack : configuredGuards)
-		{
-			auto guards = std::make_unique<CStackInstance>(cb, stack.getId(), stack.getCount());
-			putStack(SlotID(stacksCount()), std::move(guards));
-		}
+		int amount = gameRandomizer.getDefault().nextInt(abandonedMineGuards.minAmount, abandonedMineGuards.maxAmount);
+		putStack(SlotID(stacksCount()), std::make_unique<CStackInstance>(cb, abandonedMineGuards.creature, amount));
+	}
+	else
+	{
+		for(const auto & stack : getResourceHandler()->getGuards(cb, gameRandomizer))
+			putStack(SlotID(stacksCount()), std::make_unique<CStackInstance>(cb, stack.getId(), stack.getCount()));
 	}
 
 	if(isAbandoned())
@@ -962,9 +963,8 @@ void CGSignBottle::initObj(IGameRandomizer & gameRandomizer)
 	//if no text is set than we pick random from the predefined ones
 	if(message.empty())
 	{
-		auto vector = LIBRARY->generaltexth->findStringsWithPrefix("core.randsign");
-		std::string messageIdentifier = *RandomGeneratorUtil::nextItem(vector, gameRandomizer.getDefault());
-		message.appendTextID(messageIdentifier);
+		int signIndex = gameRandomizer.getDefault().nextInt(GameConstants::RANDOM_SIGNS - 1);
+		message.appendTextID(TextIdentifier("core.randsign", signIndex).get());
 	}
 
 	if(ID == Obj::OCEAN_BOTTLE)
@@ -1021,7 +1021,12 @@ void CGGarrison::onHeroVisit(IGameEventCallback & gameEvents, const CGHeroInstan
 	if (relations == PlayerRelations::ENEMIES)
 		gameEvents.setOwner(this, h->tempOwner);
 
-	gameEvents.showGarrisonDialog(id, h->id, removableUnits, MetaString());
+	gameEvents.showGarrisonDialog(id, h->id, MetaString());
+}
+
+bool CGGarrison::isLocked() const
+{
+	return !removableUnits;
 }
 
 bool CGGarrison::passableFor(PlayerColor player) const

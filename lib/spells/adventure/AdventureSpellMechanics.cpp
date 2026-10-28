@@ -19,15 +19,18 @@
 #include "TownPortalEffect.h"
 #include "ViewWorldEffect.h"
 
+#include "../ISpellMechanics.h"
 #include "../Problem.h"
 #include "../CSpell.h"
 
+#include "../../GameLibrary.h"
 #include "../../json/JsonBonus.h"
 #include "../../mapObjects/CGHeroInstance.h"
+#include "../../modding/LibraryLoadContext.h"
 #include "../../networkPacks/PacksForClient.h"
 #include "../../callback/IGameInfoCallback.h"
 
-std::unique_ptr<IAdventureSpellEffect> AdventureSpellMechanics::createAdventureEffect(const CSpell * s, const JsonNode & node)
+std::unique_ptr<IAdventureSpellEffect> AdventureSpellMechanics::createAdventureEffect(LibraryLoadContext & context, const CSpell * s, const JsonNode & node)
 {
 	const std::string & typeID = node["type"].String();
 
@@ -36,33 +39,33 @@ std::unique_ptr<IAdventureSpellEffect> AdventureSpellMechanics::createAdventureE
 	if(typeID == "dimensionDoor")
 		return std::make_unique<DimensionDoorEffect>(s, node);
 	if(typeID == "removeObject")
-		return std::make_unique<RemoveObjectEffect>(s, node);
+		return std::make_unique<RemoveObjectEffect>(context, s, node);
 	if(typeID == "summonBoat")
-		return std::make_unique<SummonBoatEffect>(s, node);
+		return std::make_unique<SummonBoatEffect>(context, s, node);
 	if(typeID == "townPortal")
 		return std::make_unique<TownPortalEffect>(s, node);
 	if(typeID == "reinforcements")
 		return std::make_unique<ReinforcementsEffect>(s, node);
 	if(typeID == "viewWorld")
-		return std::make_unique<ViewWorldEffect>(s, node);
+		return std::make_unique<ViewWorldEffect>(context, s, node);
 
 	return std::make_unique<AdventureSpellEffect>();
 }
 
-AdventureSpellMechanics::AdventureSpellMechanics(const CSpell * s)
+AdventureSpellMechanics::AdventureSpellMechanics(LibraryLoadContext & context, const CSpell * s)
 	: IAdventureSpellMechanics(s)
 {
 	for(int level = 0; level < GameConstants::SPELL_SCHOOL_LEVELS; level++)
 	{
 		const JsonNode & config = s->getLevelInfo(level).adventureEffect;
 
-		levelOptions[level].effect = createAdventureEffect(s, config);
+		levelOptions[level].effect = createAdventureEffect(context, s, config);
 		levelOptions[level].castsPerDay = config["castsPerDay"].Integer();
 		levelOptions[level].castsPerDayXL = config["castsPerDayXL"].Integer();
 
 		for(const auto & [name, bonusNode] : s->getLevelInfo(level).effects.Struct())
 		{
-			auto b = JsonUtils::parseBonus(bonusNode);
+			auto b = JsonUtils::parseBonus(bonusNode, context);
 			if(b)
 			{
 				b->sid = BonusSourceID(s->id);
@@ -73,7 +76,7 @@ AdventureSpellMechanics::AdventureSpellMechanics(const CSpell * s)
 
 		for(const auto & elem : config["bonuses"].Struct())
 		{
-			auto b = JsonUtils::parseBonus(elem.second);
+			auto b = JsonUtils::parseBonus(elem.second, context);
 			b->sid = BonusSourceID(s->id);
 			b->source = BonusSource::SPELL_EFFECT;
 			levelOptions[level].bonuses.push_back(b);
@@ -139,6 +142,13 @@ bool AdventureSpellMechanics::canBeCast(spells::Problem & problem, const IGameIn
 
 		if(!heroCaster->canCastThisSpell(owner))
 			return false;
+
+		const auto levelLimits = heroCaster->getBonusesOfType(BonusType::BLOCK_MAGIC_ABOVE);
+		if(!levelLimits->empty() && owner->getLevel() > levelLimits->totalValue())
+		{
+			spells::BaseMechanics::describeSpellLevelLimit(heroCaster, problem);
+			return false;
+		}
 
 		if(heroCaster->mana < cost)
 			return false;

@@ -21,7 +21,9 @@
 #include "../json/JsonBonus.h"
 #include "../json/JsonRandom.h"
 #include "../mapObjects/IObjectInterface.h"
+#include "../modding/IdentifierResolver.h"
 #include "../modding/IdentifierStorage.h"
+#include "../modding/LibraryLoadContext.h"
 #include "../texts/CGeneralTextHandler.h"
 #include "../entities/ResourceTypeHandler.h"
 
@@ -64,10 +66,11 @@ namespace {
 	std::vector<std::shared_ptr<Bonus>> loadBonuses(const JsonNode & value, const TextIdentifier & textIdentifier)
 	{
 		std::vector<std::shared_ptr<Bonus>> ret;
+		InstantIdentifierResolver resolver(*LIBRARY->identifiers());
 		for(size_t i = 0; i < value.Vector().size(); ++i)
 		{
 			const JsonNode & entry = value[i];
-			auto bonus = JsonUtils::parseBonus(entry);
+			auto bonus = JsonUtils::parseBonus(entry, resolver);
 			if(!bonus)
 				continue;
 
@@ -92,13 +95,13 @@ namespace {
 	}
 }
 
-void Rewardable::Info::init(const JsonNode & objectConfig, const std::string & objectName)
+void Rewardable::Info::init(LibraryLoadContext & context, const JsonNode & objectConfig, const std::string & objectName)
 {
 	objectTextID = objectName;
 
 	auto loadString = [&](const JsonNode & entry, const TextIdentifier & textID){
 		if (entry.isString() && !entry.String().empty() && entry.String()[0] != '@')
-			LIBRARY->generaltexth->registerString(entry.getModScope(), textID, entry);
+			context.lib.generaltexth->registerString(entry.getModScope(), textID, entry);
 	};
 
 	parameters = objectConfig;
@@ -218,6 +221,7 @@ void Rewardable::Info::configureReward(Rewardable::Configuration & object, IGame
 	reward.spells = randomizer.loadSpells(source["spells"], variables);
 	reward.creatures = randomizer.loadCreatures(source["creatures"], variables);
 	reward.takenCreatures = randomizer.loadCreatures(source["takenCreatures"], variables);
+	reward.removeInvalidCreatures(textIdentifier.get());
 	if(!source["spellCast"].isNull() && source["spellCast"].isStruct())
 	{
 		reward.spellCast.first = randomizer.loadSpell(source["spellCast"]["spell"], variables);

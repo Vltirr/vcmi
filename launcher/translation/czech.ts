@@ -93,7 +93,7 @@
     </message>
     <message>
         <location filename="../aboutProject/aboutproject_moc.ui" line="329"/>
-        <location filename="../aboutProject/aboutproject_moc.cpp" line="442"/>
+        <location filename="../aboutProject/dataexporter.cpp" line="311"/>
         <source>Export saves</source>
         <translation>Exportovat uložené hry</translation>
     </message>
@@ -102,61 +102,61 @@
         <translation type="vanished">Uložit logy</translation>
     </message>
     <message>
-        <location filename="../aboutProject/aboutproject_moc.cpp" line="442"/>
+        <location filename="../aboutProject/dataexporter.cpp" line="311"/>
         <source>Zip archives (*.zip)</source>
         <translation>Archivy ZIP (*.zip)</translation>
     </message>
     <message>
-        <location filename="../aboutProject/aboutproject_moc.cpp" line="415"/>
-        <location filename="../aboutProject/aboutproject_moc.cpp" line="532"/>
+        <location filename="../aboutProject/dataexporter.cpp" line="284"/>
+        <location filename="../aboutProject/dataexporter.cpp" line="401"/>
         <source>Error</source>
         <translation>Chyba</translation>
     </message>
     <message>
-        <location filename="../aboutProject/aboutproject_moc.cpp" line="411"/>
-        <location filename="../aboutProject/aboutproject_moc.cpp" line="448"/>
+        <location filename="../aboutProject/dataexporter.cpp" line="280"/>
+        <location filename="../aboutProject/dataexporter.cpp" line="317"/>
         <source>Saves exported to %1</source>
         <translation>Uložené hry exportovány do %1</translation>
     </message>
     <message>
-        <location filename="../aboutProject/aboutproject_moc.cpp" line="415"/>
+        <location filename="../aboutProject/dataexporter.cpp" line="284"/>
         <source>Failed to save archive to selected destination</source>
         <translation>Nepodařilo se uložit archiv do vybraného umístění</translation>
     </message>
     <message>
-        <location filename="../aboutProject/aboutproject_moc.cpp" line="433"/>
-        <location filename="../aboutProject/aboutproject_moc.cpp" line="435"/>
+        <location filename="../aboutProject/dataexporter.cpp" line="302"/>
+        <location filename="../aboutProject/dataexporter.cpp" line="304"/>
         <source>Select destination file</source>
         <translation>Vyberte cílový soubor</translation>
     </message>
     <message>
-        <location filename="../aboutProject/aboutproject_moc.cpp" line="433"/>
+        <location filename="../aboutProject/dataexporter.cpp" line="302"/>
         <source>Please select destination file and save the archive as vcmi-saves.zip.</source>
         <translation>Vyberte prosím cílový soubor a uložte archiv jako vcmi-saves.zip.</translation>
     </message>
     <message>
-        <location filename="../aboutProject/aboutproject_moc.cpp" line="435"/>
+        <location filename="../aboutProject/dataexporter.cpp" line="304"/>
         <source>Zip archives (*.zip);;All files (*.*)</source>
         <translation>Archivy ZIP (*.zip);;Všechny soubory (*.*)</translation>
     </message>
     <message>
-        <location filename="../aboutProject/aboutproject_moc.cpp" line="464"/>
-        <location filename="../aboutProject/aboutproject_moc.cpp" line="465"/>
+        <location filename="../aboutProject/dataexporter.cpp" line="333"/>
+        <location filename="../aboutProject/dataexporter.cpp" line="334"/>
         <source>Exporting logs...</source>
         <translation>Exportují se logy...</translation>
     </message>
     <message>
-        <location filename="../aboutProject/aboutproject_moc.cpp" line="464"/>
+        <location filename="../aboutProject/dataexporter.cpp" line="333"/>
         <source>Cancel</source>
         <translation>Zrušit</translation>
     </message>
     <message>
-        <location filename="../aboutProject/aboutproject_moc.cpp" line="465"/>
+        <location filename="../aboutProject/dataexporter.cpp" line="334"/>
         <source>Log export</source>
         <translation>Export logů</translation>
     </message>
     <message>
-        <location filename="../aboutProject/aboutproject_moc.cpp" line="532"/>
+        <location filename="../aboutProject/dataexporter.cpp" line="401"/>
         <source>Failed to create archive: %1</source>
         <translation>Nepodařilo se vytvořit archiv: %1</translation>
     </message>
@@ -169,14 +169,14 @@
         <translation type="vanished">Archiv bude odeslán prostřednictvím jiné aplikace. Sdílejte své logy s vývojáři, např. přes Discord.</translation>
     </message>
     <message>
-        <location filename="../aboutProject/aboutproject_moc.cpp" line="411"/>
-        <location filename="../aboutProject/aboutproject_moc.cpp" line="448"/>
-        <location filename="../aboutProject/aboutproject_moc.cpp" line="541"/>
+        <location filename="../aboutProject/dataexporter.cpp" line="280"/>
+        <location filename="../aboutProject/dataexporter.cpp" line="317"/>
+        <location filename="../aboutProject/dataexporter.cpp" line="410"/>
         <source>Success</source>
         <translation>Dokončeno</translation>
     </message>
     <message>
-        <location filename="../aboutProject/aboutproject_moc.cpp" line="541"/>
+        <location filename="../aboutProject/dataexporter.cpp" line="410"/>
         <source>Logs saved to %1, please send them to the developers</source>
         <translation>Logy byly uloženy do %1, pošlete je prosím vývojářům</translation>
     </message>
@@ -642,7 +642,7 @@ K tomu obvykle dochází na starších systémech, například Windows 7, který
 
 Může to však také znamenat, že někdo zasahuje do vašeho internetového připojení, například ve veřejné síti Wi-Fi. V takovém případě by stahované soubory mohly být nahrazeny škodlivými.
 
-Chcete tuto kontrolu vypnout a zkusit to znovu? Kdykoli ji můžete znovu zapnout v nastavení spouštěče pomocí volby „Ignorovat chyby SSL“.</translation>
+Chcete tuto kontrolu vypnout a zkusit to znovu? Kdykoli ji můžete znovu zapnout v nastavení Launcheru pomocí volby &quot;Ignorovat chyby SSL&quot;.</translation>
     </message>
     <message>
         <location filename="../modManager/cmodlistview_moc.cpp" line="1007"/>
@@ -2055,12 +2055,12 @@ Bin (%n bajtů):
     <message>
         <location filename="../modManager/modstatecontroller.cpp" line="223"/>
         <source>Mod is not located in user data directory and can not be managed by launcher</source>
-        <translation>Modifikace se nenachází ve složce uživatelských dat a nelze ji spravovat ve spouštěči</translation>
+        <translation>Modifikace se nenachází ve složce uživatelských dat a nelze ji spravovat v Launcheru</translation>
     </message>
     <message>
         <location filename="../modManager/modstatecontroller.cpp" line="227"/>
         <source>Mod directory is a git repository and can not be managed by launcher</source>
-        <translation>Složka modifikace je repozitář Git a nelze ji spravovat ve spouštěči</translation>
+        <translation>Složka modifikace je repozitář Git a nelze ji spravovat v Launcheru</translation>
     </message>
     <message>
         <location filename="../modManager/modstatecontroller.cpp" line="245"/>

@@ -179,6 +179,17 @@ float BattleEvaluator::scoreBonusEffects(const battle::Units & units, const Dama
 	return result;
 }
 
+static constexpr int minTurnsToSkipRecast = 2;
+
+static bool hasLongerLastingEffect(const battle::Unit * unit, const CSpell * spell)
+{
+	const auto effects = unit->getBonuses(Selector::source(BonusSource::SPELL_EFFECT, BonusSourceID(spell->id)));
+	return std::any_of(effects->begin(), effects->end(), [](const auto & bonus)
+	{
+		return (bonus->duration & BonusDuration::N_TURNS) && bonus->turnsRemain >= minTurnsToSkipRecast;
+	});
+}
+
 std::optional<PossibleSpellcast> BattleEvaluator::findBestCreatureSpell(const CStack * stack)
 {
 	std::vector<SpellID> spellsToCast;
@@ -211,6 +222,11 @@ std::optional<PossibleSpellcast> BattleEvaluator::findBestCreatureSpell(const CS
 		spells::BattleCast temp(cb->getBattle(battleID).get(), stack, spells::Mode::CREATURE_ACTIVE, spell);
 		for(const auto & target : SpellTargetEvaluator::getViableTargets(spell->battleMechanics(&temp).get()))
 		{
+			// refreshing a spell that still has turns left only wastes the action
+			const auto * targetUnit = !target.empty() ? cb->getBattle(battleID)->battleGetUnitByPos(target.front().hexValue, true) : nullptr;
+			if(targetUnit && hasLongerLastingEffect(targetUnit, spell))
+				continue;
+
 			PossibleSpellcast ps;
 			ps.dest = target;
 			ps.spell = spell;
@@ -252,7 +268,7 @@ BattleAction BattleEvaluator::selectStackAction(const CStack * stack)
 		&& hasWorkingTowers()
 		&& !enemyMellee.empty();
 
-	if(targets->possibleAttacks.empty() && bestSpellcast.has_value())
+	if(targets->possibleAttacks.empty() && bestSpellcast.has_value() && bestSpellcast->value > moveTarget.score)
 	{
 		activeActionMade = true;
 		return BattleAction::makeCreatureSpellcast(stack, bestSpellcast->dest, bestSpellcast->spell->id);
@@ -1024,13 +1040,7 @@ bool BattleEvaluator::attemptCastingSpell(const CStack * activeStack)
 	{
 		// debug rather than trace, so that a cast the server refuses can be matched to the spell in reported logs
 		logAi->debug("%s will cast %s (value %f)", hero->getNameTextID(), castToPerform.spell->getJsonKey(), castToPerform.value);
-		BattleAction spellcast;
-		spellcast.actionType = EActionType::HERO_SPELL;
-		spellcast.spell = castToPerform.spell->id;
-		spellcast.setTarget(castToPerform.dest);
-		spellcast.side = side;
-		spellcast.stackNumber = -1;
-		cb->battleMakeSpellAction(battleID, spellcast);
+		cb->battleMakeSpellAction(battleID, BattleAction::makeHeroSpellcast(side, castToPerform.dest, castToPerform.spell->id));
 		activeActionMade = true;
 
 		return true;

@@ -11,9 +11,11 @@
 
 #include "../../../lib/battle/Activation.h"
 #include "../../../lib/battle/BattleAction.h"
+#include "../../../lib/battle/actions/BattleActionType.h"
 #include "../../../lib/bonuses/Bonus.h"
 #include "../../../lib/GameLibrary.h"
 #include "../../../lib/json/JsonBonus.h"
+#include "../../../lib/modding/IdentifierResolver.h"
 
 #include <vcmi/CreatureService.h>
 #include "../../../lib/mapping/CMap.h"
@@ -150,7 +152,7 @@ TEST_F(FocusActivationTest, zeroCostActivationWorksWhenFocusIsDisabled)
 	EXPECT_TRUE(gameHandler->battles->makePlayerBattleAction(BattleID(0), PlayerColor(0),
 		BattleAction::makeCreatureSpellcast(caster, target, SpellID(SpellID::BLOODLUST))));
 	EXPECT_EQ(battle()->getFocusPoints(BattleSide::ATTACKER), 0);
-	EXPECT_FALSE(caster->castSpellThisTurn);
+	EXPECT_FALSE(caster->castSpellThisTurn());
 }
 
 TEST_F(FocusActivationTest, positiveCostActivationIsRejectedWhenFocusIsDisabled)
@@ -181,9 +183,9 @@ TEST_F(FocusActivationTest, loaderRejectsPositiveCostActivationWhenFocusIsDisabl
 	})";
 	JsonNode ability(content.data(), content.size(), "FocusActivationTest");
 	ability.setModScope("vcmi-test");
-	Bonus parsed;
+	InstantIdentifierResolver resolver(*LIBRARY->identifiers());
 
-	EXPECT_FALSE(JsonUtils::parseBonus(ability, &parsed, TextIdentifier("vcmi-test:positiveFocusCost")));
+	EXPECT_FALSE(JsonUtils::parseBonus(ability, resolver));
 }
 
 TEST_F(FocusActivationTest, loaderAcceptsZeroCostActivationWhenFocusIsDisabled)
@@ -198,9 +200,9 @@ TEST_F(FocusActivationTest, loaderAcceptsZeroCostActivationWhenFocusIsDisabled)
 	})";
 	JsonNode ability(content.data(), content.size(), "FocusActivationTest");
 	ability.setModScope("vcmi-test");
-	Bonus parsed;
+	InstantIdentifierResolver resolver(*LIBRARY->identifiers());
 
-	EXPECT_TRUE(JsonUtils::parseBonus(ability, &parsed, TextIdentifier("vcmi-test:zeroFocusCost")));
+	EXPECT_TRUE(JsonUtils::parseBonus(ability, resolver));
 }
 
 TEST_F(FocusActivationTest, loaderAcceptsDerivedNativeIdentityWithoutExplicitKeys)
@@ -216,9 +218,9 @@ TEST_F(FocusActivationTest, loaderAcceptsDerivedNativeIdentityWithoutExplicitKey
 	})";
 	JsonNode ability(content.data(), content.size(), "FocusActivationTest");
 	ability.setModScope("vcmi-test");
-	Bonus parsed;
+	InstantIdentifierResolver resolver(*LIBRARY->identifiers());
 
-	EXPECT_TRUE(JsonUtils::parseBonus(ability, &parsed, TextIdentifier("vcmi-test:derivedIdentity")));
+	EXPECT_TRUE(JsonUtils::parseBonus(ability, resolver));
 }
 
 TEST_F(FocusActivationTest, loaderRejectsDeliberateActivationWithoutId)
@@ -231,9 +233,9 @@ TEST_F(FocusActivationTest, loaderRejectsDeliberateActivationWithoutId)
 	})";
 	JsonNode ability(content.data(), content.size(), "FocusActivationTest");
 	ability.setModScope("vcmi-test");
-	Bonus parsed;
+	InstantIdentifierResolver resolver(*LIBRARY->identifiers());
 
-	EXPECT_FALSE(JsonUtils::parseBonus(ability, &parsed, TextIdentifier("vcmi-test:missingId")));
+	EXPECT_FALSE(JsonUtils::parseBonus(ability, resolver));
 }
 
 TEST_F(FocusActivationTest, loaderRejectsAmbiguousCooldownScope)
@@ -253,9 +255,9 @@ TEST_F(FocusActivationTest, loaderRejectsAmbiguousCooldownScope)
 	})";
 	JsonNode ability(content.data(), content.size(), "FocusActivationTest");
 	ability.setModScope("vcmi-test");
-	Bonus parsed;
+	InstantIdentifierResolver resolver(*LIBRARY->identifiers());
 
-	EXPECT_FALSE(JsonUtils::parseBonus(ability, &parsed, TextIdentifier("vcmi-test:ambiguousCooldown")));
+	EXPECT_FALSE(JsonUtils::parseBonus(ability, resolver));
 }
 
 TEST_F(FocusActivationTest, activationIgnoresNativeSpellTurnMarker)
@@ -266,7 +268,7 @@ TEST_F(FocusActivationTest, activationIgnoresNativeSpellTurnMarker)
 	auto * caster = addFocusCaster({}, 0);
 	beginCombat();
 	battle()->activeStack = caster->unitId();
-	caster->castSpellThisTurn = true;
+	caster->setCastSpellThisTurn(true);
 
 	battle::Target target;
 	target.emplace_back(caster);
@@ -424,7 +426,7 @@ TEST_F(FocusActivationTest, waitingKeepsTurnUsageButMoraleCreatesNewOpportunity)
 	const ActivationStateKey key{"turnUsage", EActivationLimitScope::STACK, static_cast<int32_t>(caster->unitId()), EActivationLimitPeriod::TURN};
 	battle()->setActivationUsage(BattleSide::ATTACKER, key, 1);
 
-	caster->waiting = true;
+	caster->setTurnStatus(battle::UnitTurnStatus::WAITING);
 	battle()->nextTurn(caster->unitId(), BattleUnitTurnReason::TURN_QUEUE);
 	EXPECT_EQ(battle()->getActivationUsage(BattleSide::ATTACKER, key), 1);
 
@@ -620,4 +622,30 @@ TEST_F(FocusActivationTest, rejectsUnknownDeliberateAbilityWithoutChargingFocus)
 
 	EXPECT_FALSE(gameHandler->battles->makePlayerBattleAction(BattleID(0), PlayerColor(0), action));
 	EXPECT_EQ(battle()->getFocusPoints(BattleSide::ATTACKER), 1);
+}
+
+
+TEST_F(FocusActivationTest, registryOffersConfiguredSpellWithoutNativeCastsAndPreservesReturningTurnState)
+{
+	startGame();
+	disableFocus();
+	startBattle();
+	auto * caster = addFocusCaster({}, 0);
+	beginCombat();
+	battle()->activeStack = caster->unitId();
+	caster->setCastSpellThisTurn(true);
+	std::vector<ActionOption> options;
+	BattleActionType::collectAllOptions(*battle(), *caster, options);
+	EXPECT_TRUE(std::ranges::any_of(options, [](const auto & option)
+	{
+		return option.type == BattleActionType::find(EActionType::MONSTER_SPELL) && option.spell == SpellID(SpellID::BLOODLUST);
+	}));
+	auto ability = std::make_shared<Bonus>(*caster->getBonus(Selector::type()(BonusType::SPELLCASTER)));
+	ability->activation->turn = ActivationTurn{.returnsControl = true};
+	caster->removeBonuses(Selector::type()(BonusType::SPELLCASTER));
+	caster->addNewBonus(ability);
+	const auto action = BattleAction::makeCreatureSpellcast(caster, {battle::Destination(caster)}, SpellID(SpellID::BLOODLUST));
+	const auto start = BattleActionType::makeStartAction(*battle(), action);
+	EXPECT_FALSE(start.turnStatus.has_value());
+	EXPECT_FALSE(start.castSpellThisTurn);
 }

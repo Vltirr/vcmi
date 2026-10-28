@@ -70,6 +70,7 @@ public:
 
 	void initObj(IGameRandomizer & gameRandomizer) override;
 	bool passableFor(PlayerColor color) const override;
+	bool isLocked() const override;
 	void onHeroVisit(IGameEventCallback & gameEvents, const CGHeroInstance * h) const override;
 	void battleFinished(IGameEventCallback & gameEvents, const CGHeroInstance *hero, const BattleResult &result) const override;
 
@@ -130,9 +131,9 @@ class DLL_LINKAGE CGMine : public CArmedInstance, public IOwnableObject
 public:
 	struct InitialGuards
 	{
-		CreatureID creature	= CreatureID::TROGLODYTES;
-		int minAmount = 100;
-		int maxAmount = 199;
+		CreatureID creature	= CreatureID::NONE; // none - use guards from object config
+		int minAmount = 0;
+		int maxAmount = 0;
 
 		template <typename Handler> void serialize(Handler &h)
 		{

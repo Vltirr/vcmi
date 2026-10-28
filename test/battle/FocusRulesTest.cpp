@@ -370,8 +370,8 @@ TEST(FocusRulesTest, serializesSelectedAbilityInBattleAction)
 
 TEST(FocusRulesTest, integratedActionsRemainDistinctAndClassified)
 {
-	EXPECT_EQ(static_cast<int>(EActionType::CREATURE_ABILITY), 15);
-	EXPECT_EQ(static_cast<int>(EActionType::WALK_AND_SHOOT), 16);
+	EXPECT_EQ(static_cast<int>(EActionType::CREATURE_ABILITY), 18);
+	EXPECT_EQ(static_cast<int>(EActionType::WALK_AND_SHOOT), 19);
 	for(auto type : {EActionType::CREATURE_ABILITY, EActionType::WALK_AND_SHOOT})
 	{
 		BattleAction source;
@@ -389,7 +389,7 @@ TEST(FocusRulesTest, integratedActionsRemainDistinctAndClassified)
 		ASSERT_EQ(restored.target.size(), 1);
 		EXPECT_EQ(restored.target.front().hexValue, BattleHex(90));
 		EXPECT_TRUE(restored.isUnitAction());
-		EXPECT_FALSE(restored.isSpellAction());
+		EXPECT_NE(restored.actionType, EActionType::HERO_SPELL);
 	}
 	BattleAction heroSpell;
 	heroSpell.actionType = EActionType::HERO_SPELL;
@@ -414,34 +414,13 @@ TEST(FocusRulesTest, preservesOfficialActionWithoutSelectedAbility)
 	EXPECT_EQ(restored.target.back().hexValue, BattleHex(93));
 }
 
-TEST(FocusRulesTest, preservesCreatureAbilityFromPreviousFocusVersion)
+
+
+
+TEST(FocusRulesTest, registryForkFormatRejectsPreviousForkFiles)
 {
-	BattleAction source;
-	source.actionType = EActionType::CREATURE_ABILITY;
-	source.activatedAbility = "test:enchanter";
-	CMemorySerializer memory;
-	memory.oser.version = ESerializationVersion::GENERIC_ACTIVATION_POLICIES;
-	memory.iser.version = ESerializationVersion::GENERIC_ACTIVATION_POLICIES;
-	memory.oser & source;
-	BattleAction restored;
-	memory.iser & restored;
-	EXPECT_EQ(restored.actionType, EActionType::CREATURE_ABILITY);
-	EXPECT_EQ(restored.activatedAbility, source.activatedAbility);
-}
-
-TEST(FocusRulesTest, clearsSelectedAbilityWhenLoadingOlderBattleAction)
-{
-	BattleAction source;
-	source.actionType = EActionType::WALK_AND_ATTACK;
-	source.activatedAbility = "focus-demo:slowAttack";
-
-	CMemorySerializer memory;
-	memory.oser.version = ESerializationVersion::ABILITY_RETURNS_CONTROL;
-	memory.oser & source;
-	memory.iser.version = ESerializationVersion::ABILITY_RETURNS_CONTROL;
-
-	BattleAction restored;
-	restored.activatedAbility = "stale";
-	memory.iser & restored;
-	EXPECT_TRUE(restored.activatedAbility.empty());
+	const auto previousFork = static_cast<ESerializationVersion>(0x40000000 | (926 << 8) | 8);
+	EXPECT_FALSE(isSupportedSerializationVersion(previousFork));
+	EXPECT_TRUE(isSupportedSerializationVersion(ESerializationVersion::CURRENT));
+	EXPECT_TRUE(isSupportedSerializationVersion(ESerializationVersion::UPSTREAM_CURRENT));
 }

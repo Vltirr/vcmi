@@ -171,6 +171,8 @@ void CPlayerInterface::initGameInterface(std::shared_ptr<Environment> ENV, std::
 
 	pathfinderCache = std::make_unique<PathfinderCache>(cb.get(), PathfinderOptions(*cb));
 	ENGINE->music().loadTerrainMusicThemes();
+	// in hotseat, adventure map of previous player still exists and must not receive selection of this player
+	adventureInt.reset();
 	initializeHeroTownList();
 
 	adventureInt.reset(new AdventureMapInterface());
@@ -751,6 +753,14 @@ void CPlayerInterface::battleCatapultAttacked(const BattleID & battleID, const C
 	battleInt->stackIsCatapulting(ca);
 }
 
+void CPlayerInterface::battleTacticsEnded(const BattleID & battleID)
+{
+	EVENT_HANDLER_CALLED_BY_CLIENT;
+	BATTLE_EVENT_POSSIBLE_RETURN;
+
+	battleInt->windowObject->tacticPhaseEnded();
+}
+
 void CPlayerInterface::battleNewRound(const BattleID & battleID) //called at the beginning of each turn, round=-1 is the tactic phase, round=0 is the first "normal" turn
 {
 	EVENT_HANDLER_CALLED_BY_CLIENT;
@@ -1303,7 +1313,7 @@ void CPlayerInterface::moveHero( const CGHeroInstance *h, const CGPath& path )
 	movementController->requestMovementStart(h, path);
 }
 
-void CPlayerInterface::showGarrisonDialog(const CArmedInstance * up, const CGHeroInstance * down, bool removableUnits, QuestionID questionID, const MetaString & customTitle)
+void CPlayerInterface::showGarrisonDialog(const CArmedInstance * up, const CGHeroInstance * down, QuestionID questionID, const MetaString & customTitle)
 {
 	EVENT_HANDLER_CALLED_BY_CLIENT;
 	auto onEnd = [this, questionID](){ cb->selectionMade(0, questionID); };
@@ -1316,7 +1326,7 @@ void CPlayerInterface::showGarrisonDialog(const CArmedInstance * up, const CGHer
 
 	waitForAllDialogs();
 
-	auto cgw = std::make_shared<CGarrisonWindow>(up, down, removableUnits, customTitle);
+	auto cgw = std::make_shared<CGarrisonWindow>(up, down, customTitle);
 	cgw->quit->addCallback(onEnd);
 	ENGINE->windows().pushWindow(cgw);
 }
@@ -2015,9 +2025,11 @@ void CPlayerInterface::tryShowNextPendingDialog()
 			return;
 		}
 
+		// dialog is destroyed together with its list node
+		const auto blockingPolicy = dialog.blockingPolicy;
 		dialogs.pop_front();
 
-		if(dialog.blockingPolicy != PendingDialog::Type::NonBlocking || showingDialog->isBusy())
+		if(blockingPolicy != PendingDialog::Type::NonBlocking || showingDialog->isBusy())
 			return;
 	}
 }

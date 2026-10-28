@@ -9,10 +9,11 @@
  */
 #pragma once
 
+#include "BattleActionEntry.h"
+
 #include "../gui/CIntObject.h"
 #include "../gui/InterfaceObjectConfigurable.h"
 #include "../../lib/battle/CBattleInfoCallback.h"
-#include "../../lib/battle/PossiblePlayerBattleAction.h"
 
 class CStack;
 class CGTownInstance;
@@ -166,10 +167,10 @@ public:
 	void tacticPhaseEnded();
 
 	/// Set possible alternative options to fill unit actions panel
-	void setPossibleActions(const std::vector<PossiblePlayerBattleAction> & allActions);
+	void setPossibleActions(const BattleActionEntries & allActions);
 
 	/// Refresh activation availability without rebuilding the action panel
-	void updateActivationAvailability(const std::vector<PossiblePlayerBattleAction> & allActions);
+	void updateActivationAvailability(const BattleActionEntries & allActions);
 	/// Cancels the action selected in the unit action panel, if any.
 	bool cancelSelectedUnitAction();
 

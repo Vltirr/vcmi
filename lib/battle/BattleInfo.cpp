@@ -760,7 +760,7 @@ void BattleInfo::nextTurn(uint32_t unitId, BattleUnitTurnReason reason)
 
 	CStack * st = getStack(activeStack);
 	const bool newOpportunity = reason == BattleUnitTurnReason::MORALE ||
-		(reason == BattleUnitTurnReason::TURN_QUEUE && !st->waiting);
+		(reason == BattleUnitTurnReason::TURN_QUEUE && !st->waited());
 	if(newOpportunity)
 	{
 		for(auto side : {BattleSide::ATTACKER, BattleSide::DEFENDER})
@@ -1012,6 +1012,10 @@ void BattleInfo::addObstacle(const ObstacleChanges & changes)
 	auto obstacle = std::make_shared<SpellCreatedObstacle>();
 	obstacle->fromInfo(changes);
 	obstacles.push_back(obstacle);
+
+	logGlobal->debug("Battle %d: obstacle %d from spell %s placed by side %d, hidden: %d, affected hexes: %s, stopping hexes: %s",
+		battleID.getNum(), obstacle->uniqueID, SpellID::encode(obstacle->ID), static_cast<int>(obstacle->casterSide), obstacle->hidden,
+		obstacle->getAffectedTiles().toString(), obstacle->getStoppingTile().toString());
 }
 
 void BattleInfo::updateObstacle(const ObstacleChanges& changes)

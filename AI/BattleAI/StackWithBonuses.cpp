@@ -344,7 +344,7 @@ void HypotheticBattle::nextTurn(uint32_t unitId, BattleUnitTurnReason reason)
 	activeUnitId = unitId;
 	auto unit = getForUpdate(unitId);
 	const bool newOpportunity = reason == BattleUnitTurnReason::MORALE ||
-		(reason == BattleUnitTurnReason::TURN_QUEUE && !unit->waiting);
+		(reason == BattleUnitTurnReason::TURN_QUEUE && !unit->waited());
 	if(newOpportunity)
 		resetActivationUsageTurn(static_cast<int32_t>(unitId));
 
@@ -501,8 +501,7 @@ void HypotheticBattle::makeWait(const battle::Unit * activeStack)
 	auto unit = getForUpdate(activeStack->unitId());
 
 	resetActiveUnit();
-	unit->waiting = true;
-	unit->waitedThisTurn = true;
+	unit->setTurnStatus(battle::UnitTurnStatus::WAITING);
 }
 
 HypotheticBattle::HypotheticServerCallback::HypotheticServerCallback(HypotheticBattle * owner_)

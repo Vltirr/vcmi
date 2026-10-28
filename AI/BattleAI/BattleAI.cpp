@@ -71,22 +71,6 @@ void CBattleAI::initBattleInterface(std::shared_ptr<Environment> ENV, std::share
 	autobattlePreferences = autocombatPreferences;
 }
 
-BattleAction CBattleAI::useHealingTent(const BattleID & battleID, const CStack *stack)
-{
-	auto healingTargets = cb->getBattle(battleID)->battleGetStacks(CBattleInfoEssentials::ONLY_MINE);
-	std::map<int, const CStack*> woundHpToStack;
-	for(const auto * stack : healingTargets)
-	{
-		if(auto woundHp = stack->getMaxHealth() - stack->getFirstHPleft())
-			woundHpToStack[woundHp] = stack;
-	}
-
-	if(woundHpToStack.empty())
-		return BattleAction::makeDefend(stack);
-	else
-		return BattleAction::makeHeal(stack, woundHpToStack.rbegin()->second); //last element of the woundHpToStack is the most wounded stack
-}
-
 std::optional<BattleAction> CBattleAI::useReturningCreatureAbility(const BattleID & battleID, const CStack * stack) const
 {
 	const auto battle = cb->getBattle(battleID);
@@ -96,11 +80,11 @@ std::optional<BattleAction> CBattleAI::useReturningCreatureAbility(const BattleI
 			continue;
 		if(!battle::isActivationAvailable(*battle, stack, EActionType::CREATURE_ABILITY, SpellID::NONE, bonus->activation->id))
 			continue;
-		if(bonus->type == BonusType::ENCHANTER && !bonus->activation->cooldown && battle->battleGetEnchanterCounter(stack->unitSide()) != 0)
+		if(bonus->type == BonusType::ENCHANTER && !bonus->activation->cooldown && battle->battleGetEnchanterCounter(stack->controllingSide()) != 0)
 			continue;
 		if(bonus->type == BonusType::MANA_DRAIN)
 		{
-			const auto opponentHero = battle->battleGetHeroInfo(battle->otherSide(stack->unitSide()));
+			const auto opponentHero = battle->battleGetHeroInfo(battle->otherSide(stack->controllingSide()));
 			if(!opponentHero.details || opponentHero.details->mana == 0)
 				continue;
 		}
@@ -167,7 +151,7 @@ void CBattleAI::activeStack(const BattleID & battleID, const CStack * stack )
 	}
 	if(stack->hasBonusOfType(BonusType::SIEGE_WEAPON) && stack->hasBonusOfType(BonusType::HEALER))
 	{
-		cb->battleMakeUnitAction(battleID, useHealingTent(battleID, stack));
+		cb->battleMakeUnitAction(battleID, BattleAction::makeHeal(stack));
 		return;
 	}
 	if(auto ability = useReturningCreatureAbility(battleID, stack))
@@ -225,15 +209,10 @@ BattleAction CBattleAI::useCatapult(const BattleID & battleID, const CStack * st
 	if(cb->getBattle(battleID)->getAttackableWallParts().empty())
 		return BattleAction::makeDefend(stack);
 
-	// Action has no target - catapult will pick one on its own, according to its targeting rules
-	BattleAction attack;
-	attack.actionType = EActionType::CATAPULT;
-	attack.side = side;
-	attack.stackNumber = stack->unitId();
-
 	movesSkippedByDefense = 0;
 
-	return attack;
+	// catapult will pick a target on its own, according to its targeting rules
+	return BattleAction::makeCatapultShot(stack);
 }
 
 void CBattleAI::battleStart(const BattleID & battleID, const CCreatureSet *army1, const CCreatureSet *army2, int3 tile, const CGHeroInstance *hero1, const CGHeroInstance *hero2, BattleSide Side, bool replayAllowed)

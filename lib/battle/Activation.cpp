@@ -26,6 +26,8 @@ static bool isDeliberateAbilitySource(EActionType action, BonusType type)
 {
 	switch(action)
 	{
+		case EActionType::WALK_AND_ATTACK_NO_RETURN:
+		case EActionType::LONG_WEAPON_ATTACK:
 		case EActionType::WALK_AND_ATTACK:
 			return type == BonusType::SPELL_AFTER_ATTACK || type == BonusType::COMBAT_EVENT_TRIGGER;
 		case EActionType::CREATURE_ABILITY:
@@ -68,6 +70,7 @@ std::shared_ptr<const Bonus> battle::getActivationSource(const CStack * stack, E
 
 	switch(action)
 	{
+		case EActionType::RANDOM_SPELL:
 		case EActionType::MONSTER_SPELL:
 		{
 			auto source = stack->getBonus(Selector::typeSubtype(BonusType::SPELLCASTER, BonusSubtypeID(spell)));
@@ -102,6 +105,7 @@ static std::string nativeActivationIdentity(const Bonus * source, EActionType ac
 	};
 	switch(action)
 	{
+		case EActionType::RANDOM_SPELL:
 		case EActionType::MONSTER_SPELL:
 			return source && source->type == BonusType::RANDOM_SPELLCASTER ? "randomSpellcaster" : "monsterSpell:" + spellKey();
 		case EActionType::WALK_AND_CAST: return "walkAndCast:" + spellKey();
@@ -181,7 +185,7 @@ bool battle::actionReturnsControl(const CStack * stack, EActionType action, cons
 bool battle::isActivationTargetAvailable(const CBattleInfoCallback & battle, const CStack * stack, EActionType action, const SpellID & spell, const std::string & ability, const Unit * target)
 {
 	const auto source = getActivationSource(stack, action, spell, ability);
-	if(!source || !source->activation || action != EActionType::WALK_AND_ATTACK)
+	if(!source || !source->activation || (action != EActionType::WALK_AND_ATTACK && action != EActionType::WALK_AND_ATTACK_NO_RETURN && action != EActionType::LONG_WEAPON_ATTACK))
 		return true;
 	if(!target || !target->isValidTarget())
 		return false;

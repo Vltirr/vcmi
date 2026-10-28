@@ -59,7 +59,7 @@ TEST(SerializationCompatibilityTest, refusesFutureUpstreamOrForkFormatsIndepende
 	EXPECT_TRUE(isSupportedSerializationVersion(ESerializationVersion::CURRENT));
 	EXPECT_TRUE(isSupportedSerializationVersion(ESerializationVersion::UPSTREAM_CURRENT));
 	EXPECT_FALSE(isSupportedSerializationVersion(futureUpstream));
-	EXPECT_FALSE(isSupportedSerializationVersion(forkVersion(futureUpstream, 8)));
+	EXPECT_FALSE(isSupportedSerializationVersion(forkVersion(futureUpstream, serializationForkVersion(ESerializationVersion::FORK_CURRENT))));
 	EXPECT_FALSE(isSupportedSerializationVersion(forkVersion(ESerializationVersion::UPSTREAM_CURRENT, serializationForkVersion(ESerializationVersion::FORK_CURRENT) + 1)));
 	EXPECT_FALSE(isSupportedSerializationVersion(ESerializationVersion::NONE));
 }
@@ -114,9 +114,9 @@ TEST(SerializationCompatibilityTest, refusesUnsupportedEmbeddedReplayFormat)
 	EXPECT_THROW(memory.iser & restored, std::runtime_error);
 }
 
-TEST(SerializationCompatibilityTest, acceptedForkReplayRetainsItsFormatAfterUpgrade)
+TEST(SerializationCompatibilityTest, acceptedForkReplayRetainsItsFormatWhenResaved)
 {
-	const auto acceptedVersion = forkVersion(ESerializationVersion::HOTA_HERO_LEVEL_OPTIONS, 8);
+	const auto acceptedVersion = ESerializationVersion::CURRENT;
 	ReplayChapter original;
 	original.version = acceptedVersion;
 	original.day = 4;
