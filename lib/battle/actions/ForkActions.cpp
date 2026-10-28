@@ -70,7 +70,9 @@ bool CreatureAbilityAction::validate(const IGameInfoCallback & game, const CBatt
 		const auto bonuses = stack->getBonusesOfType(BonusType::ENCHANTER);
 		for(const auto & bonus : *bonuses)
 		{
-			if(!bonus->activation || bonus->activation->id != action.activatedAbility || !bonus->subtype.as<SpellID>().hasValue() || enchanterParameters(*bonus).weight <= 0)
+			if(!bonus->activation || bonus->activation->id != action.activatedAbility || !bonus->subtype.as<SpellID>().hasValue())
+				continue;
+			if(bonus->parameters && bonus->parameters->toEnchanter().weight <= 0)
 				continue;
 			spells::ActivationCaster caster(stack, false);
 			spells::BattleCast cast(&battle, &caster, spells::Mode::ENCHANTER, bonus->subtype.as<SpellID>().toSpell());
