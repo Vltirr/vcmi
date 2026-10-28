@@ -117,8 +117,6 @@ std::optional<UnitActionButton> LibActionEntry::getPanelButton() const
 	{
 		const auto source = std::const_pointer_cast<Bonus>(resolution.source);
 		button->icon = LIBRARY->bth->bonusToGraphics(source);
-		if(source->type == BonusType::SPELL_AFTER_ATTACK && source->subtype.as<SpellID>().hasValue())
-			button->spell = source->subtype.as<SpellID>();
 		if(source->type == BonusType::ENCHANTER && actor->unitType())
 		{
 			const auto & bonuses = actor->unitType()->getExportedBonusList();

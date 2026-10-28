@@ -576,6 +576,7 @@ void BattleFieldController::renderBattlefield(Canvas & canvas)
 	Canvas clippedCanvas(canvas, renderPos);
 
 	showBackground(clippedCanvas);
+	owner.windowObject->renderFocusBars(canvas);
 
 	BattleRenderer renderer(owner);
 
