@@ -1504,7 +1504,7 @@ TrivialRetaliation BattleActionProcessor::makeAttack(const CBattleInfoCallback &
 
 	// only primary target
 	if(defender && defender->alive())
-		applyBattleEffects(battle, bat, attackerState, payload, defender, attack.distance, false, attack.mobileShooting, attack.trivialRetaliation);
+		applyBattleEffects(battle, bat, attackerState, payload, defender, attack.distance, false, attack.mobileShooting);
 
 	for(const auto * unit : secondaryTargets)
 	{
@@ -1512,7 +1512,7 @@ TrivialRetaliation BattleActionProcessor::makeAttack(const CBattleInfoCallback &
 		if(!unit->alive())
 			continue;
 
-		applyBattleEffects(battle, bat, attackerState, payload, unit, attack.distance, true, attack.mobileShooting, attack.trivialRetaliation);
+		applyBattleEffects(battle, bat, attackerState, payload, unit, attack.distance, true, attack.mobileShooting);
 		removeBonuses(battle, unit, *unit->getAllBonuses(Bonus::UntilTakingIndirectDamage));
 	}
 
@@ -1725,7 +1725,7 @@ void BattleActionProcessor::handleAfterAttackCasting(const CBattleInfoCallback &
 
 void BattleActionProcessor::applyBattleEffects(const CBattleInfoCallback & battle, BattleAttack & bat,
 	std::shared_ptr<battle::CUnitState> attackerState, CombatEventPayload & payload,
-	const battle::Unit * def, int distance, bool secondary, bool mobileShooting, const TrivialRetaliation & trivial) const
+	const battle::Unit * def, int distance, bool secondary, bool mobileShooting) const
 {
 	BattleStackAttacked bsa;
 	if(secondary)
@@ -1744,7 +1744,7 @@ void BattleActionProcessor::applyBattleEffects(const CBattleInfoCallback & battl
 
 	auto range = battle.calculateDmgRange(bai);
 	{
-		bsa.damageAmount = trivial.scale(battle.getBattle()->getActualDamage(range.damage, attackerState->getCount(), gameHandler->getRandomGenerator()));
+		bsa.damageAmount = battle.getBattle()->getActualDamage(range.damage, attackerState->getCount(), gameHandler->getRandomGenerator());
 		CStack::prepareAttacked(bsa, gameHandler->getRandomGenerator(), bai.defender->acquireState()); //calculate casualties
 	}
 

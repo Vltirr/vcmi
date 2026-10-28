@@ -21,7 +21,6 @@ void normalizeTrivialRetaliation(JsonNode & config)
 	config = JsonNode();
 	config["enabled"].Bool() = rules.enabled;
 	config["thresholdPercent"].Integer() = rules.thresholdPercent;
-	config["damagePercent"].Integer() = rules.damagePercent;
 }
 }
 bool IGameSettings::getBoolean(EGameSettings option) const

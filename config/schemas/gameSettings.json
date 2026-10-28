@@ -115,8 +115,7 @@
 				"additionalProperties": false,
 				"properties": {
 					"enabled": {"type": "boolean"},
-					"thresholdPercent": {"type": "integer", "minimum": 0, "maximum": 100},
-					"damagePercent": {"type": "integer", "minimum": 0, "maximum": 1000000}
+					"thresholdPercent": {"type": "integer", "minimum": 0, "maximum": 100}
 				}
 			},
 			"focus": {

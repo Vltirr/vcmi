@@ -451,7 +451,7 @@ AttackPossibility AttackPossibility::evaluate(
 					continue;
 				BattleAttackInfo response(respondingDefender.get(), targetState.get(), 0, attackInfo.shooting);
 				auto estimate = state->calculateDmgRange(response);
-				trivial.apply(estimate, *targetState);
+				trivial.apply(estimate);
 				auto damage = std::min<int64_t>(averageDmg(estimate.damage), targetState->getAvailableHealth());
 				const auto reduction = calculateDamageReduce(target, damage, damageCache);
 				if(target->unitId() == attacker->unitId())

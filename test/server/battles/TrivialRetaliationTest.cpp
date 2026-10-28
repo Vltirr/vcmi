@@ -36,13 +36,18 @@ public:
 		addStack(BattleSide::DEFENDER, creatureByName("core:pikeman"), BattleHex(15, 9), 1);
 	}
 
-	void configure(bool enabled, int threshold = 10, int damagePercent = 100)
+	void configure(bool enabled, int threshold = 10)
 	{
 		JsonNode config;
 		config["enabled"].Bool() = enabled;
 		config["thresholdPercent"].Integer() = threshold;
-		config["damagePercent"].Integer() = damagePercent;
 		map()->overrideGameSetting(EGameSettings::COMBAT_TRIVIAL_STACK_RETALIATION, config);
+	}
+
+	void allowSurvivingFullResponses(CStack * stack)
+	{
+		stack->addNewBonus(std::make_shared<Bonus>(BonusDuration::PERMANENT, BonusType::STACK_HEALTH, BonusSource::OTHER, 1000, BonusSourceID()));
+		stack->health.init();
 	}
 
 	std::pair<CStack *, CStack *> place(int attackerCount = 1, int defenderCount = 100)
@@ -79,23 +84,37 @@ TEST_F(TrivialRetaliationTest, ThresholdIsInclusiveAndUsesCounts)
 	EXPECT_FALSE(battle()->getTrivialRetaliationRules().classify(*attacker, *defender).active());
 }
 
-TEST_F(TrivialRetaliationTest, RatioRoundsUpWithoutAnotherMinimum)
+TEST_F(TrivialRetaliationTest, TinyAttackerReceivesFullHighTierDamage)
 {
-	TrivialRetaliation ratio{5, 100, 100};
-	EXPECT_EQ(ratio.scale(41), 3);
-	EXPECT_EQ(ratio.scale(40), 2);
-	EXPECT_EQ(ratio.scale(0), 0);
-	ratio.damagePercent = 200;
-	EXPECT_EQ(ratio.scale(41), 5);
-	ratio.damagePercent = 0;
-	EXPECT_EQ(ratio.scale(41), 0);
+	auto * attacker = addStack(BattleSide::ATTACKER, creatureByName("core:pikeman"), BattleHex(leftHex), 1);
+	auto * defender = addStack(BattleSide::DEFENDER, creatureByName("core:ancientBehemoth"), BattleHex(rightHex), 7);
+	forceMaximumDamage(attacker);
+	forceMaximumDamage(defender);
+	DamageEstimation response;
+	battle()->battleEstimateDamage(BattleAttackInfo(attacker, defender, 0, false), &response);
+	const auto normal = battle()->calculateDmgRange(BattleAttackInfo(defender, attacker, 0, false));
+	EXPECT_TRUE(response.noRetaliationConsumption);
+	EXPECT_EQ(response.damage.min, normal.damage.min);
+	EXPECT_EQ(response.damage.max, normal.damage.max);
+	beginCombat();
+	ASSERT_TRUE(attack(attacker, defender->getPosition()));
+	ASSERT_EQ(counters(), 1);
+	EXPECT_FALSE(attacker->alive());
+	EXPECT_TRUE(defender->ableToRetaliate());
 }
 
-TEST_F(TrivialRetaliationTest, ZeroPowerFallsBackAndLargeProductsDoNotOverflow)
+TEST_F(TrivialRetaliationTest, LegacyDamageMultiplierDoesNotReduceDamage)
 {
-	EXPECT_EQ((TrivialRetaliation{0, 100, 100}.scale(51)), 51);
-	EXPECT_EQ((TrivialRetaliation{5, 0, 100}.scale(51)), 51);
-	EXPECT_EQ((TrivialRetaliation{uint64_t(1) << 60, uint64_t(1) << 62, 100}.scale(int64_t(1) << 60)), int64_t(1) << 58);
+	JsonNode config;
+	config["enabled"].Bool() = true;
+	config["thresholdPercent"].Integer() = 10;
+	config["damagePercent"].Integer() = 0;
+	map()->overrideGameSetting(EGameSettings::COMBAT_TRIVIAL_STACK_RETALIATION, config);
+	auto [attacker, defender] = place();
+	DamageEstimation response;
+	battle()->battleEstimateDamage(BattleAttackInfo(attacker, defender, 0, false), &response);
+	EXPECT_TRUE(response.noRetaliationConsumption);
+	EXPECT_GT(response.damage.min, attacker->getAvailableHealth());
 }
 
 TEST_F(TrivialRetaliationTest, ServerResponseMatchesPredictionAndPreservesUse)
@@ -106,13 +125,14 @@ TEST_F(TrivialRetaliationTest, ServerResponseMatchesPredictionAndPreservesUse)
 	battle()->battleEstimateDamage(attackInfo, &response);
 	ASSERT_TRUE(response.noRetaliationConsumption);
 	ASSERT_EQ(response.damage.min, response.damage.max);
+	const auto attackerHealth = attacker->getAvailableHealth();
 	const auto initialUses = defender->counterAttacks.available();
 	beginCombat();
 	ASSERT_TRUE(attack(attacker, defender->getPosition()));
 	ASSERT_EQ(counters(), 1);
 	const auto & counter = *std::find_if(server.attacks.begin(), server.attacks.end(), [](const auto & a) { return a.counter(); });
 	ASSERT_EQ(counter.bsa.size(), 1);
-	EXPECT_EQ(counter.bsa.front().damageAmount, response.damage.min);
+	EXPECT_EQ(counter.bsa.front().damageAmount, std::min(attackerHealth, response.damage.min));
 	EXPECT_EQ(defender->counterAttacks.available(), initialUses);
 	EXPECT_FALSE(server.battleLogLines.empty());
 }
@@ -159,10 +179,9 @@ TEST_F(TrivialRetaliationTest, DeadDefenderDoesNotRespond)
 	EXPECT_EQ(counters(), 0);
 }
 
-TEST_F(TrivialRetaliationTest, PredictionUsesSurvivorsAndPreHitRatio)
+TEST_F(TrivialRetaliationTest, PredictionUsesFullSurvivingDefenderDamage)
 {
 	auto [attacker, defender] = place(10, 100);
-	const auto ratio = battle()->getTrivialRetaliationRules().classify(*attacker, *defender);
 	BattleAttackInfo incoming(attacker, defender, 0, false);
 	auto damage = battle()->calculateDmgRange(incoming);
 	auto remaining = defender->acquireState();
@@ -171,8 +190,9 @@ TEST_F(TrivialRetaliationTest, PredictionUsesSurvivorsAndPreHitRatio)
 	auto normal = battle()->calculateDmgRange(BattleAttackInfo(remaining.get(), attacker, 0, false));
 	DamageEstimation response;
 	battle()->battleEstimateDamage(incoming, &response);
-	EXPECT_EQ(response.damage.min, ratio.scale(normal.damage.min));
-	EXPECT_EQ(response.damage.max, ratio.scale(normal.damage.max));
+	EXPECT_TRUE(response.noRetaliationConsumption);
+	EXPECT_EQ(response.damage.min, normal.damage.min);
+	EXPECT_EQ(response.damage.max, normal.damage.max);
 }
 
 TEST_F(TrivialRetaliationTest, BattleAISimulationKeepsResponseForFollowingAttacker)
@@ -191,7 +211,8 @@ TEST_F(TrivialRetaliationTest, BattleAISimulationKeepsResponseForFollowingAttack
 }
 TEST_F(TrivialRetaliationTest, DoubleAttackCanRetaliateTwiceWithoutConsumption)
 {
-	auto [attacker, defender] = place(10, 100);
+	auto [attacker, defender] = place(1, 100);
+	allowSurvivingFullResponses(attacker);
 	attacker->addNewBonus(std::make_shared<Bonus>(BonusDuration::PERMANENT, BonusType::ADDITIONAL_ATTACK, BonusSource::OTHER, 1, BonusSourceID()));
 	beginCombat();
 	ASSERT_TRUE(attack(attacker, defender->getPosition()));
@@ -201,15 +222,15 @@ TEST_F(TrivialRetaliationTest, DoubleAttackCanRetaliateTwiceWithoutConsumption)
 
 TEST_F(TrivialRetaliationTest, SecondHitCanCrossTheThresholdAndConsumeUse)
 {
-	configure(true, 10, 0);
 	auto [attacker, defender] = place(10, 100);
+	allowSurvivingFullResponses(attacker);
 	attacker->addNewBonus(std::make_shared<Bonus>(BonusDuration::PERMANENT, BonusType::ADDITIONAL_ATTACK, BonusSource::OTHER, 1, BonusSourceID()));
 	beginCombat();
 	ASSERT_TRUE(attack(attacker, defender->getPosition()));
 	ASSERT_EQ(counters(), 2);
 	auto counter = std::find_if(server.attacks.begin(), server.attacks.end(), [](const auto & a) { return a.counter(); });
 	ASSERT_FALSE(counter->bsa.empty());
-	EXPECT_EQ(counter->bsa.front().damageAmount, 0);
+	EXPECT_GT(counter->bsa.front().damageAmount, 0);
 	++counter;
 	counter = std::find_if(counter, server.attacks.end(), [](const auto & a) { return a.counter(); });
 	ASSERT_NE(counter, server.attacks.end());
@@ -273,7 +294,7 @@ TEST_F(TrivialRetaliationTest, AdditionalUsesAreConsumedOnlyByOrdinaryResponsesI
 	EXPECT_EQ(hb->getForUpdate(defender->unitId())->counterAttacks.available(), defender->counterAttacks.available() - 1);
 }
 
-TEST_F(TrivialRetaliationTest, ExchangeSimulationUsesProportionalResponse)
+TEST_F(TrivialRetaliationTest, ExchangeSimulationUsesFullResponse)
 {
 	auto [attacker, defender] = place(10, 100);
 	auto hb = hypothetical();
@@ -285,7 +306,7 @@ TEST_F(TrivialRetaliationTest, ExchangeSimulationUsesProportionalResponse)
 	BattleExchangeVariant exchange;
 	exchange.trackAttack(a, d, false, true, cache, hb, BattleExchangeVariant::AttackMode::FIRST_STRIKE);
 	EXPECT_LT(a->getAvailableHealth(), before);
-	EXPECT_TRUE(a->alive());
+	EXPECT_FALSE(a->alive());
 	EXPECT_EQ(d->counterAttacks.available(), defender->counterAttacks.available());
 }
 
@@ -301,13 +322,13 @@ TEST_F(TrivialRetaliationModuleTest, PackageSelectionActivatesTheConfiguredRules
 	const auto rules = battle()->getTrivialRetaliationRules();
 	EXPECT_EQ(rules.enabled, std::string(selected) == "on");
 	EXPECT_EQ(rules.thresholdPercent, 10);
-	EXPECT_EQ(rules.damagePercent, 100);
 }
 
 TEST_F(TrivialRetaliationTest, RangedDoubleAttackKeepsShotsAndRetaliationAccountingSeparate)
 {
-	auto * attacker = addStack(BattleSide::ATTACKER, creatureByName("core:archer"), BattleHex(2, 5), 10);
+	auto * attacker = addStack(BattleSide::ATTACKER, creatureByName("core:archer"), BattleHex(2, 5), 1);
 	auto * defender = addStack(BattleSide::DEFENDER, creatureByName("core:archer"), BattleHex(7, 5), 100);
+	allowSurvivingFullResponses(attacker);
 	forceMaximumDamage(attacker);
 	forceMaximumDamage(defender);
 	attacker->addNewBonus(std::make_shared<Bonus>(BonusDuration::PERMANENT, BonusType::ADDITIONAL_ATTACK, BonusSource::OTHER, 1, BonusSourceID()));
@@ -333,14 +354,14 @@ TEST_F(TrivialRetaliationTest, BattleAIFirstStrikeUsesPreHitDefenderStrength)
 	auto ap = AttackPossibility::evaluate(BattleAttackInfo(attacker, defender, 0, false), attacker->getPosition(), cache, hb);
 	DamageEstimation response;
 	battle()->battleEstimateDamage(BattleAttackInfo(attacker, defender, 0, false), &response);
-	EXPECT_EQ(ap.attackerState->getAvailableHealth(), attacker->getAvailableHealth() - response.damage.min);
-	EXPECT_TRUE(ap.attackerState->alive());
+	EXPECT_EQ(ap.attackerState->getAvailableHealth(), std::max<int64_t>(0, attacker->getAvailableHealth() - response.damage.min));
+	EXPECT_FALSE(ap.attackerState->alive());
 	for(const auto & state : ap.affectedUnits)
 		if(state->unitId() == defender->unitId())
 			EXPECT_TRUE(state->ableToRetaliate());
 }
 
-TEST_F(TrivialRetaliationTest, BattleAIChoosesDifferentTargetsWhenTheConfiguredCostChanges)
+TEST_F(TrivialRetaliationTest, BattleAIChoosesSafeTargetOverFullTrivialRetaliation)
 {
 	auto [attacker, defender] = place(10, 100);
 	auto * alternative = addStack(BattleSide::DEFENDER, creatureByName("core:pikeman"), BattleHex(leftHex - 1), 1);
@@ -352,9 +373,6 @@ TEST_F(TrivialRetaliationTest, BattleAIChoosesDifferentTargetsWhenTheConfiguredC
 		PotentialTargets targets(attacker, cache, hb);
 		return targets.bestAction().attack.defender->unitId();
 	};
-	configure(true, 10, 0);
-	EXPECT_EQ(choose(), defender->unitId());
-	configure(true, 10, 10000);
 	EXPECT_EQ(choose(), alternative->unitId());
 }
 TEST_F(TrivialRetaliationTest, RangedSimulationHandlesAStationaryAttackWithoutAnExplicitHex)
@@ -369,7 +387,7 @@ TEST_F(TrivialRetaliationTest, RangedSimulationHandlesAStationaryAttackWithoutAn
 	cache.buildDamageCache(hb, BattleSide::ATTACKER);
 	auto ap = AttackPossibility::evaluate(BattleAttackInfo(attacker, defender, 0, true), BattleHex::INVALID, cache, hb);
 	EXPECT_LT(ap.attackerState->getAvailableHealth(), attacker->getAvailableHealth());
-	EXPECT_TRUE(ap.attackerState->alive());
+	EXPECT_FALSE(ap.attackerState->alive());
 }
 TEST_F(TrivialRetaliationTest, SaveRoundTripKeepsTheEffectiveRules)
 {
@@ -390,7 +408,7 @@ TEST_F(TrivialRetaliationTest, SaveRoundTripKeepsTheEffectiveRules)
 	const TrivialRetaliationRules rules(restored.getValue(EGameSettings::COMBAT_TRIVIAL_STACK_RETALIATION));
 	EXPECT_TRUE(rules.enabled);
 	EXPECT_EQ(rules.thresholdPercent, 7);
-	EXPECT_EQ(rules.damagePercent, 275);
+	EXPECT_TRUE(restored.getValue(EGameSettings::COMBAT_TRIVIAL_STACK_RETALIATION)["damagePercent"].isNull());
 }
 
 TEST_F(TrivialRetaliationTest, CollateralVictimDoesNotGainItsOwnRetaliation)
@@ -400,7 +418,6 @@ TEST_F(TrivialRetaliationTest, CollateralVictimDoesNotGainItsOwnRetaliation)
 	auto * collateral = addStack(BattleSide::DEFENDER, creatureByName("core:pikeman"), BattleHex(rightHex + 1), 10000);
 	forceMaximumDamage(attacker);
 	forceMaximumDamage(defender);
-	configure(true, 10, 0);
 	const auto initialHealth = collateral->getAvailableHealth();
 	beginCombat();
 	ASSERT_TRUE(attack(attacker, defender->getPosition()));

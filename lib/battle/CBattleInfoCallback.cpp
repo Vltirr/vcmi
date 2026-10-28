@@ -1480,7 +1480,7 @@ DamageEstimation CBattleInfoCallback::battleEstimateDamage(const BattleAttackInf
 		if (state->alive())
 		{
 			auto estimate = calculateDmgRange(retaliationAttack);
-			trivial.apply(estimate, *bai.attacker);
+			trivial.apply(estimate);
 			return estimate;
 		}
 		else

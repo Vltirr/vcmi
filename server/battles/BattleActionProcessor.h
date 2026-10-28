@@ -154,7 +154,7 @@ class BattleActionProcessor : boost::noncopyable
 	/// Applies damage to one target and appends its result to the event payload
 	void applyBattleEffects(const CBattleInfoCallback & battle, BattleAttack & bat,
 		std::shared_ptr<battle::CUnitState> attackerState, CombatEventPayload & payload,
-		const battle::Unit * def, int distance, bool secondary, bool mobileShooting, const TrivialRetaliation & trivial) const;
+		const battle::Unit * def, int distance, bool secondary, bool mobileShooting) const;
 
 	void addGenericKilledLog(BattleLogMessage & blm, const CStack * defender, int32_t killed, bool multiple) const;
 	void addGenericDamageLog(BattleLogMessage& blm, const std::shared_ptr<battle::CUnitState> &attackerState, int64_t damageDealt) const;

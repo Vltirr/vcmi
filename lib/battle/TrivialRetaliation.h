@@ -10,23 +10,19 @@
 namespace battle { class Unit; }
 struct DamageEstimation;
 
-/// Power ratio captured before the incoming hit.
+/// Retaliation consumption exemption captured before the incoming hit.
 struct DLL_LINKAGE TrivialRetaliation
 {
-	uint64_t attackerPower = 0;
-	uint64_t defenderPower = 0;
-	int32_t damagePercent = 100;
+	bool preservesUse = false;
 
-	bool active() const { return attackerPower != 0 && defenderPower != 0; }
-	int64_t scale(int64_t damage) const;
-	void apply(DamageEstimation & estimate, const battle::Unit & target) const;
+	bool active() const { return preservesUse; }
+	void apply(DamageEstimation & estimate) const;
 };
 
 struct DLL_LINKAGE TrivialRetaliationRules
 {
 	bool enabled = false;
 	int32_t thresholdPercent = 10;
-	int32_t damagePercent = 100;
 
 	TrivialRetaliationRules() = default;
 	explicit TrivialRetaliationRules(const JsonNode & config);

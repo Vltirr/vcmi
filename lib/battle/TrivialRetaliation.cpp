@@ -35,7 +35,6 @@ TrivialRetaliationRules::TrivialRetaliationRules(const JsonNode & config)
 		return static_cast<int32_t>(value.Integer());
 	};
 	thresholdPercent = read("thresholdPercent", 10, 100);
-	damagePercent = read("damagePercent", 100, 1000000);
 }
 
 TrivialRetaliation TrivialRetaliationRules::classify(const battle::Unit & attacker, const battle::Unit & defender) const
@@ -50,31 +49,12 @@ TrivialRetaliation TrivialRetaliationRules::classify(const battle::Unit & attack
 	const uint64_t defendingPower = static_cast<uint64_t>(defendingValue) * defender.getCount();
 	if(uint256_t(attackingPower) * 100 > uint256_t(defendingPower) * thresholdPercent)
 		return {};
-	return {attackingPower, defendingPower, damagePercent};
+	return {true};
 }
 
-int64_t TrivialRetaliation::scale(int64_t damage) const
-{
-	if(!active() || damage <= 0)
-		return damage;
-	const uint256_t numerator = uint256_t(damage) * attackerPower * damagePercent;
-	const uint256_t denominator = uint256_t(defenderPower) * 100;
-	const uint256_t result = (numerator + denominator - 1) / denominator;
-	return result > std::numeric_limits<int64_t>::max() ? std::numeric_limits<int64_t>::max() : static_cast<int64_t>(result);
-}
-
-void TrivialRetaliation::apply(DamageEstimation & estimate, const battle::Unit & target) const
+void TrivialRetaliation::apply(DamageEstimation & estimate) const
 {
 	if(!active())
 		return;
 	estimate.noRetaliationConsumption = true;
-	estimate.damage = {scale(estimate.damage.min), scale(estimate.damage.max)};
-	estimate.damageBeforeDefense = {scale(estimate.damageBeforeDefense.min), scale(estimate.damageBeforeDefense.max)};
-	const auto kills = [&](int64_t damage)
-	{
-		if(damage < target.getFirstHPleft())
-			return int64_t(0);
-		return std::min<int64_t>(target.getCount(), 1 + (damage - target.getFirstHPleft()) / target.getMaxHealth());
-	};
-	estimate.kills = {kills(estimate.damage.min), kills(estimate.damage.max)};
 }

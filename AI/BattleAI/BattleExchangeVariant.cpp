@@ -160,7 +160,7 @@ float BattleExchangeVariant::trackAttack(
 	{
 		BattleAttackInfo response(defender.get(), attacker.get(), 0, shooting);
 		auto estimate = hb->calculateDmgRange(response);
-		trivial.apply(estimate, *attacker);
+		trivial.apply(estimate);
 		auto damage = (estimate.damage.min + estimate.damage.max) / 2;
 		attackerDamageReduce = AttackPossibility::calculateDamageReduce(attacker.get(), damage, damageCache);
 		if(isOurAttack)

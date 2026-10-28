@@ -85,13 +85,10 @@ public:
 				const auto & config = overrides["combat"]["trivialStackRetaliation"];
 				if(!config.isStruct() || !config["enabled"].isBool())
 					throw std::runtime_error("Invalid saved game setting combat.trivialStackRetaliation: expected object with boolean enabled");
-				for(const auto & field : {std::pair{"thresholdPercent", 100}, std::pair{"damagePercent", 1000000}})
-				{
-					const auto & value = config[field.first];
-					if(!value.isNull() && (!value.isNumber() || !std::isfinite(value.Float()) || value.Float() < 0
-						|| value.Float() > field.second || value.Float() != value.Integer()))
-						throw std::runtime_error(std::string("Invalid saved game setting combat.trivialStackRetaliation.") + field.first);
-				}
+				const auto & threshold = config["thresholdPercent"];
+				if(!threshold.isNull() && (!threshold.isNumber() || !std::isfinite(threshold.Float()) || threshold.Float() < 0
+					|| threshold.Float() > 100 || threshold.Float() != threshold.Integer()))
+					throw std::runtime_error("Invalid saved game setting combat.trivialStackRetaliation.thresholdPercent");
 			}
 			loadOverrides(overrides);
 		}
