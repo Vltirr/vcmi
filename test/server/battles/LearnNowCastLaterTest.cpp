@@ -12,6 +12,8 @@
 #include "BattleTestFixture.h"
 #include "../../../lib/GameLibrary.h"
 #include "../../../lib/GameSettings.h"
+#include "../../../lib/entities/hero/CHero.h"
+#include <vcmi/HeroTypeService.h>
 
 #include "../../../lib/bonuses/Bonus.h"
 #include "../../../lib/bonuses/BonusCustomTypes.h"
@@ -86,6 +88,69 @@ TEST_F(LearnNowCastLaterTest, LowLevelSpellStillUsable)
 	learn(SpellID::MAGIC_ARROW);
 	EXPECT_TRUE(attackerSideHero->canCastThisSpell(SpellID(SpellID::MAGIC_ARROW).toSpell()));
 }
+
+TEST_F(LearnNowCastLaterTest, OrdinarySpellDamageBonusDoesNotBypassWisdom)
+{
+	learn(SpellID::INFERNO);
+	grantSpell(BonusType::SPECIFIC_SPELL_DAMAGE, BonusSubtypeID(SpellID(SpellID::INFERNO)), 10);
+	EXPECT_FALSE(attackerSideHero->canCastThisSpell(SpellID(SpellID::INFERNO).toSpell()));
+}
+
+TEST_F(LearnNowCastLaterTest, ServerAllowsKnownSpecialtySpellWithoutWisdom)
+{
+	learn(SpellID::INFERNO);
+	auto specialty = std::make_shared<Bonus>(BonusDuration::PERMANENT, BonusType::SPECIAL_SPELL_SCALING,
+		BonusSource::HERO_SPECIAL, 5, BonusSourceID(), BonusSubtypeID(SpellID(SpellID::INFERNO)));
+	attackerSideHero->addNewBonus(specialty);
+	startBattle();
+	auto * target = addStack(BattleSide::DEFENDER, creatureByName("core:pikeman"), BattleHex(rightHex), 100);
+	beginCombat();
+	const auto mana = attackerSideHero->mana;
+	EXPECT_TRUE(castAsHero(attackerSideHero, SpellID::INFERNO, target));
+	EXPECT_LT(attackerSideHero->mana, mana);
+	EXPECT_FALSE(server.castsOf(SpellID::INFERNO).empty());
+}
+
+class SpellSpecialistWisdomTest : public TinyMapGameTest, public ::testing::WithParamInterface<std::string> {};
+
+TEST_P(SpellSpecialistWisdomTest, SpecialtyRemainsUsableWithoutWisdom)
+{
+	overrideSettingBeforeInit(EGameSettings::SPELLS_LEARN_NOW_CAST_LATER, true);
+	const auto * heroType = LIBRARY->heroes()->getByName("core:" + GetParam());
+	ASSERT_NE(heroType, nullptr);
+	TinyH3M::TinyH3MBuilder builder(EMapFormat::SOD);
+	builder.size(36, false).playerActive(PlayerColor(0))
+		.hero({5, 5, 0}, HeroTypeID(heroType->getIndex()), PlayerColor(0));
+	startWithMap(std::move(builder));
+	auto * hero = findHeroByOwner(PlayerColor(0));
+	ASSERT_NE(hero, nullptr);
+	hero->setSecSkillLevel(SecondarySkill::WISDOM, MasteryLevel::NONE, ChangeValueMode::ABSOLUTE);
+	ASSERT_EQ(hero->getHeroType()->spells.size(), 1u);
+	const auto specialtySpell = *hero->getHeroType()->spells.begin();
+	ASSERT_GT(specialtySpell.toSpell()->getLevel(), hero->maxCastableSpellLevel());
+	ASSERT_TRUE(hero->spellbookContainsSpell(specialtySpell));
+	EXPECT_TRUE(hero->canCastThisSpell(specialtySpell.toSpell()));
+	EXPECT_FALSE(hero->getSourcesForSpell(specialtySpell).empty());
+
+	ChangeSpells knowledge;
+	knowledge.hid = hero->id;
+	knowledge.learn = true;
+	knowledge.spells = {SpellID::IMPLOSION};
+	apply(knowledge);
+	EXPECT_FALSE(hero->canCastThisSpell(SpellID(SpellID::IMPLOSION).toSpell()));
+
+	auto restored = CMemorySerializer::deepCopy(*hero, gameState().get());
+	restored->restoreBonusSystem(*gameState());
+	EXPECT_TRUE(restored->canCastThisSpell(specialtySpell.toSpell()));
+	EXPECT_FALSE(restored->canCastThisSpell(SpellID(SpellID::IMPLOSION).toSpell()));
+	hero->removeAllSpells();
+	EXPECT_FALSE(hero->canCastThisSpell(specialtySpell.toSpell()));
+	hero->removeSpellbook();
+	EXPECT_FALSE(hero->canCastThisSpell(specialtySpell.toSpell()));
+}
+
+INSTANTIATE_TEST_SUITE_P(Heroes, SpellSpecialistWisdomTest,
+	::testing::Values("xyron", "solmyr", "deemer", "aislinn"));
 
 TEST_F(LearnNowCastLaterTest, BlockedCombatSpellDoesNotIncreaseHeroMagicStrength)
 {

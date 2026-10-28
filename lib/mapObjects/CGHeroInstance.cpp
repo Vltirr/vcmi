@@ -1539,9 +1539,32 @@ std::vector<BonusSourceID> CGHeroInstance::getSourcesForSpell(const SpellID & sp
 	std::vector<BonusSourceID> sources;
 	const bool spellbook = hasSpellbook();
 
-	if(spellbook && spellbookContainsSpell(spellId)
-		&& spellId.toSpell()->getLevel() <= maxCastableSpellLevel())
-		sources.emplace_back(getArt(ArtifactPosition::SPELLBOOK)->getId());
+	if(spellbook && spellbookContainsSpell(spellId))
+	{
+		bool usableFromBook = spellId.toSpell()->getLevel() <= maxCastableSpellLevel();
+		if(!usableFromBook)
+		{
+			const auto specialtyBonuses = getBonuses(Selector::sourceType()(BonusSource::HERO_SPECIAL)
+				.And(Selector::subtype()(BonusSubtypeID(spellId))));
+			usableFromBook = std::ranges::any_of(*specialtyBonuses, [](const auto & bonus)
+			{
+				switch(bonus->type)
+				{
+					case BonusType::SPECIAL_SPELL_LEV:
+					case BonusType::SPECIAL_SPELL_SCALING:
+					case BonusType::SPECIFIC_SPELL_DAMAGE:
+					case BonusType::SPECIAL_PECULIAR_ENCHANT:
+					case BonusType::SPECIAL_ADD_VALUE_ENCHANT:
+					case BonusType::SPECIAL_FIXED_VALUE_ENCHANT:
+						return true;
+					default:
+						return false;
+				}
+			});
+		}
+		if(usableFromBook)
+			sources.emplace_back(getArt(ArtifactPosition::SPELLBOOK)->getId());
+	}
 
 	for(const auto & bonus : *getBonusesOfType(BonusType::SPELL, spellId))
 		if(spellbook || castableWithoutSpellbook(*bonus))
