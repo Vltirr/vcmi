@@ -1143,8 +1143,6 @@ bool HeroCastAnimation::init()
 		delete this;
 	});
 
-	initializeProjectile();
-
 	return true;
 }
 
@@ -1173,13 +1171,18 @@ void HeroCastAnimation::emitProjectile()
 	if (spell->animationInfo.projectile.empty())
 		emitAnimationEvent();
 	else
+	{
+		// A cast that ends before the climax must not leave an unlaunched projectile.
+		initializeProjectile();
 		owner.projectilesController->emitStackProjectile( nullptr );
+	}
 
 	projectileEmitted = true;
 }
 
 void HeroCastAnimation::emitAnimationEvent()
 {
+	hitEmitted = true;
 	owner.executeAnimationStage(EAnimationEvents::HIT);
 }
 
@@ -1205,13 +1208,12 @@ void HeroCastAnimation::tick(uint32_t msPassed)
 		return;
 	}
 
-	if (owner.projectilesController->hasActiveProjectile(nullptr, false))
+	if (owner.projectilesController->hasActiveProjectile(nullptr, true))
 		return;
 
 	if (!hitEmitted)
 	{
 		emitAnimationEvent();
-		hitEmitted = true;
 		return;
 	}
 
