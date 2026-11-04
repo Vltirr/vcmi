@@ -75,6 +75,8 @@ const CPlayerEnvironment::GameCb * CPlayerEnvironment::game() const
 CClient::CClient()
 {
 	waitingRequest.clear();
+	Settings session = settings.write["session"];
+	session["showManaAura"].Bool() = false;
 }
 
 CClient::~CClient() = default;
