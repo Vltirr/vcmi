@@ -41,9 +41,20 @@ private:
 	{
 		std::shared_ptr<CanvasImage> image;
 		uint32_t stamp = 0;
+		std::list<std::pair<int, int>>::iterator order;
 	};
 	std::map<std::pair<int, int>, Block> images;
 	std::vector<uint8_t> uploadPixels;
+	struct RouteImage
+	{
+		uint64_t signature = 0;
+		std::vector<ColorRGBA> pixels;
+	};
+	std::map<std::pair<int, int>, RouteImage> routeImages;
+	std::list<std::pair<int, int>> routeOrder;
+	std::vector<ColorRGBA> framePixels;
+	Rect frameBounds;
+	uint32_t frameStamp = 0;
 	std::list<std::pair<int, int>> imageOrder;
 
 	void load();

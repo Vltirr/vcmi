@@ -40,6 +40,7 @@ TEST(ManaAuraVisuals, ApprovedBalancedMaterialMatchesSelectedMotion)
 {
 	ManaAuraVisualSettings config;
 	config.pulseEnabled = false;
+	config.controlStep = 1;
 	ManaAuraField field(config, approvedMaterial());
 	const auto started = std::chrono::steady_clock::now();
 	build(field, Rect(0, 0, 22, 22));
@@ -53,9 +54,10 @@ TEST(ManaAuraVisuals, ApprovedBalancedMaterialMatchesSelectedMotion)
 			field.update(current, true);
 		}
 		const auto actual = field.pixel(sample.x, sample.y);
-		EXPECT_NEAR(actual.r, sample.rgba[0], 2) << sample.x << ',' << sample.y << " time=" << current;
-		EXPECT_NEAR(actual.g, sample.rgba[1], 2);
-		EXPECT_NEAR(actual.b, sample.rgba[2], 2);
+		// Transparent RGB does not contribute to the map.
+		EXPECT_NEAR(actual.r * actual.a / 255., sample.rgba[0] * sample.rgba[3] / 255., 2) << sample.x << ',' << sample.y << " time=" << current;
+		EXPECT_NEAR(actual.g * actual.a / 255., sample.rgba[1] * sample.rgba[3] / 255., 2);
+		EXPECT_NEAR(actual.b * actual.a / 255., sample.rgba[2] * sample.rgba[3] / 255., 2);
 		EXPECT_NEAR(actual.a, sample.rgba[3], 2) << sample.x << ',' << sample.y << " time=" << current;
 	}
 }
@@ -242,18 +244,53 @@ TEST(ManaAuraVisuals, SmallAurasStayCachedAcrossPixelCameraMoves)
 	EXPECT_EQ(prepared.h, 35);
 }
 
-TEST(ManaAuraVisuals, LargeRegionsRetainPrefetchUntilCameraLeavesIt)
+TEST(ManaAuraVisuals, EntireInfluenceStaysPreparedAcrossDistantCameraMoves)
 {
-	const Rect coverage(0, 0, 252, 252), initialView(40, 40, 20, 20);
-	const auto prepared = ManaAuraFieldBuilder::region(initialView, coverage, Rect(0, 0, 0, 0), 2097152);
-	for(int pixel = 0; pixel < 256; ++pixel)
+	const Rect coverage(0, 0, 252, 252);
+	Rect prepared;
+	int builds = 0;
+	for(const auto & visible : {Rect(0, 0, 20, 20), Rect(200, 200, 20, 20), Rect(40, 40, 20, 20), Rect(220, 0, 20, 20)})
 	{
-		auto next = ManaAuraFieldBuilder::region(Rect(40 + pixel / 32, 40, 20, 20), coverage, prepared, 2097152);
-		EXPECT_EQ(next.x, prepared.x);
-		EXPECT_EQ(next.w, prepared.w);
+		auto next = ManaAuraFieldBuilder::region(visible, coverage, prepared, 2097152);
+		if(!next.operator==(prepared))
+			++builds;
+		prepared = next;
+		EXPECT_EQ(prepared.x, coverage.x);
+		EXPECT_EQ(prepared.y, coverage.y);
+		EXPECT_EQ(prepared.w, coverage.w);
+		EXPECT_EQ(prepared.h, coverage.h);
 	}
-	auto moved = ManaAuraFieldBuilder::region(Rect(100, 40, 20, 20), coverage, prepared, 2097152);
-	EXPECT_GT(moved.x, prepared.x);
-	auto outside = ManaAuraFieldBuilder::region(Rect(280, 280, 20, 20), coverage, prepared, 2097152);
-	EXPECT_EQ(outside.w, 0);
+	EXPECT_EQ(builds, 1);
+	EXPECT_EQ(ManaAuraFieldBuilder::region(Rect(280, 280, 20, 20), coverage, prepared, 2097152).w, 0);
+}
+
+TEST(ManaAuraVisuals, NativeBlocksMatchPointSamplesAcrossPulseAndRoadBoundaries)
+{
+	ManaAuraVisualSettings config;
+	const Rect tiles(0, 0, 22, 22);
+	auto info = visibleTiles(tiles);
+	for(int x = 0; x < tiles.w; ++x)
+	{
+		auto & route = info[12 * tiles.w + x].route;
+		route.assign(1024, ColorRGBA(0, 0, 0, 0));
+		for(int y = 12; y <= 20; ++y)
+			for(int px = 0; px < 32; ++px)
+				route[y * 32 + px] = ColorRGBA(80 + px, 65 + y, 30, 255);
+	}
+	ManaAuraField field(config, approvedMaterial());
+	field.rebuild(tiles, int3(64, 64, 2), 0, std::array{int3(10, 10, 0)}, 8, info);
+	for(int frame = 0; frame < 60; ++frame)
+		field.update(frame / 12., true);
+	ASSERT_FALSE(field.getPulses().empty());
+	for(const Rect & bounds : {Rect(256, 256, 128, 128), Rect(384, 256, 128, 128), Rect(256, 384, 128, 128)})
+	{
+		std::vector<ColorRGBA> block(bounds.w * bounds.h);
+		field.writePixels(bounds, block);
+		for(int y = 0; y < bounds.h; y += 3)
+			for(int x = 0; x < bounds.w; x += 3)
+				EXPECT_EQ(block[y * bounds.w + x], field.pixel(bounds.x + x, bounds.y + y));
+	}
+	field.updateRoutes(Rect(8, 8, 4, 4), visibleTiles(Rect(8, 8, 4, 4)));
+	field.update(5.5, true);
+	EXPECT_NO_THROW(field.pixel(390, 400));
 }

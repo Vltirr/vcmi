@@ -15,6 +15,7 @@
 #include "MapRendererManaAura.h"
 #include "render/Canvas.h"
 #include "render/CanvasImage.h"
+#include <chrono>
 #include <cmath>
 
 void MapRendererManaAura::load()
@@ -70,10 +71,13 @@ void MapRendererManaAura::prepareFrame(
 			builder->retire(std::move(field));
 		}
 		requestedGeneration = 0;
+		routeImages.clear();
+		routeOrder.clear();
 		images.clear();
 		imageOrder.clear();
 		frame = -1;
 		stamp = 0;
+		frameStamp = 0;
 	}
 	if(current.empty() || bounds.w <= 0 || bounds.h <= 0)
 		return;
@@ -100,20 +104,29 @@ void MapRendererManaAura::prepareFrame(
 	for(int y = y0; y < y1; ++y)
 		for(int x = x0; x < x1; ++x)
 		{
-			const int3 tile(x, y, newLevel);
-			const auto & terrain = context.getMapTile(tile);
+			const bool eligible = canPulse(x, y);
+			allowed[(y - y0) * bounds.w + x - x0] = eligible;
+			mix(eligibleHash, eligible);
+		}
+	const int rx = std::max(0, visible.x - 1), ry = std::max(0, visible.y - 1);
+	const Rect routeBounds(rx, ry, std::max(0, std::min(mapSize.x, visible.right() + 1) - rx), std::max(0, std::min(mapSize.y, visible.bottom() + 1) - ry));
+	mix(routeHash, routeBounds.x);
+	mix(routeHash, routeBounds.y);
+	mix(routeHash, routeBounds.w);
+	mix(routeHash, routeBounds.h);
+	for(int y = std::max(0, routeBounds.y - 1); y < std::min(mapSize.y, routeBounds.bottom() + 1); ++y)
+		for(int x = std::max(0, routeBounds.x - 1); x < std::min(mapSize.x, routeBounds.right() + 1); ++x)
+		{
+			const auto & terrain = context.getMapTile(int3(x, y, newLevel));
 			mix(routeHash, terrain.getRoadID().getNum());
 			mix(routeHash, terrain.roadDir);
 			mix(routeHash, terrain.getRiverID().getNum());
 			mix(routeHash, terrain.riverDir);
 			mix(routeHash, terrain.extTileFlags);
-			const bool eligible = canPulse(x, y);
-			allowed[(y - y0) * bounds.w + x - x0] = eligible;
-			mix(eligibleHash, eligible);
 		}
 	mix(routeHash, context.showRoads());
 	mix(routeHash, context.showRivers());
-	const bool rebuild = !requestedGeneration || !bounds.operator==(requestedBounds) || !sameSources || routeHash != routeSignature;
+	const bool rebuild = !requestedGeneration || !bounds.operator==(requestedBounds) || !sameSources;
 	bool adopted = false;
 	if(builder)
 		if(auto ready = builder->take())
@@ -135,6 +148,7 @@ void MapRendererManaAura::prepareFrame(
 						images.clear();
 						imageOrder.clear();
 						stamp = 0;
+						frameStamp = 0;
 						return;
 					}
 				}
@@ -143,13 +157,12 @@ void MapRendererManaAura::prepareFrame(
 				builder->retire(std::move(field));
 				field = std::move(ready->field);
 				prepared = ready->bounds;
-				if(settings.debug)
-					logGlobal->info(
-						"MGMA ready generation=%llu backgroundMs=%g rasterStep=%d",
-						static_cast<unsigned long long>(ready->generation),
-						ready->preparationMs,
-						field->sampleStep()
-					);
+				logGlobal->info(
+					"MGMA ready generation=%llu backgroundMs=%g controlStep=%d",
+					static_cast<unsigned long long>(ready->generation),
+					ready->preparationMs,
+					field->sampleStep()
+				);
 				eligibilitySignature = 0;
 				++revision;
 				adopted = true;
@@ -167,6 +180,7 @@ void MapRendererManaAura::prepareFrame(
 			images.clear();
 			imageOrder.clear();
 			stamp = 0;
+			frameStamp = 0;
 		}
 		std::vector<ManaAuraField::Tile> tiles(bounds.w * bounds.h);
 		for(int y = y0; y < y1; ++y)
@@ -175,10 +189,6 @@ void MapRendererManaAura::prepareFrame(
 				auto & tile = tiles[(y - y0) * bounds.w + x - x0];
 				tile.visible = allowed[(y - y0) * bounds.w + x - x0];
 				tile.pulseAllowed = tile.visible;
-				const auto & terrain = context.getMapTile(int3(x, y, newLevel));
-				const bool roadAbove = y > 0 && context.getMapTile(int3(x, y - 1, newLevel)).hasRoad();
-				if((context.showRoads() && (terrain.hasRoad() || roadAbove)) || (context.showRivers() && terrain.hasRiver()))
-					tile.route = routePixels(int3(x, y, newLevel));
 			}
 		requestedGeneration = builder->request({bounds, mapSize, newLevel, view.radius, current, std::move(tiles)});
 		requestedBounds = bounds;
@@ -195,11 +205,59 @@ void MapRendererManaAura::prepareFrame(
 		sources = current;
 		level = newLevel;
 		radius = view.radius;
-		routeSignature = routeHash;
 	}
 
 	if(!field)
 		return;
+	const bool routesChanged = adopted || routeSignature != routeHash;
+	if(routesChanged)
+	{
+		std::vector<ManaAuraField::Tile> routeTiles(routeBounds.w * routeBounds.h);
+		for(int y = routeBounds.y; y < routeBounds.bottom(); ++y)
+			for(int x = routeBounds.x; x < routeBounds.right(); ++x)
+			{
+				const auto & terrain = context.getMapTile(int3(x, y, newLevel));
+				const bool roadAbove = y > 0 && context.getMapTile(int3(x, y - 1, newLevel)).hasRoad();
+				if((context.showRoads() && (terrain.hasRoad() || roadAbove)) || (context.showRivers() && terrain.hasRiver()))
+				{
+					uint64_t signature = 1469598103934665603ULL;
+					for(int yy = std::max(0, y - 1); yy <= std::min(mapSize.y - 1, y + 1); ++yy)
+						for(int xx = std::max(0, x - 1); xx <= std::min(mapSize.x - 1, x + 1); ++xx)
+						{
+							const auto & neighbour = context.getMapTile(int3(xx, yy, newLevel));
+							mix(signature, neighbour.getRoadID().getNum());
+							mix(signature, neighbour.roadDir);
+							mix(signature, neighbour.getRiverID().getNum());
+							mix(signature, neighbour.riverDir);
+							mix(signature, neighbour.extTileFlags);
+						}
+					mix(signature, context.showRoads());
+					mix(signature, context.showRivers());
+					const std::pair key{x, y};
+					auto it = routeImages.find(key);
+					if(it == routeImages.end())
+					{
+						if(routeImages.size() >= 2048)
+						{
+							routeImages.erase(routeOrder.front());
+							routeOrder.pop_front();
+						}
+						it = routeImages.emplace(key, RouteImage{}).first;
+						routeOrder.push_back(key);
+					}
+					if(it->second.signature != signature || it->second.pixels.empty())
+					{
+						it->second.pixels = routePixels(int3(x, y, newLevel));
+						it->second.signature = signature;
+					}
+					routeTiles[(y - routeBounds.y) * routeBounds.w + x - routeBounds.x].route = it->second.pixels;
+				}
+			}
+		field->updateRoutes(routeBounds, routeTiles);
+		routeSignature = routeHash;
+		++revision;
+	}
+
 	if(!bounds.operator==(prepared))
 	{
 		allowed.assign(prepared.w * prepared.h, false);
@@ -212,10 +270,20 @@ void MapRendererManaAura::prepareFrame(
 				mix(eligibleHash, eligible);
 			}
 	}
-	if(adopted || eligibleHash != eligibilitySignature)
+	if(adopted || routesChanged || eligibleHash != eligibilitySignature)
 	{
 		field->updateEligibility(allowed);
 		eligibilitySignature = eligibleHash;
+	}
+
+	bool contributes = false;
+	for(int y = std::max(0, visible.y); y < std::min(mapSize.y, visible.bottom()) && !contributes; ++y)
+		for(int x = std::max(0, visible.x); x < std::min(mapSize.x, visible.right()) && !contributes; ++x)
+			contributes = field->containsTile(x, y);
+	if(!contributes)
+	{
+		active = false;
+		return;
 	}
 
 	const int64_t currentFrame = view.animated ? static_cast<int64_t>(view.timeMs * settings.framesPerSecond / 1000) : 0;
@@ -225,6 +293,32 @@ void MapRendererManaAura::prepareFrame(
 		field->update(currentFrame / settings.framesPerSecond, view.animated);
 		frame = currentFrame;
 		stamp = currentStamp;
+	}
+	constexpr int block = 128;
+	const int bx = std::max(0, static_cast<int>(std::floor(visible.x / 4.)) * block);
+	const int by = std::max(0, static_cast<int>(std::floor(visible.y / 4.)) * block);
+	const int rightPixels = static_cast<int>(std::ceil(std::min(mapSize.x, visible.right()) / 4.)) * block;
+	const int bottomPixels = static_cast<int>(std::ceil(std::min(mapSize.y, visible.bottom()) / 4.)) * block;
+	const Rect nextFrame(bx, by, std::max(0, rightPixels - bx), std::max(0, bottomPixels - by));
+	if(frameStamp != stamp || !frameBounds.operator==(nextFrame))
+	{
+		framePixels.resize(static_cast<size_t>(nextFrame.w) * nextFrame.h);
+		const auto started = std::chrono::steady_clock::now();
+		field->writePixels(nextFrame, framePixels);
+		if(adopted)
+			logGlobal->info(
+				"MGMA first native composition: pixels=%llu cpuMs=%g",
+				static_cast<unsigned long long>(framePixels.size()),
+				std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count()
+			);
+		const size_t maxBlocks = std::clamp(static_cast<size_t>(nextFrame.w / 128) * (nextFrame.h / 128), size_t{128}, size_t{1024});
+		while(images.size() > maxBlocks)
+		{
+			images.erase(imageOrder.front());
+			imageOrder.pop_front();
+		}
+		frameBounds = nextFrame;
+		frameStamp = stamp;
 	}
 }
 
@@ -249,15 +343,18 @@ void MapRendererManaAura::renderTile(Canvas & target, const int3 & position)
 	auto it = images.find(key);
 	if(it == images.end())
 	{
-		constexpr size_t maxBlocks = 128;
-		if(images.size() >= maxBlocks)
+		const size_t maxBlocks = std::clamp(static_cast<size_t>(frameBounds.w / 128) * (frameBounds.h / 128), size_t{128}, size_t{1024});
+		while(images.size() >= maxBlocks)
 		{
 			images.erase(imageOrder.front());
 			imageOrder.pop_front();
 		}
 		it = images.emplace(key, Block{}).first;
 		imageOrder.push_back(key);
+		it->second.order = std::prev(imageOrder.end());
 	}
+	else
+		imageOrder.splice(imageOrder.end(), imageOrder, it->second.order);
 	auto & block = it->second;
 	if(!block.image || block.stamp != stamp)
 	{
@@ -265,12 +362,13 @@ void MapRendererManaAura::renderTile(Canvas & target, const int3 & position)
 		if(!block.image)
 			block.image = std::make_shared<CanvasImage>(Point(physical, physical), CanvasScalingPolicy::IGNORE);
 		uploadPixels.resize(static_cast<size_t>(physical) * physical * 4);
+
 		for(int y = 0; y < native; ++y)
 		{
 			auto * row = uploadPixels.data() + y * scale * physical * 4;
 			for(int x = 0; x < native; ++x)
 			{
-				const auto colour = field->pixel(key.first * native + x, key.second * native + y);
+				const auto colour = framePixels.at((key.second * native + y - frameBounds.y) * frameBounds.w + key.first * native + x - frameBounds.x);
 				for(int dx = 0; dx < scale; ++dx)
 				{
 					auto * pixel = row + (x * scale + dx) * 4;

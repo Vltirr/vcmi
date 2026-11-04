@@ -9,6 +9,8 @@
   "edgeMotion": 1.0,
   "roadRelief": 1.5,
   "maxRasterPixels": 2097152,
+  "controlStep": 4,
+  "parallelism": 8,
   "pulseEnabled": true,
   "pulse": {
     "eventsPerSecond": 2.0,

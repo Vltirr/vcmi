@@ -15,6 +15,7 @@
 
 #include <array>
 #include <condition_variable>
+#include <map>
 #include <mutex>
 #include <random>
 #include <span>
@@ -35,6 +36,8 @@ struct ManaAuraVisualSettings
 	double edgeMotion = 1;
 	double roadRelief = 1.5;
 	int maxRasterPixels = 2097152;
+	int controlStep = 4;
+	int parallelism = 8;
 	bool pulseEnabled = true;
 	double pulseRate = 2;
 	double pulseMinDuration = 2.5;
@@ -59,7 +62,7 @@ struct ManaAuraMaterial
 	float sample(const std::vector<float> & plane, double x, double y) const;
 };
 
-/// CPU material field. World coordinates and padded sampling keep neighbouring tiles continuous.
+/// World controls with native material composition for requested pixels.
 class ManaAuraField
 {
 public:
@@ -87,6 +90,8 @@ public:
 		std::stop_token stop = {}
 	);
 	void update(double seconds, bool animate);
+	void updateRoutes(const Rect & bounds, const std::vector<Tile> & tiles);
+	void writePixels(const Rect & bounds, std::span<ColorRGBA> output) const;
 	void inheritAnimation(const ManaAuraField & previous);
 	void updateEligibility(const std::vector<bool> & allowed);
 	ColorRGBA pixel(int worldX, int worldY) const;
@@ -121,10 +126,8 @@ public:
 private:
 	struct Cell
 	{
-		float distance = -96, rawDistance = -96, intensity = 0, erosion = 0, width = 32, retreat = 0;
-		float route = 0, routeMask = 0, gain = 1, envelope = 0, initial = 0, originalWidth = 32;
+		float distance = -96, rawDistance = -96, erosion = 0, width = 32, retreat = 0, gain = 1, originalWidth = 32;
 		std::array<float, 8> phaseSin{}, phaseCos{};
-		std::array<uint8_t, 3> baseColour{};
 		bool eligible = false;
 	};
 	ManaAuraVisualSettings settings;
@@ -136,9 +139,20 @@ private:
 	int step = 1, width = 0, height = 0;
 	std::vector<int3> sources;
 	std::vector<Cell> cells;
-	std::vector<ColorRGBA> pixels;
+	struct Motion
+	{
+		float x = 0, y = 0, alpha = 0;
+	};
+	struct Route
+	{
+		std::array<float, 1024> relief{};
+		std::array<uint8_t, 1024> mask{};
+	};
+	std::vector<Motion> motion;
+	std::vector<double> corners;
+	std::map<std::pair<int, int>, Route> routes;
+	std::map<std::pair<int, int>, std::vector<ColorRGBA>> routeInputs;
 	std::vector<size_t> candidates;
-	std::vector<size_t> visibleCells;
 	std::vector<size_t> interiorCells;
 	std::vector<bool> tileCoverage, tileVisual;
 	std::vector<Pulse> pulses;
@@ -149,7 +163,10 @@ private:
 	void render(double seconds);
 	double randomUnit();
 	double intensity(double x, double y) const;
-	float luminance(int x, int y) const;
+	ColorRGBA basePixel(int worldX, int worldY) const;
+	float exposure(const Pulse & pulse, int worldX, int worldY, double lum, double wide, double near) const;
+	ColorRGBA expose(ColorRGBA colour, double value) const;
+	bool onRoute(int worldX, int worldY) const;
 };
 
 /// Latest-request worker. Only value snapshots cross the thread boundary.
