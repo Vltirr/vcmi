@@ -233,7 +233,7 @@ void MapViewCache::update(const std::shared_ptr<IMapRendererContext> & context)
 	}
 
 	// Refresh whatever the renderer can resolve once instead of per tile
-	mapRenderer->prepareFrame(*context);
+	mapRenderer->prepareFrame(*context, dimensions, model->getLevel());
 
 	const int share = std::max(animationRedrawShareMinimum, (animatedTilesDirtyBefore + animationCatchUpFrames - 1) / animationCatchUpFrames);
 
@@ -487,7 +487,7 @@ void MapViewCache::exportMapLevel(const std::shared_ptr<IMapRendererContext> & c
 	PngStripWriter writer(path, mapSize.x * tileSize.x, mapSize.y * tileSize.y);
 	std::vector<uint8_t> pixels;
 
-	mapRenderer->prepareFrame(*context);
+	mapRenderer->prepareFrame(*context, Rect(0, 0, 0, 0), level);
 
 	for(int stripY = 0; stripY < mapSize.y; stripY += stripHeight)
 	{

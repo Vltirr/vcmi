@@ -10,6 +10,7 @@
 #pragma once
 
 #include "../../lib/Color.h"
+#include <span>
 
 class int3;
 class Point;
@@ -17,6 +18,14 @@ class CGObjectInstance;
 class ObjectInstanceID;
 struct TerrainTile;
 struct CGPath;
+
+struct ManaAuraView
+{
+	std::span<const int3> sources;
+	int radius = 0;
+	uint32_t timeMs = 0;
+	bool animated = true;
+};
 
 struct MapTextOverlay
 {
@@ -103,6 +112,6 @@ public:
 
 	/// if true, spell range for teleport / scuttle boat will be visible
 	virtual bool showSpellRange(const int3 & position) const = 0;
-	virtual std::array<uint8_t, 4> manaAuraLevels(const int3 &) const { return {}; }
+	virtual ManaAuraView manaAuraVisualState() const { return {}; }
 
 };

@@ -12,6 +12,7 @@
 #include "../../lib/int3.h"
 #include "../../lib/Point.h"
 #include "../../lib/filesystem/ResourcePath.h"
+#include "MapRendererManaAura.h"
 
 class ObjectInstanceID;
 class CGObjectInstance;
@@ -225,15 +226,14 @@ class MapRenderer
 	MapRendererObjects rendererObjects;
 	MapRendererPath rendererPath;
 	MapRendererOverlay rendererOverlay;
-	std::map<std::array<uint8_t, 4>, std::shared_ptr<IImage>> manaAuraTiles;
-	int manaAuraScalingFactor = 0;
+	MapRendererManaAura rendererManaAura;
 
 public:
 	using TileChecksum = std::array<uint8_t, 12>;
 
 	/// Refreshes state that is constant for the whole frame. Must be called before the
 	/// per-tile getTileChecksum() / renderTile() calls of that frame.
-	void prepareFrame(IMapRendererContext & context);
+	void prepareFrame(IMapRendererContext & context, const Rect & visibleTiles, int level);
 
 	TileChecksum getTileChecksum(IMapRendererContext & context, const int3 & coordinates);
 

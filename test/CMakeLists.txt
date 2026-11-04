@@ -10,6 +10,8 @@ else()
 endif()
 
 set(test_SRCS
+		mapView/ManaAuraVisualsTest.cpp
+		../client/mapView/ManaAuraField.cpp
 		SerializationCompatibilityTest.cpp
  		StdInc.cpp
  		main.cpp

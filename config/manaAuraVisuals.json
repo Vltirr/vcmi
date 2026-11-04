@@ -1,0 +1,24 @@
+{
+  "enabled": true,
+  "framesPerSecond": 12,
+  "rate": 1.5,
+  "motionAmplitude": 1.0,
+  "contrast": 22,
+  "edgeWidth": 32,
+  "edgeRetreat": 28,
+  "edgeMotion": 1.0,
+  "roadRelief": 1.5,
+  "maxRasterPixels": 2097152,
+  "pulseEnabled": true,
+  "pulse": {
+    "eventsPerSecond": 2.0,
+    "minDuration": 2.5,
+    "maxDuration": 3.5,
+    "amplitude": 1.0,
+    "radiusPixels": 46,
+    "referenceAreaTiles": 90.43,
+    "maxActive": 32,
+    "seed": 1398030674
+  },
+  "debug": false
+}

@@ -69,6 +69,8 @@ set(vcmiclientcommon_SRCS
 	mainmenu/CStatisticScreen.cpp
 
 	mapView/MapRenderer.cpp
+	mapView/ManaAuraField.cpp
+	mapView/MapRendererManaAura.cpp
 	mapView/MapRendererContext.cpp
 	mapView/MapRendererContextState.cpp
 	mapView/MapView.cpp
@@ -286,6 +288,8 @@ set(vcmiclientcommon_HEADERS
 	mapView/IMapRendererContext.h
 	mapView/IMapRendererObserver.h
 	mapView/MapRenderer.h
+	mapView/ManaAuraField.h
+	mapView/MapRendererManaAura.h
 	mapView/MapRendererContext.h
 	mapView/MapRendererContextState.h
 	mapView/MapView.h

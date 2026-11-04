@@ -382,31 +382,11 @@ MapTextOverlay MapRendererAdventureContext::overlayText(const int3 & coordinates
 	return { object->getObjectName().toString(&GAME->translator()), getObjectOverlayColor(object) };
 }
 
-std::array<uint8_t, 4> MapRendererAdventureContext::manaAuraLevels(const int3 & position) const
+ManaAuraView MapRendererAdventureContext::manaAuraVisualState() const
 {
-	if(!manaAura || !isInMap(position))
+	if(!manaAura || !manaAura->enabled)
 		return {};
-	bool covered = false;
-	for(const auto & source : manaAuraSources)
-		covered |= manaAura->distance(source, position) >= 0;
-	if(!covered)
-		return {};
-
-	std::array<uint8_t, 4> levels{1, 1, 1, 1};
-	for(const auto & source : manaAuraSources)
-	{
-		if(source.z != position.z)
-			continue;
-		for(size_t corner = 0; corner < levels.size(); ++corner)
-		{
-			const double dx = static_cast<double>(position.x) - source.x + (corner % 2 ? 0.5 : -0.5);
-			const double dy = static_cast<double>(position.y) - source.y + (corner / 2 ? 0.5 : -0.5);
-			const double distance = std::sqrt(dx * dx + dy * dy);
-			const double intensity = std::clamp((manaAura->radius - distance) / (manaAura->radius - 1), 0.0, 1.0);
-			levels[corner] = std::max(levels[corner], static_cast<uint8_t>(1 + std::lround(254 * intensity)));
-		}
-	}
-	return levels;
+	return {manaAuraSources, manaAura->radius, animationTime, settingsAdventureTerrainAnimation};
 }
 
 bool MapRendererAdventureContext::showBorder() const

@@ -943,10 +943,25 @@ uint8_t MapRendererPath::checksum(IMapRendererContext & context, const int3 & co
 	return selectImage(context, coordinates) & 0xff;
 }
 
-void MapRenderer::prepareFrame(IMapRendererContext & context)
+void MapRenderer::prepareFrame(IMapRendererContext & context, const Rect & visibleTiles, int level)
 {
 	rendererPath.prepareFrame(context);
 	rendererObjects.prepareFrame();
+	rendererManaAura.prepareFrame(context, visibleTiles, level, [&](const int3 & position)
+	{
+		auto image = ENGINE->renderHandler().createImage(Point(32, 32), CanvasScalingPolicy::IGNORE);
+		auto canvas = image->getCanvas();
+		canvas.drawColor(Rect(0, 0, 32, 32), ColorRGBA(0, 0, 0, 0));
+		if(context.showRivers()) rendererRiver.renderTile(context, canvas, position);
+		if(context.showRoads()) rendererRoad.renderTile(context, canvas, position);
+		std::vector<uint8_t> pixels;
+		image->readPixelsRGBA(pixels);
+		std::vector<ColorRGBA> result;
+		result.reserve(1024);
+		for(size_t i = 0; i < pixels.size(); i += 4)
+			result.emplace_back(pixels[i], pixels[i + 1], pixels[i + 2], pixels[i + 3]);
+		return result;
+	});
 }
 
 MapRenderer::TileChecksum MapRenderer::getTileChecksum(IMapRendererContext & context, const int3 & coordinates)
@@ -984,8 +999,9 @@ MapRenderer::TileChecksum MapRenderer::getTileChecksum(IMapRendererContext & con
 		result[4] = rendererObjects.checksum(context, coordinates);
 		result[5] = rendererPath.checksum(context, coordinates);
 		result[6] = rendererOverlay.checksum(context, coordinates);
-		const auto auraLevels = context.manaAuraLevels(coordinates);
-		std::copy(auraLevels.begin(), auraLevels.end(), result.begin() + 8);
+		const uint32_t auraStamp = rendererManaAura.checksum(coordinates);
+		for(size_t i = 0; i < 4; ++i)
+			result[8 + i] = static_cast<uint8_t>(auraStamp >> (8 * i));
 
 		if(!visible)
 			result[7] = rendererFow.checksum(context, coordinates, *neighborInfo);
@@ -1029,41 +1045,8 @@ void MapRenderer::renderTile(IMapRendererContext & context, Canvas & target, con
 		if(!roadsAboveGround)
 			rendererObjects.renderGround(context, target, coordinates);
 
-		const auto auraLevels = context.manaAuraLevels(coordinates);
-		if(withOverlays && auraLevels[0])
-		{
-			const int scalingFactor = target.getScalingFactor();
-			if(manaAuraScalingFactor != scalingFactor || (manaAuraTiles.size() >= 512 && !manaAuraTiles.contains(auraLevels)))
-			{
-				manaAuraTiles.clear();
-				manaAuraScalingFactor = scalingFactor;
-			}
-			auto & image = manaAuraTiles[auraLevels];
-			if(!image)
-			{
-				const int size = 32 * scalingFactor;
-				auto gradient = ENGINE->renderHandler().createImage(Point(size, size), CanvasScalingPolicy::IGNORE);
-				auto canvas = gradient->getCanvas();
-				for(int y = 0; y < size; ++y)
-					for(int x = 0; x < size; ++x)
-					{
-						const int left = 2 * size - 2 * x - 1;
-						const int top = 2 * size - 2 * y - 1;
-						const int right = 2 * x + 1;
-						const int bottom = 2 * y + 1;
-						const int64_t level = static_cast<int64_t>(auraLevels[0]) * left * top + static_cast<int64_t>(auraLevels[1]) * right * top
-							+ static_cast<int64_t>(auraLevels[2]) * left * bottom + static_cast<int64_t>(auraLevels[3]) * right * bottom - 4LL * size * size;
-						const int64_t denominator = 254 * 4LL * size * size;
-						const auto channel = [&](int edge, int center)
-						{
-							return static_cast<uint8_t>(edge - ((edge - center) * level + denominator / 2) / denominator);
-						};
-						canvas.drawPoint(Point(x, y), ColorRGBA(channel(105, 15), channel(155, 41), channel(235, 157), 217));
-					}
-				image = std::move(gradient);
-			}
-			target.draw(image, Point(0, 0));
-		}
+		if(withOverlays)
+			rendererManaAura.renderTile(target, coordinates);
 
 		rendererObjects.renderTile(context, target, coordinates);
 		if(withOverlays)
