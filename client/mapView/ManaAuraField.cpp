@@ -71,6 +71,34 @@ public:
 		return at(ix, iy) * (1 - u) * (1 - v) + at(ix + 1, iy) * u * (1 - v) + at(ix, iy + 1) * (1 - u) * v + at(ix + 1, iy + 1) * u * v;
 	}
 };
+struct PulseEnvelope
+{
+	double amplitude, modulation, offset;
+};
+PulseEnvelope pulseEnvelope(const ManaAuraField::Pulse & pulse, double seconds, double amplitude)
+{
+	const double u = (seconds - pulse.birth) / pulse.duration, phase = pulse.variant * 1.731;
+	const double envelope = smooth(0, .35, u) * (1 - smooth(.55, 1, u));
+	return {amplitude * envelope, .84 + .16 * std::cos(tau * u + phase), std::sin(tau * u - .7 + phase * .2)};
+}
+float pulseExposure(
+	const ManaAuraField::Pulse & pulse,
+	const PulseEnvelope & envelope,
+	double radius,
+	int worldX,
+	int worldY,
+	double lum,
+	double wide,
+	double near
+)
+{
+	const double px = (worldX - pulse.x) / radius, py = (worldY - pulse.y) / radius, r2 = px * px + py * py;
+	if(r2 >= 1)
+		return 0;
+	const double relief = std::clamp((.75 * (lum - wide) + .25 * (lum - near)) / 11, -1., 1.);
+	const double fall = (1 - smooth(.42, 1, std::sqrt(r2))) * std::exp(-r2 * 1.8);
+	return envelope.amplitude * fall * (.35 * relief * envelope.modulation + .11 * envelope.offset);
+}
 struct Segment
 {
 	double x0, y0, x1, y1;
@@ -686,14 +714,7 @@ ColorRGBA ManaAuraField::basePixel(int worldX, int worldY) const
 
 float ManaAuraField::exposure(const Pulse & p, int worldX, int worldY, double lum, double wide, double near) const
 {
-	const double px = (worldX - p.x) / settings.pulseRadius, py = (worldY - p.y) / settings.pulseRadius, r2 = px * px + py * py;
-	if(r2 >= 1)
-		return 0;
-	const double u = (lastTime - p.birth) / p.duration, phase = p.variant * 1.731;
-	const double env = smooth(0, .35, u) * (1 - smooth(.55, 1, u));
-	const double relief = std::clamp((.75 * (lum - wide) + .25 * (lum - near)) / 11, -1., 1.);
-	const double fall = (1 - smooth(.42, 1, std::sqrt(r2))) * std::exp(-r2 * 1.8);
-	return settings.pulseAmplitude * env * fall * (.35 * relief * (.84 + .16 * std::cos(tau * u + phase)) + .11 * std::sin(tau * u - .7 + phase * .2));
+	return pulseExposure(p, pulseEnvelope(p, lastTime, settings.pulseAmplitude), settings.pulseRadius, worldX, worldY, lum, wide, near);
 }
 
 ColorRGBA ManaAuraField::expose(ColorRGBA c, double value) const
@@ -727,13 +748,17 @@ ColorRGBA ManaAuraField::pixel(int worldX, int worldY) const
 			(luminance(worldX - 4, worldY) + luminance(worldX + 4, worldY) + luminance(worldX, worldY - 4) + luminance(worldX, worldY + 4)) * .25;
 		value += exposure(pulse, worldX, worldY, lum, wide, near);
 	}
-	return expose(colour, value);
+	return value != 0 ? expose(colour, value) : colour;
 }
 
 void ManaAuraField::writePixels(const Rect & bounds, std::span<ColorRGBA> output) const
 {
 	if(output.size() != static_cast<size_t>(bounds.w) * bounds.h)
 		throw std::invalid_argument("ManaAuraField::writePixels: invalid output dimensions");
+	std::vector<PulseEnvelope> envelopes;
+	envelopes.reserve(pulses.size());
+	for(const auto & pulse : pulses)
+		envelopes.push_back(pulseEnvelope(pulse, lastTime, settings.pulseAmplitude));
 	constexpr int pad = 10;
 	const int stride = bounds.w + 2 * pad;
 	std::vector<ColorRGBA> base(static_cast<size_t>(stride) * (bounds.h + 2 * pad));
@@ -768,12 +793,15 @@ void ManaAuraField::writePixels(const Rect & bounds, std::span<ColorRGBA> output
 									const auto sample = base[index + offset];
 									return .23f * sample.r + .64f * sample.g + .13f * sample.b;
 								};
-								for(const auto & pulse : pulses)
+								for(size_t pulseIndex = 0; pulseIndex < pulses.size(); ++pulseIndex)
 								{
+									const auto & pulse = pulses[pulseIndex];
 									if(std::abs(wx - pulse.x) >= settings.pulseRadius || std::abs(wy - pulse.y) >= settings.pulseRadius)
 										continue;
-									value += exposure(
+									value += pulseExposure(
 										pulse,
+										envelopes[pulseIndex],
+										settings.pulseRadius,
 										wx,
 										wy,
 										lum(0),
@@ -781,7 +809,8 @@ void ManaAuraField::writePixels(const Rect & bounds, std::span<ColorRGBA> output
 										(lum(-4) + lum(4) + lum(-4 * stride) + lum(4 * stride)) * .25
 									);
 								}
-								c = expose(c, value);
+								if(value != 0)
+									c = expose(c, value);
 							}
 							output[y * bounds.w + x] = c;
 						}
