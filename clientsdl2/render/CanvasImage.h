@@ -23,6 +23,9 @@ public:
 	/// Copies pixels to the buffer in RGBA byte order
 	void readPixelsRGBA(std::vector<uint8_t> & buffer) const;
 
+	/// Replaces the surface from a packed RGBA buffer without per-pixel drawing.
+	void writePixelsRGBA(const std::vector<uint8_t> & buffer);
+
 	void draw(SDL_Surface * where, const Point & pos, const Rect * src, int scalingFactor) const override;
 	void scaleTo(const Point & size, EScalingAlgorithm algorithm) override;
 	void exportBitmap(const boost::filesystem::path & path) const override;

@@ -61,6 +61,13 @@ void CanvasImage::readPixelsRGBA(std::vector<uint8_t> & buffer) const
 	SDL_ConvertPixels(surface->w, surface->h, surface->format->format, surface->pixels, surface->pitch, SDL_PIXELFORMAT_RGBA32, buffer.data(), surface->w * 4);
 }
 
+void CanvasImage::writePixelsRGBA(const std::vector<uint8_t> & buffer)
+{
+	if(buffer.size() != static_cast<size_t>(surface->w) * surface->h * 4)
+		throw std::runtime_error("CanvasImage RGBA buffer dimensions mismatch");
+	SDL_ConvertPixels(surface->w, surface->h, SDL_PIXELFORMAT_RGBA32, buffer.data(), surface->w * 4, surface->format->format, surface->pixels, surface->pitch);
+}
+
 Canvas CanvasImage::getCanvas()
 {
 	return Canvas::createFromSurface(surface, scalingPolicy);

@@ -34,7 +34,13 @@ private:
 	uint64_t routeSignature = 0, eligibilitySignature = 0;
 	uint32_t revision = 0, stamp = 0;
 	int64_t frame = -1;
-	std::map<std::pair<int, int>, std::shared_ptr<CanvasImage>> images;
+	struct Block
+	{
+		std::shared_ptr<CanvasImage> image;
+		uint32_t stamp = 0;
+	};
+	std::map<std::pair<int, int>, Block> images;
+	std::vector<uint8_t> uploadPixels;
 	std::list<std::pair<int, int>> imageOrder;
 
 	void load();

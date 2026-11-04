@@ -45,6 +45,14 @@ bool CanvasImage::drawTexture(SDL_Renderer * renderer, const Point & pos, const 
 	if(alpha == 0)
 		return true;
 
+	if(textureDirty && texture && textureGeneration == GpuResources::get().generation())
+	{
+		const auto format = SDL_GetNumberProperty(SDL_GetTextureProperties(texture), SDL_PROP_TEXTURE_FORMAT_NUMBER, SDL_PIXELFORMAT_UNKNOWN);
+		if(format != surface->format || !SDL_UpdateTexture(texture, nullptr, surface->pixels, surface->pitch))
+			invalidateTexture();
+	}
+	textureDirty = false;
+
 	if(!texture || textureGeneration != GpuResources::get().generation())
 	{
 		invalidateTexture();
@@ -116,6 +124,14 @@ void CanvasImage::readPixelsRGBA(std::vector<uint8_t> & buffer) const
 {
 	buffer.resize(static_cast<size_t>(surface->w) * surface->h * 4);
 	SDL_ConvertPixels(surface->w, surface->h, surface->format, surface->pixels, surface->pitch, SDL_PIXELFORMAT_RGBA32, buffer.data(), surface->w * 4);
+}
+
+void CanvasImage::writePixelsRGBA(const std::vector<uint8_t> & buffer)
+{
+	if(buffer.size() != static_cast<size_t>(surface->w) * surface->h * 4)
+		throw std::runtime_error("CanvasImage RGBA buffer dimensions mismatch");
+	textureDirty = true;
+	SDL_ConvertPixels(surface->w, surface->h, SDL_PIXELFORMAT_RGBA32, buffer.data(), surface->w * 4, surface->format, surface->pixels, surface->pitch);
 }
 
 Canvas CanvasImage::getCanvas()

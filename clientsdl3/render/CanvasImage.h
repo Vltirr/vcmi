@@ -23,6 +23,9 @@ public:
 	/// Copies pixels to the buffer in RGBA byte order
 	void readPixelsRGBA(std::vector<uint8_t> & buffer) const;
 
+	/// Replaces the surface from a packed RGBA buffer without per-pixel drawing.
+	void writePixelsRGBA(const std::vector<uint8_t> & buffer);
+
 	void draw(SDL_Surface * where, const Point & pos, const Rect * src, int scalingFactor) const override;
 	void scaleTo(const Point & size, EScalingAlgorithm algorithm) override;
 	void exportBitmap(const boost::filesystem::path & path) const override;
@@ -52,6 +55,7 @@ private:
 
 	/// GPU copy of surface, rebuilt whenever the surface is redrawn or the renderer changes
 	mutable SDL_Texture * texture = nullptr;
+	mutable bool textureDirty = false;
 	mutable uint32_t textureGeneration = 0;
 
 	/// Drops the cached texture, so that the next GPU draw uploads the current surface

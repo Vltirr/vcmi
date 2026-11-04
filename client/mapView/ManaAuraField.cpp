@@ -13,6 +13,8 @@
 #include "../../lib/json/JsonNode.h"
 #include <cmath>
 #include <numbers>
+#include <tbb/blocked_range.h>
+#include <tbb/parallel_for.h>
 
 namespace
 {
@@ -454,31 +456,38 @@ void ManaAuraField::render(double seconds)
 		cosine[harmonic] = std::cos(harmonic * angle);
 	}
 	constexpr std::array<double, 3> colour{.7, .85, 1};
-	for(const size_t i : visibleCells)
-	{
-		const int x = i % width, y = i / width;
-		const auto & cell = cells[i];
-		const int wx = area.x + x * step, wy = area.y + y * step;
-		auto wave = [&](int harmonic, int phase)
+	tbb::parallel_for(
+		tbb::blocked_range<size_t>(0, visibleCells.size(), 4096),
+		[&](const auto & range)
 		{
-			return sine[harmonic] * cell.phaseCos[phase] + (cosine[harmonic] - 1) * cell.phaseSin[phase];
-		};
-		const double dx = settings.motionAmplitude * cell.gain * (2.3 * wave(2, 0) + 1.3 * wave(3, 1) + .45 * wave(5, 2));
-		const double dy = settings.motionAmplitude * cell.gain * (2.1 * wave(2, 3) + 1.2 * wave(3, 4) + .4 * wave(5, 5));
-		const double initial = cell.initial, moved = material.sample(material.signal, wx + dx, wy + dy);
-		std::array<uint8_t, 3> rgb{};
-		for(size_t c = 0; c < 3; ++c)
-		{
-			rgb[c] = byte(cell.baseColour[c] + (moved - initial) * settings.contrast * colour[c]);
+			for(size_t entry = range.begin(); entry != range.end(); ++entry)
+			{
+				const size_t i = visibleCells[entry];
+				const int x = i % width, y = i / width;
+				const auto & cell = cells[i];
+				const int wx = area.x + x * step, wy = area.y + y * step;
+				auto wave = [&](int harmonic, int phase)
+				{
+					return sine[harmonic] * cell.phaseCos[phase] + (cosine[harmonic] - 1) * cell.phaseSin[phase];
+				};
+				const double dx = settings.motionAmplitude * cell.gain * (2.3 * wave(2, 0) + 1.3 * wave(3, 1) + .45 * wave(5, 2));
+				const double dy = settings.motionAmplitude * cell.gain * (2.1 * wave(2, 3) + 1.2 * wave(3, 4) + .4 * wave(5, 5));
+				const double initial = cell.initial, moved = material.sample(material.signal, wx + dx, wy + dy);
+				std::array<uint8_t, 3> rgb{};
+				for(size_t c = 0; c < 3; ++c)
+				{
+					rgb[c] = byte(cell.baseColour[c] + (moved - initial) * settings.contrast * colour[c]);
+				}
+				const double pulse =
+					settings.edgeMotion
+					* (5.5 * (sine[2] * cell.phaseCos[6] + cosine[2] * cell.phaseSin[6]) + 2.5 * (sine[3] * cell.phaseCos[7] + cosine[3] * cell.phaseSin[7]));
+				const double a = smooth((cell.distance - cell.erosion - cell.retreat - pulse + cell.width) / cell.width);
+				const double oldWidth = cell.originalWidth;
+				const double cap = smooth((cell.distance - cell.erosion + oldWidth) / oldWidth);
+				pixels[i] = ColorRGBA(rgb[0], rgb[1], rgb[2], byte(std::min(a, cap) * 255));
+			}
 		}
-		const double pulse =
-			settings.edgeMotion
-			* (5.5 * (sine[2] * cell.phaseCos[6] + cosine[2] * cell.phaseSin[6]) + 2.5 * (sine[3] * cell.phaseCos[7] + cosine[3] * cell.phaseSin[7]));
-		const double a = smooth((cell.distance - cell.erosion - cell.retreat - pulse + cell.width) / cell.width);
-		const double oldWidth = cell.originalWidth;
-		const double cap = smooth((cell.distance - cell.erosion + oldWidth) / oldWidth);
-		pixels[i] = ColorRGBA(rgb[0], rgb[1], rgb[2], byte(std::min(a, cap) * 255));
-	}
+	);
 	if(pulses.empty())
 		return;
 	std::vector<float> exposure(cells.size());

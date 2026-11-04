@@ -106,7 +106,8 @@ void MapRendererManaAura::prepareFrame(
 		}
 	mix(routeHash, context.showRoads());
 	mix(routeHash, context.showRivers());
-	const bool rebuild = !field || !bounds.operator==(prepared) || sources != current || level != newLevel || radius != view.radius || routeHash != routeSignature;
+	const bool rebuild =
+		!field || !bounds.operator==(prepared) || sources != current || level != newLevel || radius != view.radius || routeHash != routeSignature;
 	if(rebuild)
 	{
 		if(!field)
@@ -150,15 +151,12 @@ void MapRendererManaAura::prepareFrame(
 	{
 		field->updateEligibility(allowed);
 		eligibilitySignature = eligibleHash;
-		++revision;
 	}
 	const int64_t currentFrame = view.animated ? static_cast<int64_t>(view.timeMs * settings.framesPerSecond / 1000) : 0;
 	const uint32_t currentStamp = static_cast<uint32_t>(currentFrame) * 2654435761U + revision * 2246822519U + 1;
 	if(frame != currentFrame || stamp != currentStamp)
 	{
 		field->update(currentFrame / settings.framesPerSecond, view.animated);
-		images.clear();
-		imageOrder.clear();
 		frame = currentFrame;
 		stamp = currentStamp;
 	}
@@ -191,22 +189,39 @@ void MapRendererManaAura::renderTile(Canvas & target, const int3 & position)
 			images.erase(imageOrder.front());
 			imageOrder.pop_front();
 		}
-		const int native = blockTiles * 32;
-		auto image = std::make_shared<CanvasImage>(Point(native * scale, native * scale), CanvasScalingPolicy::IGNORE);
-		auto canvas = image->getCanvas();
+		it = images.emplace(key, Block{}).first;
+		imageOrder.push_back(key);
+	}
+	auto & block = it->second;
+	if(!block.image || block.stamp != stamp)
+	{
+		const int native = blockTiles * 32, physical = native * scale;
+		if(!block.image)
+			block.image = std::make_shared<CanvasImage>(Point(physical, physical), CanvasScalingPolicy::IGNORE);
+		uploadPixels.resize(static_cast<size_t>(physical) * physical * 4);
 		for(int y = 0; y < native; ++y)
+		{
+			auto * row = uploadPixels.data() + y * scale * physical * 4;
 			for(int x = 0; x < native; ++x)
 			{
 				const auto colour = field->pixel(key.first * native + x, key.second * native + y);
-				if(scale == 1)
-					canvas.drawPoint(Point(x, y), colour);
-				else
-					canvas.drawColor(Rect(x * scale, y * scale, scale, scale), colour);
+				for(int dx = 0; dx < scale; ++dx)
+				{
+					auto * pixel = row + (x * scale + dx) * 4;
+					pixel[0] = colour.r;
+					pixel[1] = colour.g;
+					pixel[2] = colour.b;
+					pixel[3] = colour.a;
+				}
 			}
-		it = images.emplace(key, std::move(image)).first;
-		imageOrder.push_back(key);
+			for(int dy = 1; dy < scale; ++dy)
+				std::memcpy(row + dy * physical * 4, row, physical * 4);
+		}
+		block.image->writePixelsRGBA(uploadPixels);
+		block.stamp = stamp;
 	}
-	target.draw(it->second, Point(0, 0), Rect((position.x % blockTiles) * 32, (position.y % blockTiles) * 32, 32, 32));
+	target.draw(block.image, Point(0, 0), Rect((position.x % blockTiles) * 32, (position.y % blockTiles) * 32, 32, 32));
+
 	if(settings.debug)
 		for(const auto & pulse : field->getPulses())
 			target.drawBorder(
