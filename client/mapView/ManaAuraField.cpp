@@ -10,7 +10,10 @@
 #include "StdInc.h"
 #include "ManaAuraField.h"
 
+#include "../../lib/CThreadHelper.h"
+#include "../../lib/filesystem/ResourcePath.h"
 #include "../../lib/json/JsonNode.h"
+#include <chrono>
 #include <cmath>
 #include <numbers>
 #include <tbb/blocked_range.h>
@@ -163,7 +166,8 @@ void ManaAuraField::rebuild(
 	int newLevel,
 	std::span<const int3> newSources,
 	int newRadius,
-	const std::vector<Tile> & tileInfo
+	const std::vector<Tile> & tileInfo,
+	std::stop_token stop
 )
 {
 	if(level != newLevel)
@@ -171,6 +175,8 @@ void ManaAuraField::rebuild(
 		pulses.clear();
 		lastTime = -1;
 	}
+	if(stop.stop_requested())
+		return;
 	tileBounds = tiles;
 	level = newLevel;
 	radius = newRadius;
@@ -189,6 +195,7 @@ void ManaAuraField::rebuild(
 	pixels.assign(cells.size(), ColorRGBA(0, 0, 0, 0));
 	candidates.clear();
 	visibleCells.clear();
+	interiorCells.clear();
 	tileVisual.assign(tiles.w * tiles.h, false);
 	tileCoverage.assign(tiles.w * tiles.h, false);
 	const Rect coverage(tiles.x - 6, tiles.y - 6, tiles.w + 12, tiles.h + 12);
@@ -230,6 +237,8 @@ void ManaAuraField::rebuild(
 	for(int y = 0; y < height; ++y)
 		for(int x = 0; x < width; ++x)
 		{
+			if(x == 0 && stop.stop_requested())
+				return;
 			const size_t i = y * width + x;
 			auto & cell = cells[i];
 			const int wx = area.x + x * step, wy = area.y + y * step;
@@ -293,6 +302,8 @@ void ManaAuraField::rebuild(
 			for(int y = 0; y < height; ++y)
 				for(int x = 0; x < width; ++x)
 				{
+					if(x == 0 && stop.stop_requested())
+						return input;
 					double value = 0;
 					for(int k = -radius; k <= radius; ++k)
 						value +=
@@ -304,8 +315,12 @@ void ManaAuraField::rebuild(
 		return input;
 	};
 	const auto smoothed = blur(distance, 20, 60), routeMean = blur(routeLum, 1.2, 4), routeWeight = blur(routeAlpha, 1.2, 4);
+	if(stop.stop_requested())
+		return;
 	for(size_t i = 0; i < cells.size(); ++i)
 	{
+		if(i % 4096 == 0 && stop.stop_requested())
+			return;
 		auto & cell = cells[i];
 		cell.distance = std::min(distance[i], smoothed[i]);
 		if(cell.routeMask > 0)
@@ -330,8 +345,12 @@ void ManaAuraField::rebuild(
 			visibleCells.push_back(i);
 		}
 		tileCoverage[index] = has(wx / 32, wy / 32);
-		if(cell.eligible && cell.rawDistance > 58 && cell.routeMask == 0 && exterior > .98)
-			candidates.push_back(i);
+		if(cell.rawDistance > 58 && cell.routeMask == 0 && exterior > .98)
+		{
+			interiorCells.push_back(i);
+			if(cell.eligible)
+				candidates.push_back(i);
+		}
 	}
 	pulses.erase(
 		std::remove_if(
@@ -349,18 +368,15 @@ void ManaAuraField::rebuild(
 void ManaAuraField::updateEligibility(const std::vector<bool> & allowed)
 {
 	candidates.clear();
-	for(int y = 0; y < height; ++y)
-		for(int x = 0; x < width; ++x)
-		{
-			const int wx = area.x + x * step, wy = area.y + y * step;
-			if(wx < tileBounds.x * 32 || wy < tileBounds.y * 32 || wx >= tileBounds.right() * 32 || wy >= tileBounds.bottom() * 32)
-				continue;
-			const size_t i = y * width + x;
-			auto & cell = cells[i];
-			cell.eligible = allowed.at((wy / 32 - tileBounds.y) * tileBounds.w + wx / 32 - tileBounds.x);
-			if(cell.eligible && cell.rawDistance > 58 && cell.routeMask == 0 && cell.envelope > .98)
-				candidates.push_back(i);
-		}
+	for(const size_t i : interiorCells)
+	{
+		const int wx = area.x + (i % width) * step, wy = area.y + (i / width) * step;
+		auto & cell = cells[i];
+		cell.eligible = allowed.at((wy / 32 - tileBounds.y) * tileBounds.w + wx / 32 - tileBounds.x);
+		if(cell.eligible)
+			candidates.push_back(i);
+	}
+
 	pulses.erase(
 		std::remove_if(
 			pulses.begin(),
@@ -544,4 +560,149 @@ bool ManaAuraField::containsTile(int x, int y) const
 	if(x < tileBounds.x || y < tileBounds.y || x >= tileBounds.right() || y >= tileBounds.bottom())
 		return false;
 	return tileVisual.at((y - tileBounds.y) * tileBounds.w + x - tileBounds.x);
+}
+
+ManaAuraFieldBuilder::ManaAuraFieldBuilder(ManaAuraVisualSettings settings, std::shared_ptr<const ManaAuraMaterial> material)
+	: settings(std::move(settings))
+	, material(std::move(material))
+	, worker(
+		  [this](std::stop_token stop)
+		  {
+			  run(stop);
+		  }
+	  )
+{
+}
+
+ManaAuraFieldBuilder::~ManaAuraFieldBuilder()
+{
+	worker.request_stop();
+	cancel();
+	changed.notify_all();
+	worker.join();
+}
+
+uint64_t ManaAuraFieldBuilder::request(Request request)
+{
+	std::lock_guard lock(mutex);
+	buildStop.request_stop();
+	buildStop = std::stop_source();
+	if(ready && ready->field)
+		retired.push_back(std::move(ready->field));
+	ready.reset();
+	pending = Work{++generation, std::move(request), buildStop.get_token()};
+	changed.notify_one();
+	return generation;
+}
+
+void ManaAuraFieldBuilder::cancel()
+{
+	std::lock_guard lock(mutex);
+	++generation;
+	buildStop.request_stop();
+	pending.reset();
+	if(ready && ready->field)
+		retired.push_back(std::move(ready->field));
+	ready.reset();
+	changed.notify_one();
+}
+
+std::optional<ManaAuraFieldBuilder::Result> ManaAuraFieldBuilder::take()
+{
+	std::lock_guard lock(mutex);
+	auto result = std::move(ready);
+	ready.reset();
+	return result;
+}
+
+void ManaAuraFieldBuilder::retire(std::unique_ptr<ManaAuraField> field)
+{
+	if(!field)
+		return;
+	std::lock_guard lock(mutex);
+	retired.push_back(std::move(field));
+	changed.notify_one();
+}
+
+void ManaAuraFieldBuilder::run(std::stop_token stop)
+{
+	setThreadName("Mana aura preparation");
+	while(!stop.stop_requested())
+	{
+		std::optional<Work> work;
+		std::vector<std::unique_ptr<ManaAuraField>> garbage;
+		{
+			std::unique_lock lock(mutex);
+			changed.wait(
+				lock,
+				stop,
+				[this]
+				{
+					return pending.has_value() || !retired.empty();
+				}
+			);
+			if(stop.stop_requested())
+				return;
+			work = std::move(pending);
+			pending.reset();
+			garbage.swap(retired);
+		}
+		garbage.clear();
+		if(!work)
+			continue;
+		const auto started = std::chrono::steady_clock::now();
+		Result result;
+		result.generation = work->generation;
+		result.bounds = work->request.bounds;
+		try
+		{
+			auto & request = work->request;
+			if(!material)
+				material = std::make_shared<ManaAuraMaterial>(ManaAuraMaterial::fromJson(JsonNode(JsonPath::builtin("config/manaAuraMaterial.json"))));
+			if(work->stop.stop_requested())
+				continue;
+			result.field = std::make_unique<ManaAuraField>(settings, *material);
+			result.field->rebuild(request.bounds, request.mapSize, request.level, request.sources, request.radius, request.tiles, work->stop);
+		}
+		catch(...)
+		{
+			result.error = std::current_exception();
+		}
+		result.preparationMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
+		if(work->stop.stop_requested())
+			continue;
+		{
+			std::lock_guard lock(mutex);
+			if(result.generation == generation)
+				ready = std::move(result);
+		}
+	}
+}
+
+void ManaAuraField::inheritAnimation(const ManaAuraField & previous)
+{
+	if(level != previous.level)
+		return;
+	pulses = previous.pulses;
+	random = previous.random;
+	lastTime = previous.lastTime;
+	nextBirth = previous.nextBirth;
+	emitted = previous.emitted;
+}
+
+Rect ManaAuraFieldBuilder::region(const Rect & visible, const Rect & coverage, const Rect & previous, int pixelBudget)
+{
+	const int x0 = std::max(visible.x, coverage.x), y0 = std::max(visible.y, coverage.y);
+	const int x1 = std::min(visible.right(), coverage.right()), y1 = std::min(visible.bottom(), coverage.bottom());
+	if(x1 <= x0 || y1 <= y0)
+		return Rect(0, 0, 0, 0);
+	if(static_cast<int64_t>(coverage.w * 32 + 160) * (coverage.h * 32 + 160) <= pixelBudget)
+		return coverage;
+	if(previous.w > 0 && previous.h > 0 && previous.x <= x0 && previous.y <= y0 && previous.right() >= x1 && previous.bottom() >= y1)
+		return previous;
+	const int left = std::max(coverage.x, static_cast<int>(std::floor((visible.x - 8) / 8.)) * 8);
+	const int top = std::max(coverage.y, static_cast<int>(std::floor((visible.y - 8) / 8.)) * 8);
+	const int right = std::min(coverage.right(), static_cast<int>(std::ceil((visible.right() + 8) / 8.)) * 8);
+	const int bottom = std::min(coverage.bottom(), static_cast<int>(std::ceil((visible.bottom() + 8) / 8.)) * 8);
+	return Rect(left, top, right - left, bottom - top);
 }

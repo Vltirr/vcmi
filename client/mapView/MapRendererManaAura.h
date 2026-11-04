@@ -25,8 +25,11 @@ public:
 
 private:
 	bool loaded = false;
+	bool active = false;
 	ManaAuraVisualSettings settings;
-	std::optional<ManaAuraMaterial> material;
+	std::unique_ptr<ManaAuraFieldBuilder> builder;
+	Rect requestedBounds;
+	uint64_t requestedGeneration = 0;
 	std::unique_ptr<ManaAuraField> field;
 	Rect prepared;
 	std::vector<int3> sources;

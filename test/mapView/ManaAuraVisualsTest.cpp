@@ -160,3 +160,100 @@ TEST(ManaAuraVisuals, InvalidOptionalSettingsFallbackAndMaterialIsValidated)
 	json["size"].Integer() = 256;
 	EXPECT_THROW(ManaAuraMaterial::fromJson(json), std::runtime_error);
 }
+
+TEST(ManaAuraVisuals, CameraRequestsDoNotWaitAndPublishOnlyTheLatestSnapshot)
+{
+	ManaAuraVisualSettings config;
+	config.pulseEnabled = false;
+	auto material = std::make_shared<ManaAuraMaterial>(approvedMaterial());
+	ManaAuraFieldBuilder builder(config, nullptr);
+	uint64_t latest = 0;
+	double maxRequestMs = 0;
+	for(int camera = 0; camera < 48; ++camera)
+	{
+		ManaAuraFieldBuilder::Request request;
+		request.bounds = Rect(camera % 8, 0, 22, 22);
+		request.mapSize = int3(64, 64, 2);
+		request.sources = {int3(10, 10, 0)};
+		request.radius = 8;
+		request.tiles = visibleTiles(request.bounds);
+		const auto started = std::chrono::steady_clock::now();
+		latest = builder.request(std::move(request));
+		maxRequestMs = std::max(maxRequestMs, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count());
+	}
+	RecordProperty("maxCameraRequestMs", maxRequestMs);
+	std::optional<ManaAuraFieldBuilder::Result> ready;
+	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+	while(!ready && std::chrono::steady_clock::now() < deadline)
+	{
+		ready = builder.take();
+		if(!ready)
+			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	}
+	ASSERT_TRUE(ready);
+	ASSERT_FALSE(ready->error);
+	ASSERT_EQ(ready->generation, latest);
+	RecordProperty("backgroundBuildMs", ready->preparationMs);
+	ASSERT_TRUE(ready->field);
+	ManaAuraField expected(config, *material);
+	build(expected, Rect(7, 0, 22, 22));
+	expected.update(1.25, true);
+	ready->field->update(1.25, true);
+	for(int y = 160; y < 600; y += 13)
+		for(int x = 250; x < 600; x += 13)
+			EXPECT_EQ(ready->field->pixel(x, y), expected.pixel(x, y));
+	builder.retire(std::move(ready->field));
+	builder.cancel();
+	EXPECT_FALSE(builder.take());
+}
+
+TEST(ManaAuraVisuals, ReplacingCameraGeometryPreservesPulseTiming)
+{
+	ManaAuraVisualSettings config;
+	ManaAuraField previous(config, approvedMaterial()), next(config, approvedMaterial());
+	build(previous, Rect(0, 0, 22, 22));
+	for(int frame = 0; frame < 30; ++frame)
+		previous.update(frame / 12., true);
+	ASSERT_FALSE(previous.getPulses().empty());
+	build(next, Rect(4, 0, 22, 22));
+	next.inheritAnimation(previous);
+	next.updateEligibility(std::vector<bool>(22 * 22, true));
+	ASSERT_FALSE(next.getPulses().empty());
+	EXPECT_EQ(next.emittedCount(), previous.emittedCount());
+	EXPECT_EQ(next.getPulses().front().birth, previous.getPulses().front().birth);
+	EXPECT_EQ(next.getPulses().front().duration, previous.getPulses().front().duration);
+}
+
+TEST(ManaAuraVisuals, SmallAurasStayCachedAcrossPixelCameraMoves)
+{
+	const Rect coverage(4, 4, 35, 35);
+	Rect prepared(0, 0, 0, 0);
+	int builds = 0;
+	for(int pixel = 0; pixel < 600; ++pixel)
+	{
+		const Rect visible(4 + pixel / 32, 10, 14, 14);
+		auto next = ManaAuraFieldBuilder::region(visible, coverage, prepared, 2097152);
+		if(!next.operator==(prepared))
+			++builds;
+		prepared = next;
+	}
+	EXPECT_EQ(builds, 1);
+	EXPECT_EQ(prepared.w, 35);
+	EXPECT_EQ(prepared.h, 35);
+}
+
+TEST(ManaAuraVisuals, LargeRegionsRetainPrefetchUntilCameraLeavesIt)
+{
+	const Rect coverage(0, 0, 252, 252), initialView(40, 40, 20, 20);
+	const auto prepared = ManaAuraFieldBuilder::region(initialView, coverage, Rect(0, 0, 0, 0), 2097152);
+	for(int pixel = 0; pixel < 256; ++pixel)
+	{
+		auto next = ManaAuraFieldBuilder::region(Rect(40 + pixel / 32, 40, 20, 20), coverage, prepared, 2097152);
+		EXPECT_EQ(next.x, prepared.x);
+		EXPECT_EQ(next.w, prepared.w);
+	}
+	auto moved = ManaAuraFieldBuilder::region(Rect(100, 40, 20, 20), coverage, prepared, 2097152);
+	EXPECT_GT(moved.x, prepared.x);
+	auto outside = ManaAuraFieldBuilder::region(Rect(280, 280, 20, 20), coverage, prepared, 2097152);
+	EXPECT_EQ(outside.w, 0);
+}

@@ -23,12 +23,10 @@ void MapRendererManaAura::load()
 	try
 	{
 		settings = ManaAuraVisualSettings::fromJson(JsonNode(JsonPath::builtin("config/manaAuraVisuals.json")));
-		if(settings.enabled)
-			material = ManaAuraMaterial::fromJson(JsonNode(JsonPath::builtin("config/manaAuraMaterial.json")));
 	}
 	catch(const std::exception & error)
 	{
-		logGlobal->error("MGMA visuals: config/manaAuraVisuals.json or config/manaAuraMaterial.json invalid: %s; disabling visual layer", error.what());
+		logGlobal->error("MGMA visuals: config/manaAuraVisuals.json invalid: %s; disabling visual layer", error.what());
 		settings.enabled = false;
 	}
 }
@@ -43,15 +41,10 @@ void MapRendererManaAura::prepareFrame(
 	const auto view = context.manaAuraVisualState();
 	if(!loaded && !view.sources.empty())
 		load();
-	if(!settings.enabled || view.sources.empty() || visible.w <= 0 || visible.h <= 0)
-	{
-		field.reset();
-		images.clear();
-		imageOrder.clear();
-		frame = -1;
-		stamp = 0;
+	active = settings.enabled && !view.sources.empty() && visible.w > 0 && visible.h > 0;
+	if(!active)
 		return;
-	}
+
 	const auto mapSize = context.getMapSize();
 	std::vector<int3> current;
 	int minX = mapSize.x, minY = mapSize.y, maxX = 0, maxY = 0;
@@ -64,24 +57,44 @@ void MapRendererManaAura::prepareFrame(
 			maxX = std::max(maxX, p.x + view.radius + 3);
 			maxY = std::max(maxY, p.y + view.radius + 3);
 		}
-	const int x0 = std::max({0, static_cast<int>(std::floor((visible.x - 2) / 8.)) * 8, minX});
-	const int y0 = std::max({0, static_cast<int>(std::floor((visible.y - 2) / 8.)) * 8, minY});
-	const int x1 = std::min({mapSize.x, static_cast<int>(std::ceil((visible.right() + 2) / 8.)) * 8, maxX});
-	const int y1 = std::min({mapSize.y, static_cast<int>(std::ceil((visible.bottom() + 2) / 8.)) * 8, maxY});
-	if(current.empty() || x1 <= x0 || y1 <= y0)
+	const bool sameSources = sources == current && level == newLevel && radius == view.radius;
+	const int left = std::max(0, minX), top = std::max(0, minY);
+	const int right = std::min(mapSize.x, maxX), bottom = std::min(mapSize.y, maxY);
+	Rect coverage(left, top, std::max(0, right - left), std::max(0, bottom - top));
+	Rect bounds = ManaAuraFieldBuilder::region(visible, coverage, sameSources ? requestedBounds : Rect(0, 0, 0, 0), settings.maxRasterPixels);
+	if(current.empty() || !sameSources)
 	{
-		field.reset();
+		if(builder)
+		{
+			builder->cancel();
+			builder->retire(std::move(field));
+		}
+		requestedGeneration = 0;
 		images.clear();
 		imageOrder.clear();
 		frame = -1;
 		stamp = 0;
-		return;
 	}
-	Rect bounds(x0, y0, x1 - x0, y1 - y0);
+	if(current.empty() || bounds.w <= 0 || bounds.h <= 0)
+		return;
+	const int x0 = bounds.x, y0 = bounds.y, x1 = bounds.right(), y1 = bounds.bottom();
+
 	uint64_t routeHash = 1469598103934665603ULL, eligibleHash = routeHash;
 	auto mix = [](uint64_t & hash, uint64_t value)
 	{
 		hash = (hash ^ value) * 1099511628211ULL;
+	};
+	auto canPulse = [&](int x, int y)
+	{
+		if(x < visible.x || y < visible.y || x >= visible.right() || y >= visible.bottom())
+			return false;
+		const int3 tile(x, y, newLevel);
+		if(!context.isVisible(tile))
+			return false;
+		for(const auto & id : context.getObjects(tile))
+			if(const auto * object = context.getObject(id); object && !object->isTile2Terrain())
+				return false;
+		return true;
 	};
 	std::vector<bool> allowed(bounds.w * bounds.h);
 	for(int y = y0; y < y1; ++y)
@@ -94,24 +107,67 @@ void MapRendererManaAura::prepareFrame(
 			mix(routeHash, terrain.getRiverID().getNum());
 			mix(routeHash, terrain.riverDir);
 			mix(routeHash, terrain.extTileFlags);
-			bool eligible = context.isVisible(tile) && x >= visible.x && y >= visible.y && x < visible.right() && y < visible.bottom();
-			for(const auto & id : context.getObjects(tile))
-			{
-				const auto * object = context.getObject(id);
-				if(object && !object->isTile2Terrain())
-					eligible = false;
-			}
+			const bool eligible = canPulse(x, y);
 			allowed[(y - y0) * bounds.w + x - x0] = eligible;
 			mix(eligibleHash, eligible);
 		}
 	mix(routeHash, context.showRoads());
 	mix(routeHash, context.showRivers());
-	const bool rebuild =
-		!field || !bounds.operator==(prepared) || sources != current || level != newLevel || radius != view.radius || routeHash != routeSignature;
+	const bool rebuild = !requestedGeneration || !bounds.operator==(requestedBounds) || !sameSources || routeHash != routeSignature;
+	bool adopted = false;
+	if(builder)
+		if(auto ready = builder->take())
+		{
+			if(ready->generation == requestedGeneration)
+			{
+				if(ready->error)
+				{
+					try
+					{
+						std::rethrow_exception(ready->error);
+					}
+					catch(const std::runtime_error & error)
+					{
+						logGlobal->error("MGMA visual material preparation failed: %s; disabling visual layer", error.what());
+						settings.enabled = false;
+						builder->cancel();
+						builder->retire(std::move(field));
+						images.clear();
+						imageOrder.clear();
+						stamp = 0;
+						return;
+					}
+				}
+				if(field)
+					ready->field->inheritAnimation(*field);
+				builder->retire(std::move(field));
+				field = std::move(ready->field);
+				prepared = ready->bounds;
+				if(settings.debug)
+					logGlobal->info(
+						"MGMA ready generation=%llu backgroundMs=%g rasterStep=%d",
+						static_cast<unsigned long long>(ready->generation),
+						ready->preparationMs,
+						field->sampleStep()
+					);
+				eligibilitySignature = 0;
+				++revision;
+				adopted = true;
+			}
+			else
+				builder->retire(std::move(ready->field));
+		}
 	if(rebuild)
 	{
-		if(!field)
-			field = std::make_unique<ManaAuraField>(settings, *material);
+		if(!builder)
+			builder = std::make_unique<ManaAuraFieldBuilder>(settings, nullptr);
+		if(!sameSources)
+		{
+			builder->retire(std::move(field));
+			images.clear();
+			imageOrder.clear();
+			stamp = 0;
+		}
 		std::vector<ManaAuraField::Tile> tiles(bounds.w * bounds.h);
 		for(int y = y0; y < y1; ++y)
 			for(int x = x0; x < x1; ++x)
@@ -124,34 +180,44 @@ void MapRendererManaAura::prepareFrame(
 				if((context.showRoads() && (terrain.hasRoad() || roadAbove)) || (context.showRivers() && terrain.hasRiver()))
 					tile.route = routePixels(int3(x, y, newLevel));
 			}
-		field->rebuild(bounds, mapSize, newLevel, current, view.radius, tiles);
-		prepared = bounds;
-		sources = current;
-		level = newLevel;
-		radius = view.radius;
-		routeSignature = routeHash;
-		++revision;
+		requestedGeneration = builder->request({bounds, mapSize, newLevel, view.radius, current, std::move(tiles)});
+		requestedBounds = bounds;
 		if(settings.debug)
 			logGlobal->info(
-				"MGMA balanced: sources=%zu radius=%d visible=(%d,%d,%d,%d,%d) rasterStep=%d rate=%g duration=[%g,%g]",
-				current.size(),
-				radius,
+				"MGMA queued generation=%llu bounds=(%d,%d,%d,%d) level=%d",
+				static_cast<unsigned long long>(requestedGeneration),
 				bounds.x,
 				bounds.y,
 				bounds.w,
 				bounds.h,
-				level,
-				field->sampleStep(),
-				settings.pulseRate,
-				settings.pulseMinDuration,
-				settings.pulseMaxDuration
+				newLevel
 			);
+		sources = current;
+		level = newLevel;
+		radius = view.radius;
+		routeSignature = routeHash;
 	}
-	if(rebuild || eligibleHash != eligibilitySignature)
+
+	if(!field)
+		return;
+	if(!bounds.operator==(prepared))
+	{
+		allowed.assign(prepared.w * prepared.h, false);
+		eligibleHash = 1469598103934665603ULL;
+		for(int y = prepared.y; y < prepared.bottom(); ++y)
+			for(int x = prepared.x; x < prepared.right(); ++x)
+			{
+				const bool eligible = canPulse(x, y);
+				allowed[(y - prepared.y) * prepared.w + x - prepared.x] = eligible;
+				mix(eligibleHash, eligible);
+			}
+	}
+	if(adopted || eligibleHash != eligibilitySignature)
 	{
 		field->updateEligibility(allowed);
 		eligibilitySignature = eligibleHash;
 	}
+
 	const int64_t currentFrame = view.animated ? static_cast<int64_t>(view.timeMs * settings.framesPerSecond / 1000) : 0;
 	const uint32_t currentStamp = static_cast<uint32_t>(currentFrame) * 2654435761U + revision * 2246822519U + 1;
 	if(frame != currentFrame || stamp != currentStamp)
@@ -164,7 +230,7 @@ void MapRendererManaAura::prepareFrame(
 
 uint32_t MapRendererManaAura::checksum(const int3 & position) const
 {
-	return field && position.z == level && field->containsTile(position.x, position.y) ? (stamp ? stamp : 1) : 0;
+	return active && field && position.z == level && field->containsTile(position.x, position.y) ? (stamp ? stamp : 1) : 0;
 }
 
 void MapRendererManaAura::renderTile(Canvas & target, const int3 & position)
