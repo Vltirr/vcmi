@@ -11,6 +11,7 @@
 
 #include "ManaAuraField.h"
 #include <functional>
+#include <optional>
 
 class IMapRendererContext;
 class Canvas;
@@ -24,7 +25,7 @@ public:
 	void prepareFrame(IMapRendererContext & context, const Rect & visible, int level, const std::function<std::vector<ColorRGBA>(const int3 &)> & routePixels);
 	uint32_t checksum(const int3 & position, const IMapRendererContext * context = nullptr) const;
 	bool shadowsBelowMist(const int3 & position) const;
-	bool beginObjectBatch(const Rect & visible, int scale);
+	std::optional<Rect> beginObjectBatch(int scale);
 	void batchObject(IMapRendererContext & context, const int3 & position, const CGObjectInstance & object, const std::shared_ptr<IImage> & body);
 	void finishObjectBatch();
 	bool coversObject(const CGObjectInstance & object) const;
@@ -48,8 +49,10 @@ private:
 	std::unique_ptr<ManaAuraField> field;
 	Rect prepared;
 	std::vector<int3> sources;
-	int radius = 0, level = -1, scaling = 0;
-	uint64_t routeSignature = 0, eligibilitySignature = 0;
+	int radius = 0, level = -1;
+	uint64_t eligibilitySignature = 0;
+	Rect routeWindow;
+	bool routeShowsRoads = false, routeShowsRivers = false;
 	uint32_t revision = 0, stamp = 0;
 	int64_t frame = -1;
 	struct Block
@@ -78,20 +81,20 @@ private:
 		Rect bounds;
 		std::vector<uint8_t> opaque;
 		std::vector<int> foot;
-		std::list<const IImage *>::iterator order;
+		std::list<std::pair<const IImage *, int>>::iterator order;
 	};
 	struct ObjectOverlay
 	{
 		std::shared_ptr<CanvasImage> image;
 		const IImage * body = nullptr;
 		Point worldTop;
-		int scale = 0;
+		int maskScale = 0;
 		uint32_t stamp = 0;
 		Rect band;
 		std::list<int32_t>::iterator order;
 	};
-	std::map<const IImage *, ObjectMask> objectMasks;
-	std::list<const IImage *> maskOrder;
+	std::map<std::pair<const IImage *, int>, ObjectMask> objectMasks;
+	std::list<std::pair<const IImage *, int>> maskOrder;
 	std::map<int32_t, ObjectOverlay> objectOverlays;
 	std::list<int32_t> objectOrder;
 	std::vector<uint8_t> objectPixels;
@@ -117,7 +120,7 @@ private:
 	bool batchReported = false;
 
 	void load();
-	const ObjectMask * objectMask(const std::shared_ptr<IImage> & body, uint8_t alpha);
+	const ObjectMask * objectMask(const std::shared_ptr<IImage> & body, uint8_t alpha, int scale);
 	Rect objectBand(const ObjectMask & mask, const CGObjectInstance & object) const;
-	void writeObjectBand(const ObjectMask & mask, const Rect & band, Point worldTop, int32_t key, int scale, uint8_t * pixels, size_t stride) const;
+	void writeObjectBand(const ObjectMask & mask, const Rect & band, Point worldTop, int32_t key, uint8_t * pixels, size_t stride) const;
 };

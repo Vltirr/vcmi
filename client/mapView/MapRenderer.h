@@ -141,7 +141,7 @@ public:
 
 	/// Must be called once per update pass before any checksum() call
 	void prepareFrame();
-	void prepareManaAura(IMapRendererContext & context, const Rect & visible, int level, MapRendererManaAura & aura);
+	void prepareManaAura(IMapRendererContext & context, int level, MapRendererManaAura & aura);
 
 	uint8_t checksum(IMapRendererContext & context, const int3 & coordinates);
 	void renderTile(IMapRendererContext & context, Canvas & target, const int3 & coordinates, MapRendererManaAura * aura);

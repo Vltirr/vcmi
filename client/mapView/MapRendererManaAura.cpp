@@ -11,11 +11,13 @@
 #include "../../lib/json/JsonNode.h"
 #include "../../lib/mapObjects/CGObjectInstance.h"
 #include "../../lib/mapping/TerrainTile.h"
+#include "../GameEngine.h"
 #include "IMapRendererContext.h"
 #include "MapRendererManaAura.h"
 #include "render/Canvas.h"
 #include "render/CanvasImage.h"
 #include "render/IImage.h"
+#include "render/IRenderHandler.h"
 #include <boost/container/small_vector.hpp>
 #include <chrono>
 #include <cmath>
@@ -88,56 +90,49 @@ void MapRendererManaAura::prepareFrame(
 		frame = -1;
 		stamp = 0;
 		frameStamp = 0;
+		routeWindow = Rect();
 		batchStamp = 0;
 		batchReported = false;
 	}
 	if(current.empty() || bounds.w <= 0 || bounds.h <= 0)
+	{
+		active = false;
 		return;
+	}
 	const int x0 = bounds.x, y0 = bounds.y, x1 = bounds.right(), y1 = bounds.bottom();
 
-	uint64_t routeHash = 1469598103934665603ULL, eligibleHash = routeHash;
 	auto mix = [](uint64_t & hash, uint64_t value)
 	{
 		hash = (hash ^ value) * 1099511628211ULL;
 	};
-	auto canPulse = [&](int x, int y)
+	auto allowedTiles = [&](const Rect & area, uint64_t & hash)
 	{
-		if(x < visible.x || y < visible.y || x >= visible.right() || y >= visible.bottom())
-			return false;
-		const int3 tile(x, y, newLevel);
-		if(!context.isVisible(tile))
-			return false;
-		for(const auto & id : context.getObjects(tile))
-			if(const auto * object = context.getObject(id); object && !object->isTile2Terrain())
-				return false;
-		return true;
+		std::vector<bool> result(area.w * area.h, false);
+		if(!settings.pulseEnabled || !view.animated)
+			return result;
+		const Rect relevant = area.intersect(visible);
+		for(int y = relevant.y; y < relevant.bottom(); ++y)
+			for(int x = relevant.x; x < relevant.right(); ++x)
+			{
+				const int3 tile(x, y, newLevel);
+				if(!context.isVisible(tile))
+					continue;
+				bool eligible = true;
+				for(const auto & id : context.getObjects(tile))
+					if(const auto * object = context.getObject(id); object && !object->isTile2Terrain())
+					{
+						eligible = false;
+						break;
+					}
+				if(eligible)
+				{
+					const int index = (y - area.y) * area.w + x - area.x;
+					result[index] = true;
+					mix(hash, index + 1);
+				}
+			}
+		return result;
 	};
-	std::vector<bool> allowed(bounds.w * bounds.h);
-	for(int y = y0; y < y1; ++y)
-		for(int x = x0; x < x1; ++x)
-		{
-			const bool eligible = canPulse(x, y);
-			allowed[(y - y0) * bounds.w + x - x0] = eligible;
-			mix(eligibleHash, eligible);
-		}
-	const int rx = std::max(0, visible.x - 1), ry = std::max(0, visible.y - 1);
-	const Rect routeBounds(rx, ry, std::max(0, std::min(mapSize.x, visible.right() + 1) - rx), std::max(0, std::min(mapSize.y, visible.bottom() + 1) - ry));
-	mix(routeHash, routeBounds.x);
-	mix(routeHash, routeBounds.y);
-	mix(routeHash, routeBounds.w);
-	mix(routeHash, routeBounds.h);
-	for(int y = std::max(0, routeBounds.y - 1); y < std::min(mapSize.y, routeBounds.bottom() + 1); ++y)
-		for(int x = std::max(0, routeBounds.x - 1); x < std::min(mapSize.x, routeBounds.right() + 1); ++x)
-		{
-			const auto & terrain = context.getMapTile(int3(x, y, newLevel));
-			mix(routeHash, terrain.getRoadID().getNum());
-			mix(routeHash, terrain.roadDir);
-			mix(routeHash, terrain.getRiverID().getNum());
-			mix(routeHash, terrain.riverDir);
-			mix(routeHash, terrain.extTileFlags);
-		}
-	mix(routeHash, context.showRoads());
-	mix(routeHash, context.showRivers());
 	const bool rebuild = !requestedGeneration || !bounds.operator==(requestedBounds) || !sameSources;
 	bool adopted = false;
 	if(builder)
@@ -194,6 +189,8 @@ void MapRendererManaAura::prepareFrame(
 			stamp = 0;
 			frameStamp = 0;
 		}
+		uint64_t hash = 1469598103934665603ULL;
+		const auto allowed = allowedTiles(bounds, hash);
 		std::vector<ManaAuraField::Tile> tiles(bounds.w * bounds.h);
 		for(int y = y0; y < y1; ++y)
 			for(int x = x0; x < x1; ++x)
@@ -221,9 +218,31 @@ void MapRendererManaAura::prepareFrame(
 
 	if(!field)
 		return;
-	const bool routesChanged = adopted || routeSignature != routeHash;
+	const Rect relevant = visible.intersect(prepared);
+	bool contributes = false;
+	for(int y = relevant.y; y < relevant.bottom() && !contributes; ++y)
+		for(int x = relevant.x; x < relevant.right() && !contributes; ++x)
+			contributes = field->containsTile(x, y);
+	if(!contributes)
+	{
+		active = false;
+		return;
+	}
+
+	const int bx = relevant.x / 4 * 4, by = relevant.y / 4 * 4;
+	const int rightTile = (relevant.right() + 3) / 4 * 4, bottomTile = (relevant.bottom() + 3) / 4 * 4;
+	const Rect frameTiles(bx, by, rightTile - bx, bottomTile - by);
+	const Rect nextFrame = frameTiles * 32;
+	const Rect mapRect(0, 0, mapSize.x, mapSize.y);
+	const Rect routeNeeded = frameTiles.resize(3).intersect(mapRect);
+	const bool showRoads = context.showRoads(), showRivers = context.showRivers();
+	const bool windowFits = routeWindow.x <= routeNeeded.x && routeWindow.y <= routeNeeded.y
+		&& routeWindow.right() >= routeNeeded.right() && routeWindow.bottom() >= routeNeeded.bottom();
+	const bool routesChanged = adopted || showRoads != routeShowsRoads || showRivers != routeShowsRivers
+		|| ((showRoads || showRivers) && !windowFits);
 	if(routesChanged)
 	{
+		const Rect routeBounds = showRoads || showRivers ? frameTiles.resize(7).intersect(mapRect) : Rect(0, 0, 0, 0);
 		std::vector<ManaAuraField::Tile> routeTiles(routeBounds.w * routeBounds.h);
 		for(int y = routeBounds.y; y < routeBounds.bottom(); ++y)
 			for(int x = routeBounds.x; x < routeBounds.right(); ++x)
@@ -268,61 +287,69 @@ void MapRendererManaAura::prepareFrame(
 				}
 			}
 		field->updateRoutes(routeBounds, routeTiles);
-		routeSignature = routeHash;
+		routeWindow = routeBounds;
+		routeShowsRoads = showRoads;
+		routeShowsRivers = showRivers;
 		++revision;
-	}
-
-	if(!bounds.operator==(prepared))
-	{
-		allowed.assign(prepared.w * prepared.h, false);
-		eligibleHash = 1469598103934665603ULL;
-		for(int y = prepared.y; y < prepared.bottom(); ++y)
-			for(int x = prepared.x; x < prepared.right(); ++x)
-			{
-				const bool eligible = canPulse(x, y);
-				allowed[(y - prepared.y) * prepared.w + x - prepared.x] = eligible;
-				mix(eligibleHash, eligible);
-			}
-	}
-	if(adopted || routesChanged || eligibleHash != eligibilitySignature)
-	{
-		field->updateEligibility(allowed);
-		eligibilitySignature = eligibleHash;
-	}
-
-	bool contributes = false;
-	for(int y = std::max(0, visible.y); y < std::min(mapSize.y, visible.bottom()) && !contributes; ++y)
-		for(int x = std::max(0, visible.x); x < std::min(mapSize.x, visible.right()) && !contributes; ++x)
-			contributes = field->containsTile(x, y);
-	if(!contributes)
-	{
-		active = false;
-		return;
 	}
 
 	const int64_t currentFrame = view.animated ? static_cast<int64_t>(view.timeMs * settings.framesPerSecond / 1000) : 0;
 	const uint32_t currentStamp = static_cast<uint32_t>(currentFrame) * 2654435761U + revision * 2246822519U + 1;
 	if(frame != currentFrame || stamp != currentStamp)
 	{
+		uint64_t hash = 1469598103934665603ULL;
+		const auto allowed = allowedTiles(prepared, hash);
+		if(adopted || routesChanged || hash != eligibilitySignature)
+		{
+			field->updateEligibility(allowed);
+			eligibilitySignature = hash;
+		}
 		field->update(currentFrame / settings.framesPerSecond, view.animated);
 		frame = currentFrame;
 		stamp = currentStamp;
 	}
-	constexpr int block = 128;
-	const int bx = std::max(0, static_cast<int>(std::floor(visible.x / 4.)) * block);
-	const int by = std::max(0, static_cast<int>(std::floor(visible.y / 4.)) * block);
-	const int rightPixels = static_cast<int>(std::ceil(std::min(mapSize.x, visible.right()) / 4.)) * block;
-	const int bottomPixels = static_cast<int>(std::ceil(std::min(mapSize.y, visible.bottom()) / 4.)) * block;
-	const Rect nextFrame(bx, by, std::max(0, rightPixels - bx), std::max(0, bottomPixels - by));
 	if(frameStamp != stamp || !frameBounds.operator==(nextFrame))
 	{
-		framePixels.resize(static_cast<size_t>(nextFrame.w) * nextFrame.h);
 		const auto started = std::chrono::steady_clock::now();
-		field->writePixels(nextFrame, framePixels);
-		if(adopted)
+		const Rect overlap = frameStamp == stamp ? nextFrame.intersect(frameBounds) : Rect();
+		size_t composedPixels = 0;
+		if(overlap.w > 0 && overlap.h > 0)
+		{
+			std::vector<ColorRGBA> next(static_cast<size_t>(nextFrame.w) * nextFrame.h), strip;
+			auto destination = [&](int x, int y)
+			{
+				return next.data() + (y - nextFrame.y) * nextFrame.w + x - nextFrame.x;
+			};
+			for(int y = overlap.y; y < overlap.bottom(); ++y)
+				std::copy_n(framePixels.data() + (y - frameBounds.y) * frameBounds.w + overlap.x - frameBounds.x,
+					overlap.w, destination(overlap.x, y));
+			auto composeStrip = [&](const Rect & area)
+			{
+				if(area.w <= 0 || area.h <= 0)
+					return;
+				strip.resize(static_cast<size_t>(area.w) * area.h);
+				field->writePixels(area, strip);
+				composedPixels += strip.size();
+				for(int y = 0; y < area.h; ++y)
+					std::copy_n(strip.data() + y * area.w, area.w, destination(area.x, area.y + y));
+			};
+			composeStrip(Rect(nextFrame.x, nextFrame.y, nextFrame.w, overlap.y - nextFrame.y));
+			composeStrip(Rect(nextFrame.x, overlap.bottom(), nextFrame.w, nextFrame.bottom() - overlap.bottom()));
+			composeStrip(Rect(nextFrame.x, overlap.y, overlap.x - nextFrame.x, overlap.h));
+			composeStrip(Rect(overlap.right(), overlap.y, nextFrame.right() - overlap.right(), overlap.h));
+			framePixels = std::move(next);
+		}
+		else
+		{
+			framePixels.resize(static_cast<size_t>(nextFrame.w) * nextFrame.h);
+			field->writePixels(nextFrame, framePixels);
+			composedPixels = framePixels.size();
+		}
+		if(adopted || (settings.debug && overlap.w > 0 && overlap.h > 0))
 			logGlobal->info(
-				"MGMA first native composition: pixels=%llu cpuMs=%g",
-				static_cast<unsigned long long>(framePixels.size()),
+				"MGMA native composition: pixels=%llu reused=%llu cpuMs=%g",
+				static_cast<unsigned long long>(composedPixels),
+				static_cast<unsigned long long>(framePixels.size() - composedPixels),
 				std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count()
 			);
 		const size_t maxBlocks = std::clamp(static_cast<size_t>(nextFrame.w / 128) * (nextFrame.h / 128), size_t{128}, size_t{1024});
@@ -366,13 +393,6 @@ void MapRendererManaAura::renderTile(Canvas & target, const int3 & position)
 {
 	if(!checksum(position))
 		return;
-	const int scale = target.getScalingFactor();
-	if(scaling != scale)
-	{
-		scaling = scale;
-		images.clear();
-		imageOrder.clear();
-	}
 	constexpr int blockTiles = 4;
 	const std::pair key{position.x / blockTiles, position.y / blockTiles};
 	auto it = images.find(key);
@@ -393,28 +413,15 @@ void MapRendererManaAura::renderTile(Canvas & target, const int3 & position)
 	auto & block = it->second;
 	if(!block.image || block.stamp != stamp)
 	{
-		const int native = blockTiles * 32, physical = native * scale;
+		const int native = blockTiles * 32;
 		if(!block.image)
-			block.image = std::make_shared<CanvasImage>(Point(physical, physical), CanvasScalingPolicy::IGNORE);
-		uploadPixels.resize(static_cast<size_t>(physical) * physical * 4);
-
+			block.image = std::make_shared<CanvasImage>(Point(native, native));
+		static_assert(sizeof(ColorRGBA) == 4);
+		uploadPixels.resize(native * native * 4);
 		for(int y = 0; y < native; ++y)
 		{
-			auto * row = uploadPixels.data() + y * scale * physical * 4;
-			for(int x = 0; x < native; ++x)
-			{
-				const auto colour = framePixels.at((key.second * native + y - frameBounds.y) * frameBounds.w + key.first * native + x - frameBounds.x);
-				for(int dx = 0; dx < scale; ++dx)
-				{
-					auto * pixel = row + (x * scale + dx) * 4;
-					pixel[0] = colour.r;
-					pixel[1] = colour.g;
-					pixel[2] = colour.b;
-					pixel[3] = colour.a;
-				}
-			}
-			for(int dy = 1; dy < scale; ++dy)
-				std::memcpy(row + dy * physical * 4, row, physical * 4);
+			const auto * source = framePixels.data() + (key.second * native + y - frameBounds.y) * frameBounds.w + key.first * native - frameBounds.x;
+			std::memcpy(uploadPixels.data() + y * native * 4, source, native * 4);
 		}
 		block.image->writePixelsRGBA(uploadPixels);
 		block.stamp = stamp;
@@ -434,9 +441,10 @@ void MapRendererManaAura::renderTile(Canvas & target, const int3 & position)
 			);
 }
 
-const MapRendererManaAura::ObjectMask * MapRendererManaAura::objectMask(const std::shared_ptr<IImage> & body, uint8_t alpha)
+const MapRendererManaAura::ObjectMask * MapRendererManaAura::objectMask(const std::shared_ptr<IImage> & body, uint8_t alpha, int scale)
 {
-	auto maskIt = objectMasks.find(body.get());
+	const std::pair key{body.get(), scale};
+	auto maskIt = objectMasks.find(key);
 	if(maskIt == objectMasks.end())
 	{
 		if(objectMasks.size() >= 256)
@@ -449,24 +457,35 @@ const MapRendererManaAura::ObjectMask * MapRendererManaAura::objectMask(const st
 		const Point size = body->dimensions();
 		if(size.x <= 0 || size.y <= 0)
 			return nullptr;
-		CanvasImage snapshot(size, CanvasScalingPolicy::IGNORE);
+		CanvasImage snapshot(size, scale > 1 ? CanvasScalingPolicy::AUTO : CanvasScalingPolicy::IGNORE);
 		auto canvas = snapshot.getCanvas();
 		canvas.drawColor(Rect(0, 0, size.x, size.y), ColorRGBA(0, 0, 0, 0));
+		const auto placeholders = ENGINE->renderHandler().getPlaceholderDrawCount();
 		body->setAlpha(255);
 		canvas.draw(body, Point(0, 0));
 		body->setAlpha(alpha);
+		if(placeholders != ENGINE->renderHandler().getPlaceholderDrawCount())
+			return nullptr;
 		std::vector<uint8_t> rgba;
 		snapshot.readPixelsRGBA(rgba);
+		const int captureScale = canvas.getScalingFactor();
+		const int pitch = size.x * captureScale;
+		std::vector<uint8_t> silhouette(size.x * size.y);
 		int left = size.x, top = size.y, right = 0, bottom = 0;
 		for(int y = 0; y < size.y; ++y)
 			for(int x = 0; x < size.x; ++x)
-				if(rgba[(y * size.x + x) * 4 + 3])
-				{
-					left = std::min(left, x);
-					top = std::min(top, y);
-					right = std::max(right, x + 1);
-					bottom = std::max(bottom, y + 1);
-				}
+			{
+				auto & pixel = silhouette[y * size.x + x];
+				for(int sy = 0; sy < captureScale; ++sy)
+					for(int sx = 0; sx < captureScale; ++sx)
+						pixel = std::max(pixel, rgba[((y * captureScale + sy) * pitch + x * captureScale + sx) * 4 + 3]);
+				if(!pixel)
+					continue;
+				left = std::min(left, x);
+				top = std::min(top, y);
+				right = std::max(right, x + 1);
+				bottom = std::max(bottom, y + 1);
+			}
 		if(right <= left || bottom <= top)
 			return nullptr;
 		mask.bounds = Rect(left, top, right - left, bottom - top);
@@ -475,14 +494,14 @@ const MapRendererManaAura::ObjectMask * MapRendererManaAura::objectMask(const st
 		for(int y = 0; y < mask.bounds.h; ++y)
 			for(int x = 0; x < mask.bounds.w; ++x)
 			{
-				const auto spriteAlpha = rgba[((y + top) * size.x + x + left) * 4 + 3];
+				const auto spriteAlpha = silhouette[(y + top) * size.x + x + left];
 				mask.opaque[y * mask.bounds.w + x] = spriteAlpha != 0;
 				if(spriteAlpha >= 240)
 					mask.foot[x] = y + top;
 			}
-		maskOrder.push_back(body.get());
+		maskOrder.push_back(key);
 		mask.order = std::prev(maskOrder.end());
-		maskIt = objectMasks.emplace(body.get(), std::move(mask)).first;
+		maskIt = objectMasks.emplace(key, std::move(mask)).first;
 	}
 	else
 		maskOrder.splice(maskOrder.end(), maskOrder, maskIt->second.order);
@@ -503,7 +522,7 @@ Rect MapRendererManaAura::objectBand(const ObjectMask & mask, const CGObjectInst
 }
 
 void MapRendererManaAura::writeObjectBand(
-	const ObjectMask & mask, const Rect & band, Point worldTop, int32_t key, int scale, uint8_t * pixels, size_t stride
+	const ObjectMask & mask, const Rect & band, Point worldTop, int32_t key, uint8_t * pixels, size_t stride
 ) const
 {
 	const double seconds = std::max<int64_t>(0, frame) / settings.framesPerSecond;
@@ -527,7 +546,7 @@ void MapRendererManaAura::writeObjectBand(
 		const auto * frameRow = wy >= frameBounds.y && wy < frameBounds.bottom()
 			? framePixels.data() + (wy - frameBounds.y) * frameBounds.w : nullptr;
 		const auto * spriteRow = mask.opaque.data() + (band.y + y - mask.bounds.y) * mask.bounds.w;
-		auto * row = pixels + y * scale * stride;
+		auto * row = pixels + y * stride;
 		for(int x = 0; x < band.w; ++x)
 		{
 			ColorRGBA colour;
@@ -547,17 +566,12 @@ void MapRendererManaAura::writeObjectBand(
 						colour.a = opacity;
 				}
 			}
-			for(int dx = 0; dx < scale; ++dx)
-			{
-				auto * pixel = row + (x * scale + dx) * 4;
-				pixel[0] = colour.r;
-				pixel[1] = colour.g;
-				pixel[2] = colour.b;
-				pixel[3] = colour.a;
-			}
+			auto * pixel = row + x * 4;
+			pixel[0] = colour.r;
+			pixel[1] = colour.g;
+			pixel[2] = colour.b;
+			pixel[3] = colour.a;
 		}
-		for(int dy = 1; dy < scale; ++dy)
-			std::memcpy(row + dy * stride, row, band.w * scale * 4);
 	}
 }
 
@@ -566,21 +580,20 @@ namespace
 constexpr int contactPageSize = 512;
 }
 
-bool MapRendererManaAura::beginObjectBatch(const Rect & visible, int scale)
+std::optional<Rect> MapRendererManaAura::beginObjectBatch(int scale)
 {
 	if(!active || !field || !stamp || !settings.objectContact || settings.objectPresence <= 0)
-		return false;
+		return std::nullopt;
+	const Rect visible(frameBounds.x / 32, frameBounds.y / 32, frameBounds.w / 32, frameBounds.h / 32);
 	if(batchStamp == stamp && batchBounds.operator==(visible) && batchScale == scale)
-		return false;
-	if(batchScale != scale)
-		contactPages.clear();
+		return std::nullopt;
 	batchStamp = stamp;
 	batchBounds = visible;
 	batchScale = scale;
 	batchedObjects.clear();
 	for(auto & page : contactPages)
 		page.x = page.y = page.rowHeight = page.height = 0;
-	return true;
+	return visible;
 }
 
 void MapRendererManaAura::batchObject(
@@ -592,7 +605,7 @@ void MapRendererManaAura::batchObject(
 	const auto alpha = static_cast<uint8_t>(std::round(255 * std::clamp(context.objectTransparency(object.id, position), 0., 1.)));
 	if(!alpha)
 		return;
-	const auto * mask = objectMask(body, alpha);
+	const auto * mask = objectMask(body, alpha, batchScale);
 	if(!mask)
 		return;
 	const Rect band = objectBand(*mask, object);
@@ -623,13 +636,12 @@ void MapRendererManaAura::batchObject(
 	page.x += band.w;
 	page.rowHeight = std::max(page.rowHeight, band.h);
 	page.height = std::max(page.height, ((page.y + band.h + 63) / 64) * 64);
-	const size_t stride = contactPageSize * batchScale * 4;
-	page.pixels.resize(stride * page.height * batchScale);
+	const size_t stride = contactPageSize * 4;
+	page.pixels.resize(stride * page.height);
 	const Point source = body->dimensions() - context.objectImageOffset(object.id, position) - Point(32, 32);
 	const Point worldTop(position.x * 32 - source.x, position.y * 32 - source.y);
 	const auto key = object.id.getNum();
-	writeObjectBand(*mask, band, worldTop, key, batchScale,
-		page.pixels.data() + origin.y * batchScale * stride + origin.x * batchScale * 4, stride);
+	writeObjectBand(*mask, band, worldTop, key, page.pixels.data() + origin.y * stride + origin.x * 4, stride);
 	batchedObjects.emplace(key, BatchedObject{body, worldTop, band, pageIndex, origin});
 }
 
@@ -640,9 +652,9 @@ void MapRendererManaAura::finishObjectBatch()
 	{
 		if(!page.height)
 			continue;
-		const Point size(contactPageSize * batchScale, page.height * batchScale);
+		const Point size(contactPageSize, page.height);
 		if(!page.image || page.image->dimensions() != size)
-			page.image = std::make_shared<CanvasImage>(size, CanvasScalingPolicy::IGNORE);
+			page.image = std::make_shared<CanvasImage>(size);
 		page.image->writePixelsRGBA(page.pixels);
 		++uploads;
 		bytes += page.pixels.size();
@@ -696,7 +708,7 @@ void MapRendererManaAura::renderObject(
 		}
 	}
 
-	const auto * mask = objectMask(body, alpha);
+	const auto * mask = objectMask(body, alpha, scale);
 	if(!mask)
 		return;
 	const Rect band = objectBand(*mask, object);
@@ -717,18 +729,18 @@ void MapRendererManaAura::renderObject(
 	else
 		objectOrder.splice(objectOrder.end(), objectOrder, overlayIt->second.order);
 	auto & overlay = overlayIt->second;
-	if(overlay.stamp != stamp || overlay.body != body.get() || overlay.worldTop != worldTop || overlay.scale != scale || !overlay.band.operator==(band))
+	if(overlay.stamp != stamp || overlay.body != body.get() || overlay.worldTop != worldTop || overlay.maskScale != scale || !overlay.band.operator==(band))
 	{
-		if(!overlay.image || overlay.scale != scale || overlay.band.w != band.w || overlay.band.h != band.h)
-			overlay.image = std::make_shared<CanvasImage>(Point(band.w * scale, band.h * scale), CanvasScalingPolicy::IGNORE);
-		const size_t stride = band.w * scale * 4;
-		objectPixels.resize(stride * band.h * scale);
-		writeObjectBand(*mask, band, worldTop, key, scale, objectPixels.data(), stride);
+		if(!overlay.image || overlay.band.w != band.w || overlay.band.h != band.h)
+			overlay.image = std::make_shared<CanvasImage>(Point(band.w, band.h));
+		const size_t stride = band.w * 4;
+		objectPixels.resize(stride * band.h);
+		writeObjectBand(*mask, band, worldTop, key, objectPixels.data(), stride);
 		overlay.image->writePixelsRGBA(objectPixels);
 		overlay.stamp = stamp;
 		overlay.body = body.get();
 		overlay.worldTop = worldTop;
-		overlay.scale = scale;
+		overlay.maskScale = scale;
 		overlay.band = band;
 	}
 	draw(overlay.image, band, Point(0, 0));

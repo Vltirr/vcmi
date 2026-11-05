@@ -673,10 +673,12 @@ void MapRendererObjects::prepareFrame()
 	renderImageCache.clear();
 }
 
-void MapRendererObjects::prepareManaAura(IMapRendererContext & context, const Rect & visible, int level, MapRendererManaAura & aura)
+void MapRendererObjects::prepareManaAura(IMapRendererContext & context, int level, MapRendererManaAura & aura)
 {
-	if(!aura.beginObjectBatch(visible, ENGINE->screenHandler().getScalingFactor()))
+	const auto batch = aura.beginObjectBatch(ENGINE->screenHandler().getScalingFactor());
+	if(!batch)
 		return;
+	const auto & visible = *batch;
 	const auto size = context.getMapSize();
 	std::unordered_set<int32_t> visited;
 	for(int y = std::max(0, visible.y); y < std::min(size.y, visible.bottom()); ++y)
@@ -998,7 +1000,7 @@ void MapRenderer::prepareFrame(IMapRendererContext & context, const Rect & visib
 			result.emplace_back(pixels[i], pixels[i + 1], pixels[i + 2], pixels[i + 3]);
 		return result;
 	});
-	rendererObjects.prepareManaAura(context, visibleTiles, level, rendererManaAura);
+	rendererObjects.prepareManaAura(context, level, rendererManaAura);
 }
 
 MapRenderer::TileChecksum MapRenderer::getTileChecksum(IMapRendererContext & context, const int3 & coordinates)

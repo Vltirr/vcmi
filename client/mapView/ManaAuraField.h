@@ -184,6 +184,7 @@ private:
 	double randomUnit();
 	double intensity(double x, double y) const;
 	ColorRGBA basePixel(int worldX, int worldY, bool object = false) const;
+	ColorRGBA basePixel(int worldX, int worldY, const Route * route, bool object) const;
 	float exposure(const Pulse & pulse, int worldX, int worldY, double lum, double wide, double near) const;
 	ColorRGBA expose(ColorRGBA colour, double value) const;
 	bool onRoute(int worldX, int worldY) const;

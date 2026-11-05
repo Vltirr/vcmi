@@ -16,6 +16,8 @@ class CanvasImage : public IImage
 {
 public:
 	CanvasImage(const Point & size, CanvasScalingPolicy scalingPolicy);
+	/// Stores native pixels and scales them at draw time.
+	explicit CanvasImage(const Point & nativeSize);
 	~CanvasImage();
 
 	Canvas getCanvas();
@@ -47,6 +49,7 @@ public:
 
 private:
 	SDL_Surface * surface;
+	bool nativePixels = false;
 	CanvasScalingPolicy scalingPolicy;
 };
 

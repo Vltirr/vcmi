@@ -16,6 +16,8 @@ class CanvasImage : public IImage
 {
 public:
 	CanvasImage(const Point & size, CanvasScalingPolicy scalingPolicy);
+	/// Stores native pixels and scales them at draw time.
+	explicit CanvasImage(const Point & nativeSize);
 	~CanvasImage();
 
 	Canvas getCanvas();
@@ -51,7 +53,9 @@ public:
 
 private:
 	SDL_Surface * surface;
+	bool nativePixels = false;
 	uint8_t alpha = 255;
+	Rect sourceArea(const Rect * src, int scale) const;
 
 	/// GPU copy of surface, rebuilt whenever the surface is redrawn or the renderer changes
 	mutable SDL_Texture * texture = nullptr;

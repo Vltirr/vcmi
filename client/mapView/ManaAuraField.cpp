@@ -897,6 +897,12 @@ bool ManaAuraField::onRoute(int worldX, int worldY) const
 
 ColorRGBA ManaAuraField::basePixel(int worldX, int worldY, bool object) const
 {
+	const auto it = object ? routes.end() : routes.find({worldX >> 5, worldY >> 5});
+	return basePixel(worldX, worldY, it == routes.end() ? nullptr : &it->second, object);
+}
+
+ColorRGBA ManaAuraField::basePixel(int worldX, int worldY, const Route * route, bool object) const
+{
 	if(worldX < tileBounds.x * 32 || worldY < tileBounds.y * 32 || worldX >= tileBounds.right() * 32 || worldY >= tileBounds.bottom() * 32)
 		return ColorRGBA(0, 0, 0, 0);
 	const int x = (worldX - area.x) / step, y = (worldY - area.y) / step;
@@ -921,16 +927,14 @@ ColorRGBA ManaAuraField::basePixel(int worldX, int worldY, bool object) const
 	const double moved = material.sample(material.signal, worldX + dx, worldY + dy);
 	const double crest = settings.innerContrast > 0 ? settings.innerContrast * smooth(.25, .85, influence) * std::max(0., moved) : 0;
 	double relief = 0;
-	if(!object)
-		if(const auto it = routes.find({tx, ty}); it != routes.end())
-		{
-			const size_t index = (worldY - ty * 32) * 32 + worldX - tx * 32;
-			const auto & route = it->second;
-			if(settings.routeContact)
-				alpha *= 1 - route.filteredOpening[index] / 255.;
-			else
-				relief = route.relief[index];
-		}
+	if(route)
+	{
+		const size_t index = (worldY - ty * 32) * 32 + worldX - tx * 32;
+		if(settings.routeContact)
+			alpha *= 1 - route->filteredOpening[index] / 255.;
+		else
+			relief = route->relief[index];
+	}
 	const auto & edge = settings.edgeColour;
 	const auto & center = settings.centerColour;
 	const auto & colour = settings.detailColour;
@@ -1012,8 +1016,18 @@ void ManaAuraField::writePixels(const Rect & bounds, std::span<ColorRGBA> output
 				[&](const auto & range)
 				{
 					for(int y = range.begin(); y != range.end(); ++y)
-						for(int x = 0; x < stride; ++x)
-							base[y * stride + x] = basePixel(bounds.x + x - pad, bounds.y + y - pad);
+					{
+						const int wy = bounds.y + y - pad, left = bounds.x - pad;
+						for(int x = 0; x < stride;)
+						{
+							const int tx = (left + x) >> 5;
+							const int end = std::min(stride, (tx + 1) * 32 - left);
+							const auto it = routes.find({tx, wy >> 5});
+							const auto * route = it == routes.end() ? nullptr : &it->second;
+							for(; x < end; ++x)
+								base[y * stride + x] = basePixel(left + x, wy, route, false);
+						}
+					}
 				}
 			);
 			if(!pad)

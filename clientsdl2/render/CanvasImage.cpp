@@ -27,6 +27,12 @@ CanvasImage::CanvasImage(const Point & size, CanvasScalingPolicy scalingPolicy)
 {
 }
 
+CanvasImage::CanvasImage(const Point & nativeSize)
+	: CanvasImage(nativeSize, CanvasScalingPolicy::IGNORE)
+{
+	nativePixels = true;
+}
+
 CanvasImage::~CanvasImage()
 {
 	SDL_FreeSurface(surface);
@@ -34,7 +40,13 @@ CanvasImage::~CanvasImage()
 
 void CanvasImage::draw(SDL_Surface * where, const Point & pos, const Rect * src, int scalingFactor) const
 {
-	if(src)
+	if(nativePixels && scalingFactor > 1)
+	{
+		const auto source = src ? SDL_Rect{src->x / scalingFactor, src->y / scalingFactor, src->w / scalingFactor, src->h / scalingFactor} : SDL_Rect{0, 0, surface->w, surface->h};
+		SDL_Rect destination{pos.x, pos.y, source.w * scalingFactor, source.h * scalingFactor};
+		SDL_BlitScaled(surface, &source, where, &destination);
+	}
+	else if(src)
 		CSDL_Ext::blitSurface(surface, *src, where, pos);
 	else
 		CSDL_Ext::blitSurface(surface, where, pos);
