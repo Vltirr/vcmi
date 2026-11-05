@@ -294,3 +294,100 @@ TEST(ManaAuraVisuals, NativeBlocksMatchPointSamplesAcrossPulseAndRoadBoundaries)
 	field.update(5.5, true);
 	EXPECT_NO_THROW(field.pixel(390, 400));
 }
+
+
+TEST(ManaAuraVisuals, ContactPresetsAreIndependentAndOptIn)
+{
+	const auto legacy = ManaAuraVisualSettings::fromJson(JsonNode());
+	EXPECT_FALSE(legacy.routeContact);
+	EXPECT_FALSE(legacy.objectContact);
+	JsonNode config;
+	config["routes"]["enabled"].Bool() = true;
+	config["routes"]["preset"].String() = "soft";
+	config["objects"]["enabled"].Bool() = true;
+	config["objects"]["preset"].String() = "marked";
+	config["objects"]["strength"].Float() = .8;
+	const auto selected = ManaAuraVisualSettings::fromJson(config);
+	EXPECT_DOUBLE_EQ(selected.routePresence, .7);
+	EXPECT_DOUBLE_EQ(selected.objectPresence, 1.);
+	EXPECT_DOUBLE_EQ(selected.resourceDepth, .8);
+	config["routes"]["preset"].String() = "balanced";
+	EXPECT_DOUBLE_EQ(ManaAuraVisualSettings::fromJson(config).routePresence, 1.);
+}
+
+TEST(ManaAuraVisuals, MergingContactFrontsReachFullOpacityWithoutAResidualSlit)
+{
+	EXPECT_DOUBLE_EQ(ManaAuraContact::routeCoverage(15, 10, 20, 400, 8, 0, 2.4), 0.);
+	EXPECT_DOUBLE_EQ(ManaAuraContact::objectCoverage(0, 400, 8, 3, 0), 0.);
+	for(int y = 0; y < 32; ++y)
+		EXPECT_DOUBLE_EQ(ManaAuraContact::frontCoverage(y, 20, 12, 2.4), 1.);
+	EXPECT_DOUBLE_EQ(ManaAuraContact::frontCoverage(0, 10, 20, 2.4), 1.);
+	EXPECT_DOUBLE_EQ(ManaAuraContact::frontCoverage(15, 10, 20, 2.4), 0.);
+	for(double gap = -.1; gap < .1; gap += .001)
+		EXPECT_NEAR(ManaAuraContact::frontCoverage(0, -gap / 2, gap / 2, 2.4),
+			ManaAuraContact::frontCoverage(0, -(gap + .001) / 2, (gap + .001) / 2, 2.4), .002);
+}
+
+TEST(ManaAuraVisuals, ObjectMaterialKeepsOpacityAtTheFunctionalPerimeter)
+{
+	ManaAuraVisualSettings config;
+	config.pulseEnabled = false;
+	ManaAuraField field(config, approvedMaterial());
+	build(field, Rect(0, 0, 22, 22));
+	field.update(0, true);
+	bool perimeter = false;
+	for(int y = 1; y < 21; ++y)
+		for(int x = 1; x < 21; ++x)
+			if(field.covered(x, y) && field.pixel(x * 32 + 16, y * 32 + 16).a < 200)
+			{
+				perimeter = true;
+				EXPECT_EQ(field.objectPixel(x * 32 + 16, y * 32 + 16).a, 255);
+			}
+	EXPECT_TRUE(perimeter);
+	EXPECT_DOUBLE_EQ(ManaAuraContact::objectCoverage(0, 400, 8, 3, 1.25), 1.);
+	EXPECT_DOUBLE_EQ(ManaAuraContact::objectCoverage(1, 400, 8, 3, 1.25), 0.);
+	double previous = 1;
+	for(double depth = 0; depth <= 1; depth += .01)
+	{
+		const double value = ManaAuraContact::objectCoverage(depth, 400, 8, 3, 1.25);
+		EXPECT_LE(value, previous);
+		previous = value;
+	}
+}
+
+TEST(ManaAuraVisuals, ProgressiveRoadsUsePureCloudColourAndContinuousTileSpans)
+{
+	ManaAuraVisualSettings config;
+	config.routeContact = true;
+	config.pulseEnabled = false;
+	const Rect bounds(0, 0, 22, 22);
+	auto info = visibleTiles(bounds);
+	for(int x = 0; x < bounds.w; ++x)
+	{
+		auto & route = info[12 * bounds.w + x].route;
+		route.resize(1024);
+		for(int y = 12; y <= 20; ++y)
+			for(int px = 0; px < 32; ++px) route[y * 32 + px] = ColorRGBA(180, 60, 10, 255);
+	}
+	ManaAuraField field(config, approvedMaterial());
+	const auto started = std::chrono::steady_clock::now();
+	field.rebuild(bounds, int3(64, 64, 2), 0, std::array{int3(10, 10, 0)}, 8, info);
+	RecordProperty("contactPreparationMs", std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count());
+	field.update(8, true);
+	std::vector<ColorRGBA> block(128 * 32);
+	field.writePixels(Rect(256, 384, 128, 32), block);
+	bool transition = false, opaque = false;
+	for(int y = 12; y <= 20; ++y)
+		for(int x = 256; x < 384; ++x)
+		{
+			const auto point = field.pixel(x, 384 + y), pure = field.objectPixel(x, 384 + y);
+			EXPECT_EQ(point.r, pure.r);
+			EXPECT_EQ(point.g, pure.g);
+			EXPECT_EQ(point.b, pure.b);
+			EXPECT_EQ(point, block[y * 128 + x - 256]);
+			transition |= point.a > 0 && point.a < 255;
+			opaque |= point.a == 255;
+		}
+	EXPECT_TRUE(transition);
+	EXPECT_TRUE(opaque);
+}

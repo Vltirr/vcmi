@@ -105,6 +105,37 @@ struct Segment
 };
 }
 
+double ManaAuraContact::frontCoverage(double across, double first, double second, double feather)
+{
+	const double opening = smooth((across - first + feather) / (2 * feather)) * (1 - smooth((across - second + feather) / (2 * feather)))
+						 * smooth((second - first) / (2 * feather));
+	return 1 - opening;
+}
+
+double ManaAuraContact::routeCoverage(double across, double low, double high, double along, double seconds, double presence, double feather)
+{
+	if(presence <= 0)
+		return 0;
+	const double a = .5 + .5 * std::sin(along / 63 + seconds * .34);
+	const double b = .5 + .5 * std::sin(along / 117 - seconds * .23 + 1.2);
+	const double c = .5 + .5 * std::sin(along / 79 - seconds * .29 + 2.1);
+	const double d = .5 + .5 * std::sin(along / 143 + seconds * .19 - .8);
+	const double span = high - low + 1;
+	const double first = low - 1 + span * presence * (.04 + .82 * std::pow(.65 * a + .35 * b, 1.3));
+	const double second = high + 1 - span * presence * (.04 + .82 * std::pow(.65 * c + .35 * d, 1.3));
+	return frontCoverage(across, first, second, feather);
+}
+
+double ManaAuraContact::objectCoverage(double depth, double along, double seconds, double phase, double presence)
+{
+	if(presence <= 0)
+		return 0;
+	const double height = std::clamp(
+		presence * (.72 + .14 * std::sin(seconds * .32 + phase * 1.91 + along / 47) + .10 * std::sin(seconds * .21 - phase * 1.37 + along / 83)), .08, 1.
+	);
+	return 1 - smooth((depth - height * .18) / (height * .82));
+}
+
 ManaAuraVisualSettings ManaAuraVisualSettings::fromJson(const JsonNode & json)
 {
 	ManaAuraVisualSettings out;
@@ -147,6 +178,46 @@ ManaAuraVisualSettings ManaAuraVisualSettings::fromJson(const JsonNode & json)
 		logGlobal->warn("config/manaAuraVisuals.json: controlStep must be 1, 2, 4 or 8; using 4");
 	out.parallelism = static_cast<int>(number(json, "parallelism", 8, 1, 16));
 	out.maxRasterPixels = static_cast<int>(number(json, "maxRasterPixels", 2097152, 65536, 4194304));
+	auto contactEnabled = [&](const JsonNode & node, const char * name)
+	{
+		if(node.isNull())
+			return false;
+		if(node.isStruct() && node["enabled"].isBool())
+			return node["enabled"].Bool();
+		logGlobal->warn("config/manaAuraVisuals.json: %s.enabled invalid or missing; disabling contact", name);
+		return false;
+	};
+	auto presence = [&](const JsonNode & node, const char * name, double fallback)
+	{
+		const auto & preset = node["preset"];
+		double gain = fallback;
+		if(preset.isString() && preset.String() == "soft")
+			gain = .7;
+		else if(preset.isString() && preset.String() == "balanced")
+			gain = 1;
+		else if(preset.isString() && preset.String() == "marked")
+			gain = 1.25;
+		else if(!preset.isNull())
+			logGlobal->warn("config/manaAuraVisuals.json: %s.preset invalid; using default", name);
+		return gain * number(node, "strength", 1, 0, 2);
+	};
+	const auto & routes = json["routes"];
+	const auto & objects = json["objects"];
+	out.routeContact = contactEnabled(routes, "routes");
+	out.objectContact = contactEnabled(objects, "objects");
+	if(out.routeContact)
+	{
+		out.routePresence = presence(routes, "routes", 1);
+		out.routeTransition = number(routes, "transitionPixels", 2.4, .5, 8);
+	}
+	if(out.objectContact)
+	{
+		out.objectPresence = presence(objects, "objects", 1.25);
+		out.resourceDepth = number(objects, "resourceDepth", .8, 0, 1);
+		out.heroDepth = number(objects, "heroDepth", .42, 0, 1);
+		out.townDepth = number(objects, "townDepth", .3, 0, 1);
+		out.obstacleDepth = number(objects, "obstacleDepth", .5, 0, 1);
+	}
 	out.pulseEnabled = boolean("pulseEnabled", true);
 	const auto & pulse = json["pulse"];
 	out.pulseRate = number(pulse, "eventsPerSecond", 2, 0, 20);
@@ -601,8 +672,8 @@ void ManaAuraField::updateRoutes(const Rect & bounds, const std::vector<Tile> & 
 			if(tiles.at((ty - bounds.y) * bounds.w + tx - bounds.x).route.empty())
 				continue;
 			bool unchanged = previous.contains({tx, ty});
-			for(int dy = -1; dy <= 1 && unchanged; ++dy)
-				for(int dx = -1; dx <= 1 && unchanged; ++dx)
+			for(int dy = -(settings.routeContact ? 3 : 1); dy <= (settings.routeContact ? 3 : 1) && unchanged; ++dy)
+				for(int dx = -(settings.routeContact ? 3 : 1); dx <= (settings.routeContact ? 3 : 1) && unchanged; ++dx)
 				{
 					const std::pair key{tx + dx, ty + dy};
 					const auto old = previousInputs.find(key), current = routeInputs.find(key);
@@ -642,6 +713,12 @@ void ManaAuraField::updateRoutes(const Rect & bounds, const std::vector<Tile> & 
 					horizontalMask[y * 40 + x] = m;
 				}
 			auto & route = routes[{tx, ty}];
+			std::array<const std::vector<ColorRGBA> *, 25> neighbours{};
+			if(settings.routeContact)
+				for(int dy = -2; dy <= 2; ++dy)
+					for(int dx = -2; dx <= 2; ++dx)
+						if(const auto it = routeInputs.find({tx + dx, ty + dy}); it != routeInputs.end())
+							neighbours[(dy + 2) * 5 + dx + 2] = &it->second;
 			for(int y = 4; y < 36; ++y)
 				for(int x = 4; x < 36; ++x)
 				{
@@ -659,6 +736,31 @@ void ManaAuraField::updateRoutes(const Rect & bounds, const std::vector<Tile> & 
 					route.relief[index] =
 						settings.roadRelief * alpha * (-5 + 8 * std::clamp((lum[y * 40 + x] / alpha - mean / std::max(weight, .000001f)) / 14., -1., 1.));
 					route.mask[index] = byte(alpha * 255);
+					if(settings.routeContact)
+					{
+						auto present = [&](int wx, int wy)
+						{
+							if(wx < 0 || wy < 0)
+								return false;
+							const int dx = wx / 32 - tx + 2, dy = wy / 32 - ty + 2;
+							if(dx < 0 || dy < 0 || dx >= 5 || dy >= 5)
+								return false;
+							const auto * pixels = neighbours[dy * 5 + dx];
+							return pixels && pixels->at((wy % 32) * 32 + wx % 32).a != 0;
+						};
+						const int wx = tx * 32 + x - 4, wy = ty * 32 + y - 4;
+						auto extent = [&](int dx, int dy)
+						{
+							int count = 0;
+							while(count < 64 && present(wx + dx * (count + 1), wy + dy * (count + 1)))
+								++count;
+							return count;
+						};
+						const int up = extent(0, -1), down = extent(0, 1), left = extent(-1, 0), right = extent(1, 0);
+						route.vertical[index] = up + down <= left + right;
+						route.low[index] = route.vertical[index] ? wy - up : wx - left;
+						route.high[index] = route.vertical[index] ? wy + down : wx + right;
+					}
 				}
 		}
 	candidates.clear();
@@ -674,7 +776,7 @@ bool ManaAuraField::onRoute(int worldX, int worldY) const
 	return it != routes.end() && it->second.mask[(worldY - y * 32) * 32 + worldX - x * 32] != 0;
 }
 
-ColorRGBA ManaAuraField::basePixel(int worldX, int worldY) const
+ColorRGBA ManaAuraField::basePixel(int worldX, int worldY, bool object) const
 {
 	if(worldX < tileBounds.x * 32 || worldY < tileBounds.y * 32 || worldX >= tileBounds.right() * 32 || worldY >= tileBounds.bottom() * 32)
 		return ColorRGBA(0, 0, 0, 0);
@@ -688,7 +790,7 @@ ColorRGBA ManaAuraField::basePixel(int worldX, int worldY) const
 	{
 		return a.*member * (1 - u) * (1 - v) + b.*member * u * (1 - v) + c.*member * (1 - u) * v + d.*member * u * v;
 	};
-	const double alpha = interpolate(&Motion::alpha);
+	double alpha = object ? 1 : interpolate(&Motion::alpha);
 	if(alpha < .001)
 		return ColorRGBA(0, 0, 0, 0);
 	const double dx = interpolate(&Motion::x), dy = interpolate(&Motion::y);
@@ -699,8 +801,28 @@ ColorRGBA ManaAuraField::basePixel(int worldX, int worldY) const
 	const float initial = material.signal.at((worldY & 255) * 256 + (worldX & 255));
 	const double moved = material.sample(material.signal, worldX + dx, worldY + dy);
 	double relief = 0;
-	if(const auto it = routes.find({tx, ty}); it != routes.end())
-		relief = it->second.relief[(worldY - ty * 32) * 32 + worldX - tx * 32];
+	if(!object)
+		if(const auto it = routes.find({tx, ty}); it != routes.end())
+		{
+			const size_t index = (worldY - ty * 32) * 32 + worldX - tx * 32;
+			const auto & route = it->second;
+			if(settings.routeContact && route.mask[index])
+			{
+				const bool vertical = route.vertical[index];
+				const double cover = ManaAuraContact::routeCoverage(
+					vertical ? worldY : worldX,
+					route.low[index],
+					route.high[index],
+					vertical ? worldX : worldY,
+					std::max(0., lastTime),
+					settings.routePresence,
+					settings.routeTransition
+				);
+				alpha *= 1 - route.mask[index] / 255. * (1 - cover);
+			}
+			else
+				relief = route.relief[index];
+		}
 	constexpr std::array<double, 3> edge{105, 155, 235}, center{15, 41, 157}, colour{.7, .85, 1};
 	std::array<uint8_t, 3> rgb{};
 	for(size_t k = 0; k < 3; ++k)
@@ -710,6 +832,11 @@ ColorRGBA ManaAuraField::basePixel(int worldX, int worldY) const
 		rgb[k] = byte(base + (moved - initial) * settings.contrast * colour[k]);
 	}
 	return ColorRGBA(rgb[0], rgb[1], rgb[2], byte(alpha * 255));
+}
+
+ColorRGBA ManaAuraField::objectPixel(int worldX, int worldY) const
+{
+	return basePixel(worldX, worldY, true);
 }
 
 float ManaAuraField::exposure(const Pulse & p, int worldX, int worldY, double lum, double wide, double near) const

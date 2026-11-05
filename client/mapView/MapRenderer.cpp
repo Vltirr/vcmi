@@ -589,7 +589,7 @@ void MapRendererObjects::renderShadow(IMapRendererContext & context, Canvas & ta
 	renderImage(context, target, coordinates, object, getObjectImages(context, object)[LAYER_SHADOW], 1.0, false);
 }
 
-void MapRendererObjects::renderObject(IMapRendererContext & context, Canvas & target, const int3 & coordinates, const CGObjectInstance * instance, double transparencyFactor)
+void MapRendererObjects::renderObject(IMapRendererContext & context, Canvas & target, const int3 & coordinates, const CGObjectInstance * instance, double transparencyFactor, MapRendererManaAura * aura)
 {
 	// only the images are shared across tiles - transparency and offset stay per-tile
 	const auto & images = getObjectImages(context, instance);
@@ -599,6 +599,7 @@ void MapRendererObjects::renderObject(IMapRendererContext & context, Canvas & ta
 
 	for(auto layer : {LAYER_COLOR_OVERLAY, LAYER_FLAG, LAYER_OVERLAY})
 		renderImage(context, target, coordinates, instance, images[layer], transparencyFactor);
+	if(aura) aura->renderObject(context, target, coordinates, *instance, images[LAYER_BODY], transparencyFactor);
 }
 
 void MapRendererObjects::renderGround(IMapRendererContext & context, Canvas & target, const int3 & coordinates)
@@ -615,7 +616,7 @@ void MapRendererObjects::renderGround(IMapRendererContext & context, Canvas & ta
 	}
 }
 
-void MapRendererObjects::renderTile(IMapRendererContext & context, Canvas & target, const int3 & coordinates)
+void MapRendererObjects::renderTile(IMapRendererContext & context, Canvas & target, const int3 & coordinates, MapRendererManaAura * aura)
 {
 	const CGObjectInstance * activeHero = nullptr;
 	bool activeHeroCovered = false;
@@ -646,13 +647,13 @@ void MapRendererObjects::renderTile(IMapRendererContext & context, Canvas & targ
 			else if(activeHero)
 				activeHeroCovered = true;
 
-			renderObject(context, target, coordinates, object);
+			renderObject(context, target, coordinates, object, 1., aura);
 		});
 
 	// Like H3, draw the active hero a second time on top of the objects that cover him,
 	// so he stays visible behind obstacles - e.g. a town, or anything he flies over
 	if(activeHeroCovered)
-		renderObject(context, target, coordinates, activeHero, activeHeroTransparency);
+		renderObject(context, target, coordinates, activeHero, activeHeroTransparency, aura);
 }
 
 void MapRendererObjects::prepareFrame()
@@ -999,7 +1000,7 @@ MapRenderer::TileChecksum MapRenderer::getTileChecksum(IMapRendererContext & con
 		result[4] = rendererObjects.checksum(context, coordinates);
 		result[5] = rendererPath.checksum(context, coordinates);
 		result[6] = rendererOverlay.checksum(context, coordinates);
-		const uint32_t auraStamp = rendererManaAura.checksum(coordinates);
+		const uint32_t auraStamp = rendererManaAura.checksum(coordinates, &context);
 		for(size_t i = 0; i < 4; ++i)
 			result[8 + i] = static_cast<uint8_t>(auraStamp >> (8 * i));
 
@@ -1048,7 +1049,7 @@ void MapRenderer::renderTile(IMapRendererContext & context, Canvas & target, con
 		if(withOverlays)
 			rendererManaAura.renderTile(target, coordinates);
 
-		rendererObjects.renderTile(context, target, coordinates);
+		rendererObjects.renderTile(context, target, coordinates, withOverlays ? &rendererManaAura : nullptr);
 		if(withOverlays)
 		{
 			rendererPath.renderTile(context, target, coordinates);

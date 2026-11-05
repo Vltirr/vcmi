@@ -15,13 +15,23 @@
 class IMapRendererContext;
 class Canvas;
 class CanvasImage;
+class IImage;
+class CGObjectInstance;
 
 class MapRendererManaAura
 {
 public:
 	void prepareFrame(IMapRendererContext & context, const Rect & visible, int level, const std::function<std::vector<ColorRGBA>(const int3 &)> & routePixels);
-	uint32_t checksum(const int3 & position) const;
+	uint32_t checksum(const int3 & position, const IMapRendererContext * context = nullptr) const;
 	void renderTile(Canvas & target, const int3 & position);
+	void renderObject(
+		IMapRendererContext & context,
+		Canvas & target,
+		const int3 & position,
+		const CGObjectInstance & object,
+		const std::shared_ptr<IImage> & body,
+		double transparency
+	);
 
 private:
 	bool loaded = false;
@@ -56,6 +66,29 @@ private:
 	Rect frameBounds;
 	uint32_t frameStamp = 0;
 	std::list<std::pair<int, int>> imageOrder;
+
+	struct ObjectMask
+	{
+		std::shared_ptr<IImage> source;
+		Rect bounds;
+		std::vector<uint8_t> opaque;
+		std::list<const IImage *>::iterator order;
+	};
+	struct ObjectOverlay
+	{
+		std::shared_ptr<CanvasImage> image;
+		const IImage * body = nullptr;
+		Point worldTop;
+		int scale = 0;
+		uint32_t stamp = 0;
+		Rect band;
+		std::list<int32_t>::iterator order;
+	};
+	std::map<const IImage *, ObjectMask> objectMasks;
+	std::list<const IImage *> maskOrder;
+	std::map<int32_t, ObjectOverlay> objectOverlays;
+	std::list<int32_t> objectOrder;
+	std::vector<uint8_t> objectPixels;
 
 	void load();
 };

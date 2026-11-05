@@ -23,6 +23,13 @@
 
 class JsonNode;
 
+namespace ManaAuraContact
+{
+double frontCoverage(double across, double first, double second, double feather);
+double routeCoverage(double across, double low, double high, double along, double seconds, double presence, double feather);
+double objectCoverage(double depth, double along, double seconds, double phase, double presence);
+}
+
 struct ManaAuraVisualSettings
 {
 	bool enabled = true;
@@ -35,6 +42,9 @@ struct ManaAuraVisualSettings
 	double edgeRetreat = 28;
 	double edgeMotion = 1;
 	double roadRelief = 1.5;
+	bool routeContact = false, objectContact = false;
+	double routePresence = 1, objectPresence = 1.25, routeTransition = 2.4;
+	double resourceDepth = .8, heroDepth = .42, townDepth = .3, obstacleDepth = .5;
 	int maxRasterPixels = 2097152;
 	int controlStep = 4;
 	int parallelism = 8;
@@ -95,6 +105,7 @@ public:
 	void inheritAnimation(const ManaAuraField & previous);
 	void updateEligibility(const std::vector<bool> & allowed);
 	ColorRGBA pixel(int worldX, int worldY) const;
+	ColorRGBA objectPixel(int worldX, int worldY) const;
 	bool containsTile(int x, int y) const;
 	bool covered(int x, int y) const;
 	const std::vector<Pulse> & getPulses() const
@@ -147,6 +158,8 @@ private:
 	{
 		std::array<float, 1024> relief{};
 		std::array<uint8_t, 1024> mask{};
+		std::array<float, 1024> low{}, high{};
+		std::array<bool, 1024> vertical{};
 	};
 	std::vector<Motion> motion;
 	std::vector<double> corners;
@@ -163,7 +176,7 @@ private:
 	void render(double seconds);
 	double randomUnit();
 	double intensity(double x, double y) const;
-	ColorRGBA basePixel(int worldX, int worldY) const;
+	ColorRGBA basePixel(int worldX, int worldY, bool object = false) const;
 	float exposure(const Pulse & pulse, int worldX, int worldY, double lum, double wide, double near) const;
 	ColorRGBA expose(ColorRGBA colour, double value) const;
 	bool onRoute(int worldX, int worldY) const;
