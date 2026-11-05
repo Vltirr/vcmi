@@ -25,6 +25,7 @@ public:
 	void prepareFrame(IMapRendererContext & context, const Rect & visible, int level, const std::function<std::vector<ColorRGBA>(const int3 &)> & routePixels);
 	uint32_t checksum(const int3 & position, const IMapRendererContext * context = nullptr) const;
 	bool shadowsBelowMist(const int3 & position) const;
+	bool hidesTerrain(const int3 & position) const;
 	std::optional<Rect> beginObjectBatch(int scale);
 	void batchObject(IMapRendererContext & context, const int3 & position, const CGObjectInstance & object, const std::shared_ptr<IImage> & body);
 	void finishObjectBatch();
@@ -71,6 +72,7 @@ private:
 	std::map<std::pair<int, int>, RouteImage> routeImages;
 	std::list<std::pair<int, int>> routeOrder;
 	std::vector<ColorRGBA> framePixels;
+	std::vector<uint8_t> opaqueTiles;
 	Rect frameBounds;
 	uint32_t frameStamp = 0;
 	std::list<std::pair<int, int>> imageOrder;

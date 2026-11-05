@@ -639,7 +639,7 @@ void MapRendererObjects::renderTile(IMapRendererContext & context, Canvas & targ
 		});
 
 	const bool submergedShadows = aura && aura->shadowsBelowMist(coordinates);
-	if(submergedShadows)
+	if(submergedShadows && !aura->hidesTerrain(coordinates))
 		for(const auto & step : steps)
 			if(step.isShadow)
 				renderShadow(context, target, coordinates, step.object);
@@ -1068,23 +1068,19 @@ void MapRenderer::renderTile(IMapRendererContext & context, Canvas & target, con
 	}
 	else
 	{
-		rendererTerrain.renderTile(context, target, coordinates);
-
-		const bool roadsAboveGround = LIBRARY->engineSettings()->getBoolean(EGameSettings::MAP_OBJECTS_ROADS_ABOVE_SPECIAL_GROUND);
-
-		if(roadsAboveGround)
-			rendererObjects.renderGround(context, target, coordinates);
-
-		if (context.showRivers())
-			rendererRiver.renderTile(context, target, coordinates);
-
-		if (context.showRoads())
-			rendererRoad.renderTile(context, target, coordinates);
-
-		if(!roadsAboveGround)
-			rendererObjects.renderGround(context, target, coordinates);
-
-
+		if(!withOverlays || !rendererManaAura.hidesTerrain(coordinates))
+		{
+			rendererTerrain.renderTile(context, target, coordinates);
+			const bool roadsAboveGround = LIBRARY->engineSettings()->getBoolean(EGameSettings::MAP_OBJECTS_ROADS_ABOVE_SPECIAL_GROUND);
+			if(roadsAboveGround)
+				rendererObjects.renderGround(context, target, coordinates);
+			if(context.showRivers())
+				rendererRiver.renderTile(context, target, coordinates);
+			if(context.showRoads())
+				rendererRoad.renderTile(context, target, coordinates);
+			if(!roadsAboveGround)
+				rendererObjects.renderGround(context, target, coordinates);
+		}
 		rendererObjects.renderTile(context, target, coordinates, withOverlays ? &rendererManaAura : nullptr);
 		if(withOverlays)
 		{

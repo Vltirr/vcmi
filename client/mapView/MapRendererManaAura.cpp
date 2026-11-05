@@ -360,6 +360,19 @@ void MapRendererManaAura::prepareFrame(
 		}
 		frameBounds = nextFrame;
 		frameStamp = stamp;
+		// Test the final alpha, including route openings, before omitting any lower layer.
+		opaqueTiles.assign(frameTiles.w * frameTiles.h, 0);
+		for(int y = 0; y < frameTiles.h; ++y)
+			for(int x = 0; x < frameTiles.w; ++x)
+			{
+				bool opaque = true;
+				for(int row = 0; row < 32 && opaque; ++row)
+				{
+					const auto * pixels = framePixels.data() + (y * 32 + row) * frameBounds.w + x * 32;
+					opaque = std::all_of(pixels, pixels + 32, [](const ColorRGBA & c) { return c.a == 255; });
+				}
+				opaqueTiles[y * frameTiles.w + x] = opaque;
+			}
 	}
 }
 
@@ -374,6 +387,15 @@ bool MapRendererManaAura::coversObject(const CGObjectInstance & object) const
 bool MapRendererManaAura::shadowsBelowMist(const int3 & position) const
 {
 	return settings.objectContact && settings.objectPresence > 0 && checksum(position);
+}
+
+bool MapRendererManaAura::hidesTerrain(const int3 & position) const
+{
+	if(!checksum(position) || frameStamp != stamp
+		|| !frameBounds.isInside(position.x * 32, position.y * 32))
+		return false;
+	const int x = position.x - frameBounds.x / 32, y = position.y - frameBounds.y / 32;
+	return opaqueTiles.at(y * (frameBounds.w / 32) + x) != 0;
 }
 
 uint32_t MapRendererManaAura::checksum(const int3 & position, const IMapRendererContext * context) const

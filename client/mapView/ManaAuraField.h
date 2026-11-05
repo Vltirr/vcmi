@@ -175,6 +175,7 @@ private:
 	std::vector<size_t> interiorCells;
 	std::vector<bool> tileCoverage, tileVisual;
 	std::vector<Pulse> pulses;
+	std::vector<double> pulseFalloff;
 	std::mt19937 random;
 	double lastTime = -1, nextBirth = 0;
 	uint64_t emitted = 0;

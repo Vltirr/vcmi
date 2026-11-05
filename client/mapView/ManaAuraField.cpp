@@ -34,7 +34,10 @@ double smooth(double low, double high, double x)
 }
 uint8_t byte(double value)
 {
-	return static_cast<uint8_t>(std::clamp(std::lround(value), 0L, 255L));
+	// Preserve lround's half-up result after saturation, without a library call per channel.
+	value = std::clamp(value, 0., 255.);
+	const auto whole = static_cast<uint8_t>(value);
+	return whole + (value - whole >= .5);
 }
 
 class CachedNoise
@@ -81,6 +84,18 @@ PulseEnvelope pulseEnvelope(const ManaAuraField::Pulse & pulse, double seconds, 
 	const double envelope = smooth(0, .35, u) * (1 - smooth(.55, 1, u));
 	return {amplitude * envelope, .84 + .16 * std::cos(tau * u + phase), std::sin(tau * u - .7 + phase * .2)};
 }
+double radialFalloff(double x, double y)
+{
+	const double r2 = x * x + y * y;
+	return r2 >= 1 ? 0 : (1 - smooth(.42, 1, std::sqrt(r2))) * std::exp(-r2 * 1.8);
+}
+
+float materialExposure(const PulseEnvelope & envelope, double fall, double lum, double wide, double near)
+{
+	const double relief = std::clamp((.75 * (lum - wide) + .25 * (lum - near)) / 11, -1., 1.);
+	return envelope.amplitude * fall * (.35 * relief * envelope.modulation + .11 * envelope.offset);
+}
+
 float pulseExposure(
 	const ManaAuraField::Pulse & pulse,
 	const PulseEnvelope & envelope,
@@ -92,12 +107,7 @@ float pulseExposure(
 	double near
 )
 {
-	const double px = (worldX - pulse.x) / radius, py = (worldY - pulse.y) / radius, r2 = px * px + py * py;
-	if(r2 >= 1)
-		return 0;
-	const double relief = std::clamp((.75 * (lum - wide) + .25 * (lum - near)) / 11, -1., 1.);
-	const double fall = (1 - smooth(.42, 1, std::sqrt(r2))) * std::exp(-r2 * 1.8);
-	return envelope.amplitude * fall * (.35 * relief * envelope.modulation + .11 * envelope.offset);
+	return materialExposure(envelope, radialFalloff((worldX - pulse.x) / radius, (worldY - pulse.y) / radius), lum, wide, near);
 }
 struct Segment
 {
@@ -295,6 +305,12 @@ float ManaAuraMaterial::sample(const std::vector<float> & plane, double x, doubl
 ManaAuraField::ManaAuraField(ManaAuraVisualSettings settings, ManaAuraMaterial material)
 	: settings(std::move(settings)), material(std::move(material)), random(this->settings.seed)
 {
+	// Pulse centres lie on the integer control grid; reuse the symmetric radial kernel.
+	const int radius = this->settings.pulseRadius;
+	pulseFalloff.resize((radius + 1) * (radius + 1));
+	for(int y = 0; y <= radius; ++y)
+		for(int x = 0; x <= radius; ++x)
+			pulseFalloff[y * (radius + 1) + x] = radialFalloff(static_cast<double>(x) / radius, static_cast<double>(y) / radius);
 }
 
 double ManaAuraField::intensity(double x, double y) const
@@ -1065,8 +1081,10 @@ void ManaAuraField::writePixels(const Rect & bounds, std::span<ColorRGBA> output
 									const auto c = row[x + offset];
 									return .23f * c.r + .64f * c.g + .13f * c.b;
 								};
-								exposureRow[x] += pulseExposure(
-									pulse, envelopes[i], radius, bounds.x + x, wy,
+								const int px = std::abs(bounds.x + x - static_cast<int>(pulse.x));
+								const int py = std::abs(wy - static_cast<int>(pulse.y));
+								exposureRow[x] += materialExposure(
+									envelopes[i], pulseFalloff.at(py * (radius + 1) + px),
 									lum(0),
 									(lum(-10) + lum(10) + lum(-10 * stride) + lum(10 * stride)) * .25,
 									(lum(-4) + lum(4) + lum(-4 * stride) + lum(4 * stride)) * .25
