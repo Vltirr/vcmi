@@ -30,10 +30,11 @@ class MapViewCache
 		int tileX = std::numeric_limits<int>::min();
 		int tileY = std::numeric_limits<int>::min();
 		std::array<uint8_t, 12> checksum{};
+		uint32_t auraOnlyStamp = 0;
 
 		bool operator==(const TileChecksum & other) const
 		{
-			return tileX == other.tileX && tileY == other.tileY && checksum == other.checksum;
+			return tileX == other.tileX && tileY == other.tileY && checksum == other.checksum && auraOnlyStamp == other.auraOnlyStamp;
 		}
 	};
 

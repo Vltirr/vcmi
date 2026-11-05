@@ -22,16 +22,20 @@ class CGObjectInstance;
 class MapRendererManaAura
 {
 public:
+	static constexpr int blockTiles = 4;
 	bool profiling() const { return settings.profile; }
+	bool batchesOpaqueTiles() const { return active && field && settings.batchOpaqueTiles && !settings.debug; }
 	void prepareFrame(IMapRendererContext & context, const Rect & visible, int level, const std::function<std::vector<ColorRGBA>(const int3 &)> & routePixels);
 	uint32_t checksum(const int3 & position, const IMapRendererContext * context = nullptr) const;
 	bool shadowsBelowMist(const int3 & position) const;
 	bool hidesTerrain(const int3 & position) const;
+	uint32_t opaqueStamp(const int3 & position) const;
 	std::optional<Rect> beginObjectBatch(int scale);
 	void batchObject(IMapRendererContext & context, const int3 & position, const CGObjectInstance & object, const std::shared_ptr<IImage> & body);
 	void finishObjectBatch();
 	bool coversObject(const CGObjectInstance & object) const;
 	void renderTile(Canvas & target, const int3 & position);
+	void renderStrip(Canvas & target, const int3 & position, int width);
 	void renderObject(
 		IMapRendererContext & context,
 		Canvas & target,
@@ -42,6 +46,7 @@ public:
 	);
 
 private:
+	std::shared_ptr<CanvasImage> blockImage(const int3 & position);
 	bool loaded = false;
 	bool active = false;
 	ManaAuraVisualSettings settings;

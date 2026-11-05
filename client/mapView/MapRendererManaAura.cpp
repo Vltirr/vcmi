@@ -382,6 +382,21 @@ void MapRendererManaAura::prepareFrame(
 				}
 				opaqueTiles[y * frameTiles.w + x] = opaque;
 			}
+		if(settings.profile)
+		{
+			static int samples = 0;
+			static double total = 0, maximum = 0, pixels = 0;
+			const double elapsed = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
+			total += elapsed;
+			maximum = std::max(maximum, elapsed);
+			pixels += static_cast<double>(composedPixels);
+			if(++samples == 30)
+			{
+				logGlobal->info("MGMA profile composition: meanMs=%g maxMs=%g pixelsMean=%g samples=%d", total / samples, maximum, pixels / samples, samples);
+				samples = 0;
+				total = maximum = pixels = 0;
+			}
+		}
 	}
 }
 
@@ -400,11 +415,17 @@ bool MapRendererManaAura::shadowsBelowMist(const int3 & position) const
 
 bool MapRendererManaAura::hidesTerrain(const int3 & position) const
 {
-	if(!checksum(position) || frameStamp != stamp
+	return opaqueStamp(position) != 0;
+}
+
+uint32_t MapRendererManaAura::opaqueStamp(const int3 & position) const
+{
+	const auto currentStamp = checksum(position);
+	if(!currentStamp || frameStamp != stamp
 		|| !frameBounds.isInside(position.x * 32, position.y * 32))
-		return false;
+		return 0;
 	const int x = position.x - frameBounds.x / 32, y = position.y - frameBounds.y / 32;
-	return opaqueTiles.at(y * (frameBounds.w / 32) + x) != 0;
+	return opaqueTiles.at(y * (frameBounds.w / 32) + x) ? currentStamp : 0;
 }
 
 uint32_t MapRendererManaAura::checksum(const int3 & position, const IMapRendererContext * context) const
@@ -420,11 +441,8 @@ uint32_t MapRendererManaAura::checksum(const int3 & position, const IMapRenderer
 	return 0;
 }
 
-void MapRendererManaAura::renderTile(Canvas & target, const int3 & position)
+std::shared_ptr<CanvasImage> MapRendererManaAura::blockImage(const int3 & position)
 {
-	if(!checksum(position))
-		return;
-	constexpr int blockTiles = 4;
 	const std::pair key{position.x / blockTiles, position.y / blockTiles};
 	auto it = images.find(key);
 	if(it == images.end())
@@ -463,7 +481,20 @@ void MapRendererManaAura::renderTile(Canvas & target, const int3 & position)
 		}
 		block.stamp = stamp;
 	}
-	target.draw(block.image, Point(0, 0), Rect((position.x % blockTiles) * 32, (position.y % blockTiles) * 32, 32, 32));
+	return block.image;
+}
+
+void MapRendererManaAura::renderStrip(Canvas & target, const int3 & position, int width)
+{
+	assert(width > 0 && position.x % blockTiles + width <= blockTiles);
+	target.draw(blockImage(position), Point(0, 0), Rect((position.x % blockTiles) * 32, (position.y % blockTiles) * 32, width * 32, 32));
+}
+
+void MapRendererManaAura::renderTile(Canvas & target, const int3 & position)
+{
+	if(!checksum(position))
+		return;
+	renderStrip(target, position, 1);
 
 	if(settings.debug)
 		for(const auto & pulse : field->getPulses())

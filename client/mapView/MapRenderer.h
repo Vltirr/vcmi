@@ -231,6 +231,9 @@ class MapRenderer
 
 public:
 	bool profiling() const { return rendererManaAura.profiling(); }
+	bool batchesOpaqueAura() const { return rendererManaAura.batchesOpaqueTiles(); }
+	uint32_t batchedAuraStamp(IMapRendererContext & context, const int3 & coordinates);
+	void renderAuraStrip(Canvas & target, const int3 & coordinates, int width);
 	using TileChecksum = std::array<uint8_t, 12>;
 
 	/// Refreshes state that is constant for the whole frame. Must be called before the

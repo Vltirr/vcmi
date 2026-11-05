@@ -1023,6 +1023,22 @@ void MapRenderer::prepareFrame(IMapRendererContext & context, const Rect & visib
 	}
 }
 
+uint32_t MapRenderer::batchedAuraStamp(IMapRendererContext & context, const int3 & coordinates)
+{
+	const auto stamp = rendererManaAura.opaqueStamp(coordinates);
+	if(!stamp || !context.isInMap(coordinates) || !context.isVisible(coordinates) || !context.getObjects(coordinates).empty())
+		return 0;
+	if(rendererPath.checksum(context, coordinates) != std::numeric_limits<uint8_t>::max()
+		|| rendererOverlay.checksum(context, coordinates) != 0)
+		return 0;
+	return stamp;
+}
+
+void MapRenderer::renderAuraStrip(Canvas & target, const int3 & coordinates, int width)
+{
+	rendererManaAura.renderStrip(target, coordinates, width);
+}
+
 MapRenderer::TileChecksum MapRenderer::getTileChecksum(IMapRendererContext & context, const int3 & coordinates)
 {
 	// computes basic checksum to determine whether tile needs an update

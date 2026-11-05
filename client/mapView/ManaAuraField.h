@@ -35,6 +35,7 @@ struct ManaAuraVisualSettings
 	bool enabled = true;
 	bool debug = false;
 	bool profile = false;
+	bool batchOpaqueTiles = false;
 	double framesPerSecond = 12;
 	double rate = 1.5;
 	double motionAmplitude = 1;

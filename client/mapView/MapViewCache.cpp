@@ -172,6 +172,7 @@ void MapViewCache::updateTile(const std::shared_ptr<IMapRendererContext> & conte
 	// only an animation step may wait - a scrolled-in or genuinely changed tile is drawn now
 	const bool holdsSameTile = oldCacheEntry.tileX == coordinates.x && oldCacheEntry.tileY == coordinates.y;
 	const bool animationOnly = cachedLevel == coordinates.z && holdsSameTile
+		&& !oldCacheEntry.auraOnlyStamp
 		&& !context->tileAnimated(coordinates)
 		&& differsOnlyInTerrainAnimation(oldCacheEntry.checksum, newCacheEntry.checksum);
 
@@ -248,25 +249,71 @@ void MapViewCache::update(const std::shared_ptr<IMapRendererContext> & context)
 	animatedTilesRedrawn = 0;
 	animatedTilesDirty = 0;
 
+	const int level = model->getLevel();
+	const bool batchAura = cachedAtNativeSize && mapRenderer->batchesOpaqueAura() && !context->filterGrayscale();
+	int auraTiles = 0, auraStrips = 0;
 	for(int y = dimensions.top(); y < dimensions.bottom(); ++y)
+	{
+		int stripX = 0, stripWidth = 0, stripLimit = 0;
+		const auto flushStrip = [&]
+		{
+			if(!stripWidth)
+				return;
+			const int3 first(stripX, y, level);
+			const Rect start = model->getCacheTileArea(first);
+			Canvas target(*terrain, Rect(start.x, start.y, start.w * stripWidth, start.h));
+			mapRenderer->renderAuraStrip(target, first, stripWidth);
+			++auraStrips;
+			stripWidth = 0;
+		};
 		for(int x = dimensions.left(); x < dimensions.right(); ++x)
-			updateTile(context, {x, y, model->getLevel()});
+		{
+			const int3 position(x, y, level);
+			const uint32_t auraStamp = batchAura ? mapRenderer->batchedAuraStamp(*context, position) : 0;
+			if(!auraStamp)
+			{
+				flushStrip();
+				updateTile(context, position);
+				continue;
+			}
+			const int cacheX = (dimensions.w + x) % dimensions.w;
+			const int cacheY = (dimensions.h + y) % dimensions.h;
+			auto & entry = terrainChecksum[cacheX][cacheY];
+			if(cachedLevel == level && entry.tileX == x && entry.tileY == y && entry.auraOnlyStamp == auraStamp)
+				continue;
+			if(stripWidth && (x != stripX + stripWidth || stripWidth == stripLimit))
+				flushStrip();
+			if(!stripWidth)
+			{
+				stripX = x;
+				const int blockTiles = MapRendererManaAura::blockTiles;
+				stripLimit = std::min(blockTiles - x % blockTiles, dimensions.w - cacheX);
+			}
+			++stripWidth;
+			++auraTiles;
+			entry = TileChecksum{x, y, {}, auraStamp};
+			tilesUpToDate[cacheX][cacheY] = false;
+		}
+		flushStrip();
+	}
 
 	drainingAnimationBurst = animatedTilesDirty > animatedTilesRedrawn;
 	animatedTilesDirtyBefore = animatedTilesDirty;
 	if(mapRenderer->profiling())
 	{
-		static int samples = 0, tilesTotal = 0, dirtyTotal = 0;
+		static int samples = 0, tilesTotal = 0, dirtyTotal = 0, auraTilesTotal = 0, auraStripsTotal = 0;
 		static double setupTotal = 0, tilesMsTotal = 0, setupMax = 0, tilesMax = 0;
 		const auto ms = [](auto a, auto b) { return std::chrono::duration<double, std::milli>(b - a).count(); };
 		const double setup = ms(profileStart, profilePrepared), tiles = ms(profilePrepared, std::chrono::steady_clock::now());
 		setupTotal += setup; tilesMsTotal += tiles;
 		setupMax = std::max(setupMax, setup); tilesMax = std::max(tilesMax, tiles);
-		tilesTotal += profileRedrawn; dirtyTotal += animatedTilesDirty;
+		tilesTotal += profileRedrawn + auraTiles; dirtyTotal += animatedTilesDirty;
+		auraTilesTotal += auraTiles;
+		auraStripsTotal += auraStrips;
 		if(++samples == 30)
 		{
-			logGlobal->info("MGMA profile cache: setupMeanMs=%g setupMaxMs=%g tilesMeanMs=%g tilesMaxMs=%g redrawnMean=%g dirtyMean=%g visibleTiles=%d samples=%d", setupTotal / samples, setupMax, tilesMsTotal / samples, tilesMax, static_cast<double>(tilesTotal) / samples, static_cast<double>(dirtyTotal) / samples, dimensions.w * dimensions.h, samples);
-			samples = tilesTotal = dirtyTotal = 0;
+			logGlobal->info("MGMA profile cache: setupMeanMs=%g setupMaxMs=%g tilesMeanMs=%g tilesMaxMs=%g redrawnMean=%g dirtyMean=%g visibleTiles=%d samples=%d auraOnlyMean=%g auraStripsMean=%g", setupTotal / samples, setupMax, tilesMsTotal / samples, tilesMax, static_cast<double>(tilesTotal) / samples, static_cast<double>(dirtyTotal) / samples, dimensions.w * dimensions.h, samples, static_cast<double>(auraTilesTotal) / samples, static_cast<double>(auraStripsTotal) / samples);
+			samples = tilesTotal = dirtyTotal = auraTilesTotal = auraStripsTotal = 0;
 			setupTotal = tilesMsTotal = setupMax = tilesMax = 0;
 		}
 	}
