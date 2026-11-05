@@ -168,6 +168,29 @@ ManaAuraVisualSettings ManaAuraVisualSettings::fromJson(const JsonNode & json)
 	out.motionAmplitude = number(json, "motionAmplitude", 1, 0, 4);
 	out.contrast = number(json, "contrast", 22, 0, 64);
 	out.innerContrast = number(json, "innerContrast", 0, 0, 64);
+	const auto & palette = json["palette"];
+	auto paletteValues = [&](const char * key, std::array<double, 3> & values, double limit)
+	{
+		const auto & value = palette[key];
+		if(value.isNull())
+			return;
+		if(!value.isVector() || value.Vector().size() != values.size() || !std::ranges::all_of(value.Vector(), [&](const JsonNode & channel)
+		{
+			return channel.isNumber() && std::isfinite(channel.Float()) && channel.Float() >= 0 && channel.Float() <= limit;
+		}))
+		{
+			logGlobal->warn("config/manaAuraVisuals.json: palette.%s expects three channels in [0, %g]; using default", key, limit);
+			return;
+		}
+		for(size_t k = 0; k < values.size(); ++k)
+			values[k] = value.Vector()[k].Float();
+	};
+	if(palette.isStruct())
+	{
+		paletteValues("edge", out.edgeColour, 255);
+		paletteValues("center", out.centerColour, 255);
+		paletteValues("detail", out.detailColour, 2);
+	}
 	out.edgeWidth = number(json, "edgeWidth", 32, 4, 48);
 	out.edgeRetreat = number(json, "edgeRetreat", 28, 0, 40);
 	out.edgeMotion = number(json, "edgeMotion", 1, 0, 2);
@@ -674,7 +697,8 @@ void ManaAuraField::updateRoutes(const Rect & bounds, const std::vector<Tile> & 
 		{
 			if(tiles.at((ty - bounds.y) * bounds.w + tx - bounds.x).route.empty())
 				continue;
-			bool unchanged = previous.contains({tx, ty});
+			const bool river = tiles.at((ty - bounds.y) * bounds.w + tx - bounds.x).river;
+			bool unchanged = previous.contains({tx, ty}) && previous.at({tx, ty}).river == river;
 			for(int dy = -(settings.routeContact ? 3 : 1); dy <= (settings.routeContact ? 3 : 1) && unchanged; ++dy)
 				for(int dx = -(settings.routeContact ? 3 : 1); dx <= (settings.routeContact ? 3 : 1) && unchanged; ++dx)
 				{
@@ -716,6 +740,7 @@ void ManaAuraField::updateRoutes(const Rect & bounds, const std::vector<Tile> & 
 					horizontalMask[y * 40 + x] = m;
 				}
 			auto & route = routes[{tx, ty}];
+			route.river = river;
 			std::array<const std::vector<ColorRGBA> *, 25> neighbours{};
 			if(settings.routeContact)
 				for(int dy = -2; dy <= 2; ++dy)
@@ -801,13 +826,20 @@ void ManaAuraField::updateRouteOpenings(double seconds)
 	}
 	if(settings.routePresence <= 0)
 		return;
-	for(auto & [tile, route] : routes)
+	auto nearby = [&](const std::pair<int, int> & tile)
 	{
 		std::array<const Route *, 9> neighbours{};
 		for(int dy = -1; dy <= 1; ++dy)
 			for(int dx = -1; dx <= 1; ++dx)
 				if(auto it = routes.find({tile.first + dx, tile.second + dy}); it != routes.end())
 					neighbours[(dy + 1) * 3 + dx + 1] = &it->second;
+		return neighbours;
+	};
+	constexpr int riverWidth = 5;
+	for(auto & [tile, route] : routes)
+	{
+		const auto neighbours = nearby(tile);
+		const bool nearRiver = std::ranges::any_of(neighbours, [](const Route * other) { return other && other->river; });
 		auto openingAt = [&](int x, int y) -> uint8_t
 		{
 			const auto * neighbour = neighbours[((y + 32) / 32) * 3 + (x + 32) / 32];
@@ -817,7 +849,7 @@ void ManaAuraField::updateRouteOpenings(double seconds)
 		{
 			const auto center = route.opening[i];
 			uint8_t supported = 0;
-			if(center)
+			if(center && !route.river)
 			{
 				const int x = i % 32, y = i / 32;
 				// A visible opening needs two-dimensional support, including across tile boundaries.
@@ -825,6 +857,32 @@ void ManaAuraField::updateRouteOpenings(double seconds)
 					for(int dx : {-1, 1})
 						supported = std::max(supported, std::min({center, openingAt(x + dx, y), openingAt(x, y + dy), openingAt(x + dx, y + dy)}));
 			}
+			route.filteredOpening[i] = supported;
+			uint8_t core = nearRiver ? center : 0;
+			for(int dy = 0; dy < riverWidth && core; ++dy)
+				for(int dx = 0; dx < riverWidth && core; ++dx)
+					core = std::min(core, openingAt(i % 32 + dx, i / 32 + dy));
+			route.riverCore[i] = core;
+		}
+	}
+	for(auto & [tile, route] : routes)
+	{
+		if(!route.river)
+			continue;
+		const auto neighbours = nearby(tile);
+		for(int i = 0; i < 1024; ++i)
+		{
+			if(!route.opening[i])
+				continue;
+			uint8_t supported = 0;
+			for(int dy = 0; dy < riverWidth; ++dy)
+				for(int dx = 0; dx < riverWidth; ++dx)
+				{
+					const int x = i % 32 - dx + 32, y = i / 32 - dy + 32;
+					const auto * neighbour = neighbours[(y / 32) * 3 + x / 32];
+					if(neighbour)
+						supported = std::max(supported, neighbour->riverCore[(y % 32) * 32 + x % 32]);
+				}
 			route.filteredOpening[i] = supported;
 		}
 	}
@@ -873,7 +931,9 @@ ColorRGBA ManaAuraField::basePixel(int worldX, int worldY, bool object) const
 			else
 				relief = route.relief[index];
 		}
-	constexpr std::array<double, 3> edge{105, 155, 235}, center{15, 41, 157}, colour{.7, .85, 1};
+	const auto & edge = settings.edgeColour;
+	const auto & center = settings.centerColour;
+	const auto & colour = settings.detailColour;
 	std::array<uint8_t, 3> rgb{};
 	for(size_t k = 0; k < 3; ++k)
 	{
@@ -932,13 +992,17 @@ void ManaAuraField::writePixels(const Rect & bounds, std::span<ColorRGBA> output
 {
 	if(output.size() != static_cast<size_t>(bounds.w) * bounds.h)
 		throw std::invalid_argument("ManaAuraField::writePixels: invalid output dimensions");
+	const int pad = pulses.empty() ? 0 : 10;
+	const int stride = bounds.w + 2 * pad;
+	std::vector<ColorRGBA> padded;
+	if(pad)
+		padded.resize(static_cast<size_t>(stride) * (bounds.h + 2 * pad));
+	const std::span<ColorRGBA> base = pad ? std::span<ColorRGBA>(padded) : output;
 	std::vector<PulseEnvelope> envelopes;
 	envelopes.reserve(pulses.size());
 	for(const auto & pulse : pulses)
 		envelopes.push_back(pulseEnvelope(pulse, lastTime, settings.pulseAmplitude));
-	constexpr int pad = 10;
-	const int stride = bounds.w + 2 * pad;
-	std::vector<ColorRGBA> base(static_cast<size_t>(stride) * (bounds.h + 2 * pad));
+
 	tbb::task_arena arena(settings.parallelism);
 	arena.execute(
 		[&]
@@ -947,50 +1011,58 @@ void ManaAuraField::writePixels(const Rect & bounds, std::span<ColorRGBA> output
 				tbb::blocked_range<int>(0, bounds.h + 2 * pad, 8),
 				[&](const auto & range)
 				{
-					for(int y = range.begin(); y < range.end(); ++y)
+					for(int y = range.begin(); y != range.end(); ++y)
 						for(int x = 0; x < stride; ++x)
 							base[y * stride + x] = basePixel(bounds.x + x - pad, bounds.y + y - pad);
 				}
 			);
+			if(!pad)
+				return;
 			tbb::parallel_for(
 				tbb::blocked_range<int>(0, bounds.h, 8),
 				[&](const auto & range)
 				{
-					for(int y = range.begin(); y < range.end(); ++y)
-						for(int x = 0; x < bounds.w; ++x)
+					std::vector<float> exposureRow(bounds.w);
+					for(int y = range.begin(); y != range.end(); ++y)
+					{
+						const auto * row = base.data() + (y + pad) * stride + pad;
+						auto * destination = output.data() + y * bounds.w;
+						std::copy_n(row, bounds.w, destination);
+						std::fill(exposureRow.begin(), exposureRow.end(), 0.f);
+						const int wy = bounds.y + y, radius = settings.pulseRadius;
+						int first = bounds.w, last = 0;
+						for(size_t i = 0; i < pulses.size(); ++i)
 						{
-							const int index = (y + pad) * stride + x + pad;
-							auto c = base[index];
-							const int wx = bounds.x + x, wy = bounds.y + y;
-							float value = 0;
-							if(!pulses.empty() && c.a >= 245 && !onRoute(wx, wy))
+							const auto & pulse = pulses[i];
+							if(std::abs(wy - pulse.y) >= radius)
+								continue;
+							const int left = std::max(0, static_cast<int>(std::ceil(pulse.x - radius)) - bounds.x);
+							const int right = std::min(bounds.w, static_cast<int>(std::ceil(pulse.x + radius)) - bounds.x);
+							if(left >= right)
+								continue;
+							first = std::min(first, left);
+							last = std::max(last, right);
+							for(int x = left; x < right; ++x)
 							{
+								if(row[x].a < 245)
+									continue;
 								auto lum = [&](int offset)
 								{
-									const auto sample = base[index + offset];
-									return .23f * sample.r + .64f * sample.g + .13f * sample.b;
+									const auto c = row[x + offset];
+									return .23f * c.r + .64f * c.g + .13f * c.b;
 								};
-								for(size_t pulseIndex = 0; pulseIndex < pulses.size(); ++pulseIndex)
-								{
-									const auto & pulse = pulses[pulseIndex];
-									if(std::abs(wx - pulse.x) >= settings.pulseRadius || std::abs(wy - pulse.y) >= settings.pulseRadius)
-										continue;
-									value += pulseExposure(
-										pulse,
-										envelopes[pulseIndex],
-										settings.pulseRadius,
-										wx,
-										wy,
-										lum(0),
-										(lum(-10) + lum(10) + lum(-10 * stride) + lum(10 * stride)) * .25,
-										(lum(-4) + lum(4) + lum(-4 * stride) + lum(4 * stride)) * .25
-									);
-								}
-								if(value != 0)
-									c = expose(c, value);
+								exposureRow[x] += pulseExposure(
+									pulse, envelopes[i], radius, bounds.x + x, wy,
+									lum(0),
+									(lum(-10) + lum(10) + lum(-10 * stride) + lum(10 * stride)) * .25,
+									(lum(-4) + lum(4) + lum(-4 * stride) + lum(4 * stride)) * .25
+								);
 							}
-							output[y * bounds.w + x] = c;
 						}
+						for(int x = first; x < last; ++x)
+							if(exposureRow[x] != 0 && !onRoute(bounds.x + x, wy))
+								destination[x] = expose(row[x], exposureRow[x]);
+					}
 				}
 			);
 		}

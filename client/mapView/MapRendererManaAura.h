@@ -24,6 +24,10 @@ public:
 	void prepareFrame(IMapRendererContext & context, const Rect & visible, int level, const std::function<std::vector<ColorRGBA>(const int3 &)> & routePixels);
 	uint32_t checksum(const int3 & position, const IMapRendererContext * context = nullptr) const;
 	bool shadowsBelowMist(const int3 & position) const;
+	bool beginObjectBatch(const Rect & visible, int scale);
+	void batchObject(IMapRendererContext & context, const int3 & position, const CGObjectInstance & object, const std::shared_ptr<IImage> & body);
+	void finishObjectBatch();
+	bool coversObject(const CGObjectInstance & object) const;
 	void renderTile(Canvas & target, const int3 & position);
 	void renderObject(
 		IMapRendererContext & context,
@@ -91,7 +95,29 @@ private:
 	std::map<int32_t, ObjectOverlay> objectOverlays;
 	std::list<int32_t> objectOrder;
 	std::vector<uint8_t> objectPixels;
+	struct ContactPage
+	{
+		std::shared_ptr<CanvasImage> image;
+		std::vector<uint8_t> pixels;
+		int x = 0, y = 0, rowHeight = 0, height = 0;
+	};
+	struct BatchedObject
+	{
+		std::shared_ptr<IImage> body;
+		Point worldTop;
+		Rect band;
+		size_t page;
+		Point origin;
+	};
+	std::vector<ContactPage> contactPages;
+	std::map<int32_t, BatchedObject> batchedObjects;
+	Rect batchBounds;
+	uint32_t batchStamp = 0;
+	int batchScale = 0;
+	bool batchReported = false;
 
 	void load();
-	bool coversObject(const CGObjectInstance & object) const;
+	const ObjectMask * objectMask(const std::shared_ptr<IImage> & body, uint8_t alpha);
+	Rect objectBand(const ObjectMask & mask, const CGObjectInstance & object) const;
+	void writeObjectBand(const ObjectMask & mask, const Rect & band, Point worldTop, int32_t key, int scale, uint8_t * pixels, size_t stride) const;
 };

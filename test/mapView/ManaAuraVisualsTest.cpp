@@ -419,3 +419,59 @@ TEST(ManaAuraVisuals, VerticalRoadContactSuppressesIsolatedEdgePixels)
 			EXPECT_EQ(field.pixel(10 * 32 + 22, y * 32 + 15).a, field.pixel(10 * 32 + 23, y * 32 + 15).a);
 	}
 }
+
+TEST(ManaAuraVisuals, RiverContactHidesBankFragmentsWhileKeepingWiderOpenings)
+{
+	ManaAuraVisualSettings config;
+	config.routeContact = true;
+	config.routePresence = .7;
+	config.pulseEnabled = false;
+	const Rect bounds(0, 0, 22, 22);
+	auto info = visibleTiles(bounds);
+	for(int y = 6; y <= 14; ++y)
+	{
+		auto & tile = info[y * bounds.w + 10];
+		tile.river = true;
+		tile.route.resize(1024);
+		for(int py = 0; py < 32; ++py)
+			for(int px = 5; px <= 23; ++px)
+				tile.route[py * 32 + px] = ColorRGBA(115, 110, 95, 255);
+		for(int py = 9; py <= 11; ++py)
+			for(int px = 26; px <= 28; ++px)
+				tile.route[py * 32 + px] = ColorRGBA(155, 125, 75, 255);
+	}
+	ManaAuraField field(config, approvedMaterial());
+	field.rebuild(bounds, int3(64, 64, 2), 0, std::array{int3(10, 10, 0)}, 8, info);
+	bool channelVisible = false;
+	for(double time : {0., 2., 4., 6., 8.})
+	{
+		field.update(time, true);
+		for(int y = 8; y <= 12; ++y)
+		{
+			EXPECT_EQ(field.pixel(10 * 32 + 27, y * 32 + 10).a, field.pixel(10 * 32 + 29, y * 32 + 10).a);
+			for(int px = 5; px <= 23; ++px)
+				channelVisible |= field.pixel(10 * 32 + px, y * 32 + 10).a < 240;
+		}
+	}
+	EXPECT_TRUE(channelVisible);
+}
+
+TEST(ManaAuraVisuals, PaletteCanChangeCoreIndependentlyOfEdgeAndOpacity)
+{
+	JsonNode json;
+	for(double channel : {62., 34., 121.})
+		json["palette"]["center"].Vector().emplace_back().Float() = channel;
+	const auto purple = ManaAuraVisualSettings::fromJson(json);
+	const ManaAuraVisualSettings blue;
+	EXPECT_EQ(purple.edgeColour, blue.edgeColour);
+	EXPECT_EQ(purple.detailColour, blue.detailColour);
+	EXPECT_EQ(purple.centerColour, (std::array<double, 3>{62, 34, 121}));
+	ManaAuraField reference(blue, approvedMaterial()), tinted(purple, approvedMaterial());
+	build(reference, Rect(0, 0, 22, 22));
+	build(tinted, Rect(0, 0, 22, 22));
+	reference.update(0, false);
+	tinted.update(0, false);
+	const auto before = reference.pixel(10 * 32, 10 * 32), after = tinted.pixel(10 * 32, 10 * 32);
+	EXPECT_EQ(before.a, after.a);
+	EXPECT_GT(after.r, before.r);
+}

@@ -39,6 +39,7 @@ struct ManaAuraVisualSettings
 	double motionAmplitude = 1;
 	double contrast = 22;
 	double innerContrast = 0;
+	std::array<double, 3> edgeColour{105, 155, 235}, centerColour{15, 41, 157}, detailColour{.7, .85, 1};
 	double edgeWidth = 32;
 	double edgeRetreat = 28;
 	double edgeMotion = 1;
@@ -88,6 +89,7 @@ public:
 		bool visible = false;
 		bool pulseAllowed = false;
 		std::vector<ColorRGBA> route;
+		bool river = false;
 	};
 
 	ManaAuraField(ManaAuraVisualSettings settings, ManaAuraMaterial material);
@@ -160,6 +162,8 @@ private:
 		std::array<float, 1024> relief{};
 		std::array<uint8_t, 1024> mask{};
 		std::array<uint8_t, 1024> opening{}, filteredOpening{};
+		std::array<uint8_t, 1024> riverCore{};
+		bool river = false;
 		std::array<float, 1024> low{}, high{};
 		std::array<bool, 1024> vertical{};
 	};

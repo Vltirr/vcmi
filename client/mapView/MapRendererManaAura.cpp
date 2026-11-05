@@ -16,6 +16,7 @@
 #include "render/Canvas.h"
 #include "render/CanvasImage.h"
 #include "render/IImage.h"
+#include <boost/container/small_vector.hpp>
 #include <chrono>
 #include <cmath>
 
@@ -87,6 +88,8 @@ void MapRendererManaAura::prepareFrame(
 		frame = -1;
 		stamp = 0;
 		frameStamp = 0;
+		batchStamp = 0;
+		batchReported = false;
 	}
 	if(current.empty() || bounds.w <= 0 || bounds.h <= 0)
 		return;
@@ -259,7 +262,9 @@ void MapRendererManaAura::prepareFrame(
 						it->second.pixels = routePixels(int3(x, y, newLevel));
 						it->second.signature = signature;
 					}
-					routeTiles[(y - routeBounds.y) * routeBounds.w + x - routeBounds.x].route = it->second.pixels;
+					auto & tile = routeTiles[(y - routeBounds.y) * routeBounds.w + x - routeBounds.x];
+					tile.route = it->second.pixels;
+					tile.river = context.showRivers() && terrain.hasRiver();
 				}
 			}
 		field->updateRoutes(routeBounds, routeTiles);
@@ -333,6 +338,8 @@ void MapRendererManaAura::prepareFrame(
 
 bool MapRendererManaAura::coversObject(const CGObjectInstance & object) const
 {
+	if(!active || !field)
+		return false;
 	const auto anchor = object.isVisitable() ? object.visitablePos() : object.anchorPos();
 	return anchor.z == level && field->covered(anchor.x, anchor.y);
 }
@@ -348,7 +355,7 @@ uint32_t MapRendererManaAura::checksum(const int3 & position, const IMapRenderer
 		return 0;
 	if(field->containsTile(position.x, position.y))
 		return stamp ? stamp : 1;
-	if(settings.objectContact && settings.objectPresence > 0 && context)
+	if(settings.objectContact && settings.objectPresence > 0 && context && prepared.isInside(position.x, position.y))
 		for(const auto & id : context->getObjects(position))
 			if(const auto * object = context->getObject(id); object && coversObject(*object))
 				return stamp ? stamp : 1;
@@ -427,22 +434,8 @@ void MapRendererManaAura::renderTile(Canvas & target, const int3 & position)
 			);
 }
 
-void MapRendererManaAura::renderObject(
-	IMapRendererContext & context,
-	Canvas & target,
-	const int3 & position,
-	const CGObjectInstance & object,
-	const std::shared_ptr<IImage> & body,
-	double transparency
-)
+const MapRendererManaAura::ObjectMask * MapRendererManaAura::objectMask(const std::shared_ptr<IImage> & body, uint8_t alpha)
 {
-	if(!active || !stamp || !field || !settings.objectContact || settings.objectPresence <= 0 || !body || position.z != level || transparency <= 0)
-		return;
-	if(!coversObject(object))
-		return;
-	const double alpha = std::clamp(context.objectTransparency(object.id, position) * transparency, 0., 1.);
-	if(alpha <= 0)
-		return;
 	auto maskIt = objectMasks.find(body.get());
 	if(maskIt == objectMasks.end())
 	{
@@ -455,13 +448,13 @@ void MapRendererManaAura::renderObject(
 		mask.source = body;
 		const Point size = body->dimensions();
 		if(size.x <= 0 || size.y <= 0)
-			return;
+			return nullptr;
 		CanvasImage snapshot(size, CanvasScalingPolicy::IGNORE);
 		auto canvas = snapshot.getCanvas();
 		canvas.drawColor(Rect(0, 0, size.x, size.y), ColorRGBA(0, 0, 0, 0));
 		body->setAlpha(255);
 		canvas.draw(body, Point(0, 0));
-		body->setAlpha(static_cast<uint8_t>(std::round(255 * alpha)));
+		body->setAlpha(alpha);
 		std::vector<uint8_t> rgba;
 		snapshot.readPixelsRGBA(rgba);
 		int left = size.x, top = size.y, right = 0, bottom = 0;
@@ -475,7 +468,7 @@ void MapRendererManaAura::renderObject(
 					bottom = std::max(bottom, y + 1);
 				}
 		if(right <= left || bottom <= top)
-			return;
+			return nullptr;
 		mask.bounds = Rect(left, top, right - left, bottom - top);
 		mask.opaque.resize(static_cast<size_t>(mask.bounds.w) * mask.bounds.h);
 		mask.foot.assign(mask.bounds.w, -1);
@@ -493,7 +486,11 @@ void MapRendererManaAura::renderObject(
 	}
 	else
 		maskOrder.splice(maskOrder.end(), maskOrder, maskIt->second.order);
-	const auto & mask = maskIt->second;
+	return &maskIt->second;
+}
+
+Rect MapRendererManaAura::objectBand(const ObjectMask & mask, const CGObjectInstance & object) const
+{
 	double fraction = settings.obstacleDepth;
 	if(object.ID == Obj::TOWN || object.ID == Obj::RANDOM_TOWN)
 		fraction = settings.townDepth;
@@ -502,17 +499,209 @@ void MapRendererManaAura::renderObject(
 	else if(object.ID == Obj::RESOURCE || object.ID == Obj::ARTIFACT || object.ID == Obj::TREASURE_CHEST || object.ID == Obj::CAMPFIRE)
 		fraction = settings.resourceDepth;
 	const int depth = static_cast<int>(std::round(mask.bounds.h * fraction));
-	if(depth <= 0)
+	return Rect(mask.bounds.x, mask.bounds.bottom() - depth, mask.bounds.w, depth);
+}
+
+void MapRendererManaAura::writeObjectBand(
+	const ObjectMask & mask, const Rect & band, Point worldTop, int32_t key, int scale, uint8_t * pixels, size_t stride
+) const
+{
+	const double seconds = std::max<int64_t>(0, frame) / settings.framesPerSecond;
+	struct Column
+	{
+		double height;
+		double inverseDepth;
+		int foot;
+	};
+	boost::container::small_vector<Column, 256> columns;
+	columns.reserve(band.w);
+	for(int x = 0; x < band.w; ++x)
+	{
+		const int foot = std::clamp(mask.foot[x], band.bottom() - 1 - band.h / 3, band.bottom() - 1) - band.y;
+		columns.push_back({ManaAuraContact::objectHeight(worldTop.x + band.x + x, seconds, key + 1., settings.objectPresence), 1. / (foot + 1), foot});
+	}
+	const int worldX = worldTop.x + band.x;
+	for(int y = 0; y < band.h; ++y)
+	{
+		const int wy = worldTop.y + band.y + y;
+		const auto * frameRow = wy >= frameBounds.y && wy < frameBounds.bottom()
+			? framePixels.data() + (wy - frameBounds.y) * frameBounds.w : nullptr;
+		const auto * spriteRow = mask.opaque.data() + (band.y + y - mask.bounds.y) * mask.bounds.w;
+		auto * row = pixels + y * scale * stride;
+		for(int x = 0; x < band.w; ++x)
+		{
+			ColorRGBA colour;
+			if(spriteRow[x])
+			{
+				const auto & column = columns[x];
+				const double coverage = ManaAuraContact::objectCoverage((column.foot - y) * column.inverseDepth, column.height);
+				const auto opacity = static_cast<uint8_t>(255 * coverage + .5);
+				if(opacity)
+				{
+					const int wx = worldX + x;
+					if(frameRow && wx >= frameBounds.x && wx < frameBounds.right())
+						colour = frameRow[wx - frameBounds.x];
+					if(colour.a == 0)
+						colour = field->objectPixel(wx, wy);
+					if(colour.a)
+						colour.a = opacity;
+				}
+			}
+			for(int dx = 0; dx < scale; ++dx)
+			{
+				auto * pixel = row + (x * scale + dx) * 4;
+				pixel[0] = colour.r;
+				pixel[1] = colour.g;
+				pixel[2] = colour.b;
+				pixel[3] = colour.a;
+			}
+		}
+		for(int dy = 1; dy < scale; ++dy)
+			std::memcpy(row + dy * stride, row, band.w * scale * 4);
+	}
+}
+
+namespace
+{
+constexpr int contactPageSize = 512;
+}
+
+bool MapRendererManaAura::beginObjectBatch(const Rect & visible, int scale)
+{
+	if(!active || !field || !stamp || !settings.objectContact || settings.objectPresence <= 0)
+		return false;
+	if(batchStamp == stamp && batchBounds.operator==(visible) && batchScale == scale)
+		return false;
+	if(batchScale != scale)
+		contactPages.clear();
+	batchStamp = stamp;
+	batchBounds = visible;
+	batchScale = scale;
+	batchedObjects.clear();
+	for(auto & page : contactPages)
+		page.x = page.y = page.rowHeight = page.height = 0;
+	return true;
+}
+
+void MapRendererManaAura::batchObject(
+	IMapRendererContext & context, const int3 & position, const CGObjectInstance & object, const std::shared_ptr<IImage> & body
+)
+{
+	if(!body)
 		return;
-	const Rect band(mask.bounds.x, mask.bounds.bottom() - depth, mask.bounds.w, depth);
+	const auto alpha = static_cast<uint8_t>(std::round(255 * std::clamp(context.objectTransparency(object.id, position), 0., 1.)));
+	if(!alpha)
+		return;
+	const auto * mask = objectMask(body, alpha);
+	if(!mask)
+		return;
+	const Rect band = objectBand(*mask, object);
+	if(band.h <= 0 || band.w > contactPageSize || band.h > contactPageSize)
+		return;
+
+	size_t pageIndex = 0;
+	for(; pageIndex < contactPages.size(); ++pageIndex)
+	{
+		auto & page = contactPages[pageIndex];
+		if(page.x + band.w > contactPageSize)
+		{
+			page.x = 0;
+			page.y += page.rowHeight;
+			page.rowHeight = 0;
+		}
+		if(page.y + band.h <= contactPageSize)
+			break;
+	}
+	if(pageIndex == contactPages.size())
+	{
+		if(pageIndex >= 8)
+			return;
+		contactPages.emplace_back();
+	}
+	auto & page = contactPages[pageIndex];
+	const Point origin(page.x, page.y);
+	page.x += band.w;
+	page.rowHeight = std::max(page.rowHeight, band.h);
+	page.height = std::max(page.height, ((page.y + band.h + 63) / 64) * 64);
+	const size_t stride = contactPageSize * batchScale * 4;
+	page.pixels.resize(stride * page.height * batchScale);
 	const Point source = body->dimensions() - context.objectImageOffset(object.id, position) - Point(32, 32);
-	const int sx = std::max(source.x, band.x), sy = std::max(source.y, band.y);
-	const int ex = std::min(source.x + 32, band.right()), ey = std::min(source.y + 32, band.bottom());
-	if(ex <= sx || ey <= sy)
+	const Point worldTop(position.x * 32 - source.x, position.y * 32 - source.y);
+	const auto key = object.id.getNum();
+	writeObjectBand(*mask, band, worldTop, key, batchScale,
+		page.pixels.data() + origin.y * batchScale * stride + origin.x * batchScale * 4, stride);
+	batchedObjects.emplace(key, BatchedObject{body, worldTop, band, pageIndex, origin});
+}
+
+void MapRendererManaAura::finishObjectBatch()
+{
+	size_t uploads = 0, bytes = 0;
+	for(auto & page : contactPages)
+	{
+		if(!page.height)
+			continue;
+		const Point size(contactPageSize * batchScale, page.height * batchScale);
+		if(!page.image || page.image->dimensions() != size)
+			page.image = std::make_shared<CanvasImage>(size, CanvasScalingPolicy::IGNORE);
+		page.image->writePixelsRGBA(page.pixels);
+		++uploads;
+		bytes += page.pixels.size();
+	}
+	if(!batchReported && !batchedObjects.empty())
+	{
+		logGlobal->info("MGMA contact batch: objects=%llu pages=%llu bytes=%llu scale=%d",
+			static_cast<unsigned long long>(batchedObjects.size()), static_cast<unsigned long long>(uploads),
+			static_cast<unsigned long long>(bytes), batchScale);
+		batchReported = true;
+	}
+}
+
+void MapRendererManaAura::renderObject(
+	IMapRendererContext & context,
+	Canvas & target,
+	const int3 & position,
+	const CGObjectInstance & object,
+	const std::shared_ptr<IImage> & body,
+	double transparency
+)
+{
+	if(!active || !stamp || !field || !settings.objectContact || settings.objectPresence <= 0 || !body || position.z != level || transparency <= 0)
 		return;
+	if(!coversObject(object))
+		return;
+	const auto alpha = static_cast<uint8_t>(std::round(255 * std::clamp(context.objectTransparency(object.id, position) * transparency, 0., 1.)));
+	if(!alpha)
+		return;
+	const Point source = body->dimensions() - context.objectImageOffset(object.id, position) - Point(32, 32);
 	const Point worldTop(position.x * 32 - source.x, position.y * 32 - source.y);
 	const int scale = target.getScalingFactor();
 	const int32_t key = object.id.getNum();
+	auto draw = [&](const std::shared_ptr<CanvasImage> & image, const Rect & band, Point origin)
+	{
+		const int sx = std::max(source.x, band.x), sy = std::max(source.y, band.y);
+		const int ex = std::min(source.x + 32, band.right()), ey = std::min(source.y + 32, band.bottom());
+		if(ex <= sx || ey <= sy)
+			return;
+		image->setAlpha(alpha);
+		target.draw(image, Point(sx - source.x, sy - source.y), Rect(origin.x + sx - band.x, origin.y + sy - band.y, ex - sx, ey - sy));
+	};
+	if(batchStamp == stamp && batchScale == scale)
+	{
+		const auto it = batchedObjects.find(key);
+		if(it != batchedObjects.end() && it->second.body == body && it->second.worldTop == worldTop)
+		{
+			const auto & object = it->second;
+			draw(contactPages[object.page].image, object.band, object.origin);
+			return;
+		}
+	}
+
+	const auto * mask = objectMask(body, alpha);
+	if(!mask)
+		return;
+	const Rect band = objectBand(*mask, object);
+	if(band.h <= 0 || source.x + 32 <= band.x || source.x >= band.right() || source.y + 32 <= band.y || source.y >= band.bottom())
+		return;
 	auto overlayIt = objectOverlays.find(key);
 	if(overlayIt == objectOverlays.end())
 	{
@@ -532,46 +721,9 @@ void MapRendererManaAura::renderObject(
 	{
 		if(!overlay.image || overlay.scale != scale || overlay.band.w != band.w || overlay.band.h != band.h)
 			overlay.image = std::make_shared<CanvasImage>(Point(band.w * scale, band.h * scale), CanvasScalingPolicy::IGNORE);
-		const int stride = band.w * scale;
-		objectPixels.assign(static_cast<size_t>(stride) * band.h * scale * 4, 0);
-		const double seconds = std::max<int64_t>(0, frame) / settings.framesPerSecond;
-		std::vector<double> heights(band.w);
-		for(int x = 0; x < band.w; ++x)
-			heights[x] = ManaAuraContact::objectHeight(worldTop.x + band.x + x, seconds, key + 1., settings.objectPresence);
-		for(int y = 0; y < band.h; ++y)
-		{
-			for(int x = 0; x < band.w; ++x)
-			{
-				if(!mask.opaque[(band.y + y - mask.bounds.y) * mask.bounds.w + x])
-					continue;
-				const int foot = std::clamp(mask.foot[x], band.bottom() - 1 - depth / 3, band.bottom() - 1);
-				const double coverage = ManaAuraContact::objectCoverage(
-					static_cast<double>(foot - band.y - y) / (foot - band.y + 1), heights[x]
-				);
-				const auto opacity = static_cast<uint8_t>(std::round(255 * coverage));
-				if(!opacity)
-					continue;
-				const int wx = worldTop.x + band.x + x, wy = worldTop.y + band.y + y;
-				ColorRGBA colour(0, 0, 0, 0);
-				if(wx >= frameBounds.x && wx < frameBounds.right() && wy >= frameBounds.y && wy < frameBounds.bottom())
-					colour = framePixels[(wy - frameBounds.y) * frameBounds.w + wx - frameBounds.x];
-				if(colour.a == 0)
-					colour = field->objectPixel(wx, wy);
-				if(colour.a == 0)
-					continue;
-				colour.a = opacity;
-				for(int dx = 0; dx < scale; ++dx)
-				{
-					auto * pixel = objectPixels.data() + ((y * scale) * stride + x * scale + dx) * 4;
-					pixel[0] = colour.r;
-					pixel[1] = colour.g;
-					pixel[2] = colour.b;
-					pixel[3] = colour.a;
-				}
-			}
-			for(int dy = 1; dy < scale; ++dy)
-				std::memcpy(objectPixels.data() + (y * scale + dy) * stride * 4, objectPixels.data() + y * scale * stride * 4, stride * 4);
-		}
+		const size_t stride = band.w * scale * 4;
+		objectPixels.resize(stride * band.h * scale);
+		writeObjectBand(*mask, band, worldTop, key, scale, objectPixels.data(), stride);
 		overlay.image->writePixelsRGBA(objectPixels);
 		overlay.stamp = stamp;
 		overlay.body = body.get();
@@ -579,6 +731,5 @@ void MapRendererManaAura::renderObject(
 		overlay.scale = scale;
 		overlay.band = band;
 	}
-	overlay.image->setAlpha(static_cast<uint8_t>(std::round(255 * alpha)));
-	target.draw(overlay.image, Point(sx - source.x, sy - source.y), Rect(sx - band.x, sy - band.y, ex - sx, ey - sy));
+	draw(overlay.image, band, Point(0, 0));
 }

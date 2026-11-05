@@ -19,6 +19,7 @@
 #include "../GameInstance.h"
 #include "../Client.h"
 #include "../GameEngine.h"
+#include "render/IScreenHandler.h"
 #include "render/CAnimation.h"
 #include "render/Canvas.h"
 #include "render/CanvasImage.h"
@@ -672,6 +673,30 @@ void MapRendererObjects::prepareFrame()
 	renderImageCache.clear();
 }
 
+void MapRendererObjects::prepareManaAura(IMapRendererContext & context, const Rect & visible, int level, MapRendererManaAura & aura)
+{
+	if(!aura.beginObjectBatch(visible, ENGINE->screenHandler().getScalingFactor()))
+		return;
+	const auto size = context.getMapSize();
+	std::unordered_set<int32_t> visited;
+	for(int y = std::max(0, visible.y); y < std::min(size.y, visible.bottom()); ++y)
+		for(int x = std::max(0, visible.x); x < std::min(size.x, visible.right()); ++x)
+		{
+			const int3 position(x, y, level);
+			if(!context.isVisible(position))
+				continue;
+			for(const auto & id : context.getObjects(position))
+			{
+				if(!visited.insert(id.getNum()).second)
+					continue;
+				const auto * object = context.getObject(id);
+				if(object && !MapObjectDrawOrder::isSpecialGround(object) && aura.coversObject(*object))
+					aura.batchObject(context, position, *object, getObjectImages(context, object)[LAYER_BODY]);
+			}
+		}
+	aura.finishObjectBatch();
+}
+
 const MapRendererObjects::ObjectImages & MapRendererObjects::getObjectImages(IMapRendererContext & context, const CGObjectInstance * object)
 {
 	auto it = renderImageCache.find(object->id.getNum());
@@ -973,6 +998,7 @@ void MapRenderer::prepareFrame(IMapRendererContext & context, const Rect & visib
 			result.emplace_back(pixels[i], pixels[i + 1], pixels[i + 2], pixels[i + 3]);
 		return result;
 	});
+	rendererObjects.prepareManaAura(context, visibleTiles, level, rendererManaAura);
 }
 
 MapRenderer::TileChecksum MapRenderer::getTileChecksum(IMapRendererContext & context, const int3 & coordinates)
