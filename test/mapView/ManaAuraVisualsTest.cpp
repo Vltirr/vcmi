@@ -317,8 +317,7 @@ TEST(ManaAuraVisuals, ContactPresetsAreIndependentAndOptIn)
 
 TEST(ManaAuraVisuals, MergingContactFrontsReachFullOpacityWithoutAResidualSlit)
 {
-	EXPECT_DOUBLE_EQ(ManaAuraContact::routeCoverage(15, 10, 20, 400, 8, 0, 2.4), 0.);
-	EXPECT_DOUBLE_EQ(ManaAuraContact::objectCoverage(0, 400, 8, 3, 0), 0.);
+	EXPECT_DOUBLE_EQ(ManaAuraContact::objectCoverage(0, ManaAuraContact::objectHeight(400, 8, 3, 0)), 0.);
 	for(int y = 0; y < 32; ++y)
 		EXPECT_DOUBLE_EQ(ManaAuraContact::frontCoverage(y, 20, 12, 2.4), 1.);
 	EXPECT_DOUBLE_EQ(ManaAuraContact::frontCoverage(0, 10, 20, 2.4), 1.);
@@ -344,12 +343,13 @@ TEST(ManaAuraVisuals, ObjectMaterialKeepsOpacityAtTheFunctionalPerimeter)
 				EXPECT_EQ(field.objectPixel(x * 32 + 16, y * 32 + 16).a, 255);
 			}
 	EXPECT_TRUE(perimeter);
-	EXPECT_DOUBLE_EQ(ManaAuraContact::objectCoverage(0, 400, 8, 3, 1.25), 1.);
-	EXPECT_DOUBLE_EQ(ManaAuraContact::objectCoverage(1, 400, 8, 3, 1.25), 0.);
+	const double height = ManaAuraContact::objectHeight(400, 8, 3, 1.25);
+	EXPECT_DOUBLE_EQ(ManaAuraContact::objectCoverage(0, height), 1.);
+	EXPECT_DOUBLE_EQ(ManaAuraContact::objectCoverage(1, height), 0.);
 	double previous = 1;
 	for(double depth = 0; depth <= 1; depth += .01)
 	{
-		const double value = ManaAuraContact::objectCoverage(depth, 400, 8, 3, 1.25);
+		const double value = ManaAuraContact::objectCoverage(depth, height);
 		EXPECT_LE(value, previous);
 		previous = value;
 	}
@@ -390,4 +390,32 @@ TEST(ManaAuraVisuals, ProgressiveRoadsUsePureCloudColourAndContinuousTileSpans)
 		}
 	EXPECT_TRUE(transition);
 	EXPECT_TRUE(opaque);
+}
+
+TEST(ManaAuraVisuals, VerticalRoadContactSuppressesIsolatedEdgePixels)
+{
+	ManaAuraVisualSettings config;
+	config.routeContact = true;
+	config.routePresence = 1.25;
+	config.pulseEnabled = false;
+	const Rect bounds(0, 0, 22, 22);
+	auto info = visibleTiles(bounds);
+	for(int y = 5; y <= 16; ++y)
+	{
+		auto & route = info[y * bounds.w + 10].route;
+		route.resize(1024);
+		for(int py = 0; py < 32; ++py)
+			for(int px = 12; px <= 20; ++px)
+				route[py * 32 + px] = ColorRGBA(180, 60, 10, 255);
+		if(y % 2 == 0)
+			route[15 * 32 + 22] = ColorRGBA(180, 60, 10, 255);
+	}
+	ManaAuraField field(config, approvedMaterial());
+	field.rebuild(bounds, int3(64, 64, 2), 0, std::array{int3(10, 10, 0)}, 8, info);
+	for(double time : {0., 2., 4., 6., 8.})
+	{
+		field.update(time, true);
+		for(int y : {6, 8, 10, 12, 14})
+			EXPECT_EQ(field.pixel(10 * 32 + 22, y * 32 + 15).a, field.pixel(10 * 32 + 23, y * 32 + 15).a);
+	}
 }

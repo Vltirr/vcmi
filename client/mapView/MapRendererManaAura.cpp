@@ -331,20 +331,27 @@ void MapRendererManaAura::prepareFrame(
 	}
 }
 
+bool MapRendererManaAura::coversObject(const CGObjectInstance & object) const
+{
+	const auto anchor = object.isVisitable() ? object.visitablePos() : object.anchorPos();
+	return anchor.z == level && field->covered(anchor.x, anchor.y);
+}
+
+bool MapRendererManaAura::shadowsBelowMist(const int3 & position) const
+{
+	return settings.objectContact && settings.objectPresence > 0 && checksum(position);
+}
+
 uint32_t MapRendererManaAura::checksum(const int3 & position, const IMapRendererContext * context) const
 {
 	if(!active || !field || position.z != level)
 		return 0;
 	if(field->containsTile(position.x, position.y))
 		return stamp ? stamp : 1;
-	if(settings.objectContact && context)
+	if(settings.objectContact && settings.objectPresence > 0 && context)
 		for(const auto & id : context->getObjects(position))
-			if(const auto * object = context->getObject(id))
-			{
-				const auto anchor = object->visitablePos();
-				if(anchor.z == level && field->covered(anchor.x, anchor.y))
-					return stamp ? stamp : 1;
-			}
+			if(const auto * object = context->getObject(id); object && coversObject(*object))
+				return stamp ? stamp : 1;
 	return 0;
 }
 
@@ -429,10 +436,9 @@ void MapRendererManaAura::renderObject(
 	double transparency
 )
 {
-	if(!active || !stamp || !field || !settings.objectContact || !body || position.z != level || transparency <= 0)
+	if(!active || !stamp || !field || !settings.objectContact || settings.objectPresence <= 0 || !body || position.z != level || transparency <= 0)
 		return;
-	const auto anchor = object.visitablePos();
-	if(anchor.z != level || !field->covered(anchor.x, anchor.y))
+	if(!coversObject(object))
 		return;
 	const double alpha = std::clamp(context.objectTransparency(object.id, position) * transparency, 0., 1.);
 	if(alpha <= 0)
@@ -453,7 +459,9 @@ void MapRendererManaAura::renderObject(
 		CanvasImage snapshot(size, CanvasScalingPolicy::IGNORE);
 		auto canvas = snapshot.getCanvas();
 		canvas.drawColor(Rect(0, 0, size.x, size.y), ColorRGBA(0, 0, 0, 0));
+		body->setAlpha(255);
 		canvas.draw(body, Point(0, 0));
+		body->setAlpha(static_cast<uint8_t>(std::round(255 * alpha)));
 		std::vector<uint8_t> rgba;
 		snapshot.readPixelsRGBA(rgba);
 		int left = size.x, top = size.y, right = 0, bottom = 0;
@@ -470,9 +478,15 @@ void MapRendererManaAura::renderObject(
 			return;
 		mask.bounds = Rect(left, top, right - left, bottom - top);
 		mask.opaque.resize(static_cast<size_t>(mask.bounds.w) * mask.bounds.h);
+		mask.foot.assign(mask.bounds.w, -1);
 		for(int y = 0; y < mask.bounds.h; ++y)
 			for(int x = 0; x < mask.bounds.w; ++x)
-				mask.opaque[y * mask.bounds.w + x] = rgba[((y + top) * size.x + x + left) * 4 + 3] != 0;
+			{
+				const auto spriteAlpha = rgba[((y + top) * size.x + x + left) * 4 + 3];
+				mask.opaque[y * mask.bounds.w + x] = spriteAlpha != 0;
+				if(spriteAlpha >= 240)
+					mask.foot[x] = y + top;
+			}
 		maskOrder.push_back(body.get());
 		mask.order = std::prev(maskOrder.end());
 		maskIt = objectMasks.emplace(body.get(), std::move(mask)).first;
@@ -520,20 +534,32 @@ void MapRendererManaAura::renderObject(
 			overlay.image = std::make_shared<CanvasImage>(Point(band.w * scale, band.h * scale), CanvasScalingPolicy::IGNORE);
 		const int stride = band.w * scale;
 		objectPixels.assign(static_cast<size_t>(stride) * band.h * scale * 4, 0);
+		const double seconds = std::max<int64_t>(0, frame) / settings.framesPerSecond;
+		std::vector<double> heights(band.w);
+		for(int x = 0; x < band.w; ++x)
+			heights[x] = ManaAuraContact::objectHeight(worldTop.x + band.x + x, seconds, key + 1., settings.objectPresence);
 		for(int y = 0; y < band.h; ++y)
 		{
 			for(int x = 0; x < band.w; ++x)
 			{
 				if(!mask.opaque[(band.y + y - mask.bounds.y) * mask.bounds.w + x])
 					continue;
+				const int foot = std::clamp(mask.foot[x], band.bottom() - 1 - depth / 3, band.bottom() - 1);
+				const double coverage = ManaAuraContact::objectCoverage(
+					static_cast<double>(foot - band.y - y) / (foot - band.y + 1), heights[x]
+				);
+				const auto opacity = static_cast<uint8_t>(std::round(255 * coverage));
+				if(!opacity)
+					continue;
 				const int wx = worldTop.x + band.x + x, wy = worldTop.y + band.y + y;
-				auto colour = field->objectPixel(wx, wy);
+				ColorRGBA colour(0, 0, 0, 0);
+				if(wx >= frameBounds.x && wx < frameBounds.right() && wy >= frameBounds.y && wy < frameBounds.bottom())
+					colour = framePixels[(wy - frameBounds.y) * frameBounds.w + wx - frameBounds.x];
+				if(colour.a == 0)
+					colour = field->objectPixel(wx, wy);
 				if(colour.a == 0)
 					continue;
-				const double coverage = ManaAuraContact::objectCoverage(
-					static_cast<double>(band.h - 1 - y) / depth, wx, std::max<int64_t>(0, frame) / settings.framesPerSecond, key + 1., settings.objectPresence
-				);
-				colour.a = static_cast<uint8_t>(std::round(255 * coverage));
+				colour.a = opacity;
 				for(int dx = 0; dx < scale; ++dx)
 				{
 					auto * pixel = objectPixels.data() + ((y * scale) * stride + x * scale + dx) * 4;

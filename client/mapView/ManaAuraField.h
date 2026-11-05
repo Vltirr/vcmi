@@ -26,8 +26,8 @@ class JsonNode;
 namespace ManaAuraContact
 {
 double frontCoverage(double across, double first, double second, double feather);
-double routeCoverage(double across, double low, double high, double along, double seconds, double presence, double feather);
-double objectCoverage(double depth, double along, double seconds, double phase, double presence);
+double objectHeight(double along, double seconds, double phase, double presence);
+double objectCoverage(double depth, double height);
 }
 
 struct ManaAuraVisualSettings
@@ -38,6 +38,7 @@ struct ManaAuraVisualSettings
 	double rate = 1.5;
 	double motionAmplitude = 1;
 	double contrast = 22;
+	double innerContrast = 0;
 	double edgeWidth = 32;
 	double edgeRetreat = 28;
 	double edgeMotion = 1;
@@ -158,6 +159,7 @@ private:
 	{
 		std::array<float, 1024> relief{};
 		std::array<uint8_t, 1024> mask{};
+		std::array<uint8_t, 1024> opening{}, filteredOpening{};
 		std::array<float, 1024> low{}, high{};
 		std::array<bool, 1024> vertical{};
 	};
@@ -174,6 +176,7 @@ private:
 	uint64_t emitted = 0;
 
 	void render(double seconds);
+	void updateRouteOpenings(double seconds);
 	double randomUnit();
 	double intensity(double x, double y) const;
 	ColorRGBA basePixel(int worldX, int worldY, bool object = false) const;

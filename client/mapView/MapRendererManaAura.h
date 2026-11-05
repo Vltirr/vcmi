@@ -23,6 +23,7 @@ class MapRendererManaAura
 public:
 	void prepareFrame(IMapRendererContext & context, const Rect & visible, int level, const std::function<std::vector<ColorRGBA>(const int3 &)> & routePixels);
 	uint32_t checksum(const int3 & position, const IMapRendererContext * context = nullptr) const;
+	bool shadowsBelowMist(const int3 & position) const;
 	void renderTile(Canvas & target, const int3 & position);
 	void renderObject(
 		IMapRendererContext & context,
@@ -72,6 +73,7 @@ private:
 		std::shared_ptr<IImage> source;
 		Rect bounds;
 		std::vector<uint8_t> opaque;
+		std::vector<int> foot;
 		std::list<const IImage *>::iterator order;
 	};
 	struct ObjectOverlay
@@ -91,4 +93,5 @@ private:
 	std::vector<uint8_t> objectPixels;
 
 	void load();
+	bool coversObject(const CGObjectInstance & object) const;
 };

@@ -112,28 +112,28 @@ double ManaAuraContact::frontCoverage(double across, double first, double second
 	return 1 - opening;
 }
 
-double ManaAuraContact::routeCoverage(double across, double low, double high, double along, double seconds, double presence, double feather)
+static std::pair<double, double> routeFronts(double along, double seconds, double presence)
 {
-	if(presence <= 0)
-		return 0;
 	const double a = .5 + .5 * std::sin(along / 63 + seconds * .34);
 	const double b = .5 + .5 * std::sin(along / 117 - seconds * .23 + 1.2);
 	const double c = .5 + .5 * std::sin(along / 79 - seconds * .29 + 2.1);
 	const double d = .5 + .5 * std::sin(along / 143 + seconds * .19 - .8);
-	const double span = high - low + 1;
-	const double first = low - 1 + span * presence * (.04 + .82 * std::pow(.65 * a + .35 * b, 1.3));
-	const double second = high + 1 - span * presence * (.04 + .82 * std::pow(.65 * c + .35 * d, 1.3));
-	return frontCoverage(across, first, second, feather);
+	return {presence * (.04 + .82 * std::pow(.65 * a + .35 * b, 1.3)),
+		presence * (.04 + .82 * std::pow(.65 * c + .35 * d, 1.3))};
 }
 
-double ManaAuraContact::objectCoverage(double depth, double along, double seconds, double phase, double presence)
+double ManaAuraContact::objectHeight(double along, double seconds, double phase, double presence)
 {
 	if(presence <= 0)
 		return 0;
-	const double height = std::clamp(
+	return std::clamp(
 		presence * (.72 + .14 * std::sin(seconds * .32 + phase * 1.91 + along / 47) + .10 * std::sin(seconds * .21 - phase * 1.37 + along / 83)), .08, 1.
 	);
-	return 1 - smooth((depth - height * .18) / (height * .82));
+}
+
+double ManaAuraContact::objectCoverage(double depth, double height)
+{
+	return height > 0 ? 1 - smooth((depth - height * .18) / (height * .82)) : 0;
 }
 
 ManaAuraVisualSettings ManaAuraVisualSettings::fromJson(const JsonNode & json)
@@ -167,6 +167,7 @@ ManaAuraVisualSettings ManaAuraVisualSettings::fromJson(const JsonNode & json)
 	out.rate = number(json, "rate", 1.5, 0, 4);
 	out.motionAmplitude = number(json, "motionAmplitude", 1, 0, 4);
 	out.contrast = number(json, "contrast", 22, 0, 64);
+	out.innerContrast = number(json, "innerContrast", 0, 0, 64);
 	out.edgeWidth = number(json, "edgeWidth", 32, 4, 48);
 	out.edgeRetreat = number(json, "edgeRetreat", 28, 0, 40);
 	out.edgeMotion = number(json, "edgeMotion", 1, 0, 2);
@@ -604,6 +605,8 @@ void ManaAuraField::update(double seconds, bool animate)
 	else if(rate <= 0 || !animate || !settings.pulseEnabled)
 		nextBirth = seconds + .5;
 	render(animate ? seconds : 0);
+	if(settings.routeContact)
+		updateRouteOpenings(animate ? seconds : 0);
 }
 
 void ManaAuraField::render(double seconds)
@@ -769,6 +772,64 @@ void ManaAuraField::updateRoutes(const Rect & bounds, const std::vector<Tile> & 
 			candidates.push_back(i);
 }
 
+void ManaAuraField::updateRouteOpenings(double seconds)
+{
+	for(auto & [tile, route] : routes)
+	{
+		if(settings.routePresence <= 0)
+		{
+			route.filteredOpening = route.mask;
+			continue;
+		}
+		std::array<std::pair<double, double>, 32> horizontal, vertical;
+		for(int p = 0; p < 32; ++p)
+		{
+			horizontal[p] = routeFronts(tile.first * 32 + p, seconds, settings.routePresence);
+			vertical[p] = routeFronts(tile.second * 32 + p, seconds, settings.routePresence);
+		}
+		for(int i = 0; i < 1024; ++i)
+		{
+			if(!route.mask[i])
+				continue;
+			const bool alongX = route.vertical[i];
+			const auto [advance, retreat] = alongX ? horizontal[i % 32] : vertical[i / 32];
+			const int across = alongX ? tile.second * 32 + i / 32 : tile.first * 32 + i % 32;
+			const double low = route.low[i], high = route.high[i], span = high - low + 1;
+			const double cover = ManaAuraContact::frontCoverage(across, low - 1 + span * advance, high + 1 - span * retreat, settings.routeTransition);
+			route.opening[i] = byte(route.mask[i] * (1 - cover));
+		}
+	}
+	if(settings.routePresence <= 0)
+		return;
+	for(auto & [tile, route] : routes)
+	{
+		std::array<const Route *, 9> neighbours{};
+		for(int dy = -1; dy <= 1; ++dy)
+			for(int dx = -1; dx <= 1; ++dx)
+				if(auto it = routes.find({tile.first + dx, tile.second + dy}); it != routes.end())
+					neighbours[(dy + 1) * 3 + dx + 1] = &it->second;
+		auto openingAt = [&](int x, int y) -> uint8_t
+		{
+			const auto * neighbour = neighbours[((y + 32) / 32) * 3 + (x + 32) / 32];
+			return neighbour ? neighbour->opening[((y + 32) % 32) * 32 + (x + 32) % 32] : 0;
+		};
+		for(int i = 0; i < 1024; ++i)
+		{
+			const auto center = route.opening[i];
+			uint8_t supported = 0;
+			if(center)
+			{
+				const int x = i % 32, y = i / 32;
+				// A visible opening needs two-dimensional support, including across tile boundaries.
+				for(int dy : {-1, 1})
+					for(int dx : {-1, 1})
+						supported = std::max(supported, std::min({center, openingAt(x + dx, y), openingAt(x, y + dy), openingAt(x + dx, y + dy)}));
+			}
+			route.filteredOpening[i] = supported;
+		}
+	}
+}
+
 bool ManaAuraField::onRoute(int worldX, int worldY) const
 {
 	const int x = static_cast<int>(std::floor(worldX / 32.)), y = static_cast<int>(std::floor(worldY / 32.));
@@ -800,26 +861,15 @@ ColorRGBA ManaAuraField::basePixel(int worldX, int worldY, bool object) const
 						  + corners.at(ci + tileBounds.w + 2) * ux * uy;
 	const float initial = material.signal.at((worldY & 255) * 256 + (worldX & 255));
 	const double moved = material.sample(material.signal, worldX + dx, worldY + dy);
+	const double crest = settings.innerContrast > 0 ? settings.innerContrast * smooth(.25, .85, influence) * std::max(0., moved) : 0;
 	double relief = 0;
 	if(!object)
 		if(const auto it = routes.find({tx, ty}); it != routes.end())
 		{
 			const size_t index = (worldY - ty * 32) * 32 + worldX - tx * 32;
 			const auto & route = it->second;
-			if(settings.routeContact && route.mask[index])
-			{
-				const bool vertical = route.vertical[index];
-				const double cover = ManaAuraContact::routeCoverage(
-					vertical ? worldY : worldX,
-					route.low[index],
-					route.high[index],
-					vertical ? worldX : worldY,
-					std::max(0., lastTime),
-					settings.routePresence,
-					settings.routeTransition
-				);
-				alpha *= 1 - route.mask[index] / 255. * (1 - cover);
-			}
+			if(settings.routeContact)
+				alpha *= 1 - route.filteredOpening[index] / 255.;
 			else
 				relief = route.relief[index];
 		}
@@ -829,7 +879,7 @@ ColorRGBA ManaAuraField::basePixel(int worldX, int worldY, bool object) const
 	{
 		const auto base =
 			static_cast<uint8_t>(std::clamp(edge[k] + influence * (center[k] - edge[k]) + (initial * settings.contrast + relief) * colour[k], 0., 255.));
-		rgb[k] = byte(base + (moved - initial) * settings.contrast * colour[k]);
+		rgb[k] = byte(base + ((moved - initial) * settings.contrast + crest) * colour[k]);
 	}
 	return ColorRGBA(rgb[0], rgb[1], rgb[2], byte(alpha * 255));
 }

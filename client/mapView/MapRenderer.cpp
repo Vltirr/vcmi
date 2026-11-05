@@ -621,7 +621,7 @@ void MapRendererObjects::renderTile(IMapRendererContext & context, Canvas & targ
 	const CGObjectInstance * activeHero = nullptr;
 	bool activeHeroCovered = false;
 
-	MapObjectDrawOrder::drawTile(context.getObjects(coordinates), coordinates,
+	const auto steps = MapObjectDrawOrder::getDrawSteps(context.getObjects(coordinates), coordinates,
 		[&](ObjectInstanceID objectID)
 		{
 			const auto * objectInstance = context.getObject(objectID);
@@ -635,20 +635,30 @@ void MapRendererObjects::renderTile(IMapRendererContext & context, Canvas & targ
 		[&](const CGObjectInstance * object)
 		{
 			return context.objectImageOffset(object->id, coordinates);
-		},
-		[&](const CGObjectInstance * object)
-		{
-			renderShadow(context, target, coordinates, object);
-		},
-		[&](const CGObjectInstance * object)
-		{
-			if(context.isActiveHero(object))
-				activeHero = object;
-			else if(activeHero)
-				activeHeroCovered = true;
-
-			renderObject(context, target, coordinates, object, 1., aura);
 		});
+
+	const bool submergedShadows = aura && aura->shadowsBelowMist(coordinates);
+	if(submergedShadows)
+		for(const auto & step : steps)
+			if(step.isShadow)
+				renderShadow(context, target, coordinates, step.object);
+	if(aura)
+		aura->renderTile(target, coordinates);
+	for(const auto & step : steps)
+	{
+		const auto * object = step.object;
+		if(step.isShadow)
+		{
+			if(!submergedShadows)
+				renderShadow(context, target, coordinates, object);
+			continue;
+		}
+		if(context.isActiveHero(object))
+			activeHero = object;
+		else if(activeHero)
+			activeHeroCovered = true;
+		renderObject(context, target, coordinates, object, 1., aura);
+	}
 
 	// Like H3, draw the active hero a second time on top of the objects that cover him,
 	// so he stays visible behind obstacles - e.g. a town, or anything he flies over
@@ -1046,8 +1056,6 @@ void MapRenderer::renderTile(IMapRendererContext & context, Canvas & target, con
 		if(!roadsAboveGround)
 			rendererObjects.renderGround(context, target, coordinates);
 
-		if(withOverlays)
-			rendererManaAura.renderTile(target, coordinates);
 
 		rendererObjects.renderTile(context, target, coordinates, withOverlays ? &rendererManaAura : nullptr);
 		if(withOverlays)
