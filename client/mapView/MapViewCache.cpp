@@ -9,6 +9,7 @@
  */
 
 #include "StdInc.h"
+#include <chrono>
 #include "MapViewCache.h"
 
 #include "IMapRendererContext.h"
@@ -184,6 +185,8 @@ void MapViewCache::updateTile(const std::shared_ptr<IMapRendererContext> & conte
 		++animatedTilesRedrawn;
 	}
 
+	if(mapRenderer->profiling())
+		++profileRedrawn;
 	Canvas target = getTile(coordinates);
 
 	const uint32_t placeholdersBefore = ENGINE->renderHandler().getPlaceholderDrawCount();
@@ -211,6 +214,7 @@ void MapViewCache::updateTile(const std::shared_ptr<IMapRendererContext> & conte
 
 void MapViewCache::update(const std::shared_ptr<IMapRendererContext> & context)
 {
+	const auto profileStart = std::chrono::steady_clock::now();
 	ensureCanvases();
 
 	Rect dimensions = model->getTilesTotalRect();
@@ -234,6 +238,8 @@ void MapViewCache::update(const std::shared_ptr<IMapRendererContext> & context)
 
 	// Refresh whatever the renderer can resolve once instead of per tile
 	mapRenderer->prepareFrame(*context, dimensions, model->getLevel());
+	const auto profilePrepared = std::chrono::steady_clock::now();
+	profileRedrawn = 0;
 
 	const int share = std::max(animationRedrawShareMinimum, (animatedTilesDirtyBefore + animationCatchUpFrames - 1) / animationCatchUpFrames);
 
@@ -248,6 +254,22 @@ void MapViewCache::update(const std::shared_ptr<IMapRendererContext> & context)
 
 	drainingAnimationBurst = animatedTilesDirty > animatedTilesRedrawn;
 	animatedTilesDirtyBefore = animatedTilesDirty;
+	if(mapRenderer->profiling())
+	{
+		static int samples = 0, tilesTotal = 0, dirtyTotal = 0;
+		static double setupTotal = 0, tilesMsTotal = 0, setupMax = 0, tilesMax = 0;
+		const auto ms = [](auto a, auto b) { return std::chrono::duration<double, std::milli>(b - a).count(); };
+		const double setup = ms(profileStart, profilePrepared), tiles = ms(profilePrepared, std::chrono::steady_clock::now());
+		setupTotal += setup; tilesMsTotal += tiles;
+		setupMax = std::max(setupMax, setup); tilesMax = std::max(tilesMax, tiles);
+		tilesTotal += profileRedrawn; dirtyTotal += animatedTilesDirty;
+		if(++samples == 30)
+		{
+			logGlobal->info("MGMA profile cache: setupMeanMs=%g setupMaxMs=%g tilesMeanMs=%g tilesMaxMs=%g redrawnMean=%g dirtyMean=%g visibleTiles=%d samples=%d", setupTotal / samples, setupMax, tilesMsTotal / samples, tilesMax, static_cast<double>(tilesTotal) / samples, static_cast<double>(dirtyTotal) / samples, dimensions.w * dimensions.h, samples);
+			samples = tilesTotal = dirtyTotal = 0;
+			setupTotal = tilesMsTotal = setupMax = tilesMax = 0;
+		}
+	}
 
 	cachedSize = model->getSingleTileSize();
 	cachedLevel = model->getLevel();
@@ -370,6 +392,7 @@ bool MapViewCache::needsOwnLayer(const std::shared_ptr<IMapRendererContext> & co
 
 void MapViewCache::render(const std::shared_ptr<IMapRendererContext> & context, Canvas & target, bool fullRedraw)
 {
+	const auto profileStart = std::chrono::steady_clock::now();
 	ensureCanvases();
 
 	bool mapMoved = (cachedPosition != model->getMapViewCenter());
@@ -474,6 +497,20 @@ void MapViewCache::render(const std::shared_ptr<IMapRendererContext> & context, 
 	cachedPosition = model->getMapViewCenter();
 	overlayWasVisible = overlayVisible;
 	updatedThisFrame = false;
+	if(mapRenderer->profiling())
+	{
+		static int samples = 0;
+		static double total = 0, maximum = 0;
+		const double elapsed = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - profileStart).count();
+		total += elapsed;
+		maximum = std::max(maximum, elapsed);
+		if(++samples == 30)
+		{
+			logGlobal->info("MGMA profile present: meanMs=%g maxMs=%g samples=%d", total / samples, maximum, samples);
+			samples = 0;
+			total = maximum = 0;
+		}
+	}
 }
 
 void MapViewCache::exportMapLevel(const std::shared_ptr<IMapRendererContext> & context, int level, const boost::filesystem::path & path)

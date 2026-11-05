@@ -173,6 +173,7 @@ ManaAuraVisualSettings ManaAuraVisualSettings::fromJson(const JsonNode & json)
 	};
 	out.enabled = boolean("enabled", true);
 	out.debug = boolean("debug", false);
+	out.profile = boolean("profile", false);
 	out.framesPerSecond = number(json, "framesPerSecond", 12, 1, 30);
 	out.rate = number(json, "rate", 1.5, 0, 4);
 	out.motionAmplitude = number(json, "motionAmplitude", 1, 0, 4);

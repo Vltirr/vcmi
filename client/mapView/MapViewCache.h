@@ -47,6 +47,7 @@ class MapViewCache
 	int animatedTilesRedrawn = 0;
 	int animatedTileRedrawBudget = 0;
 	bool drainingAnimationBurst = false;
+	int profileRedrawn = 0;
 
 	Point cachedSize;
 	Point cachedPosition;

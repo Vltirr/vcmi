@@ -230,6 +230,7 @@ class MapRenderer
 	MapRendererManaAura rendererManaAura;
 
 public:
+	bool profiling() const { return rendererManaAura.profiling(); }
 	using TileChecksum = std::array<uint8_t, 12>;
 
 	/// Refreshes state that is constant for the whole frame. Must be called before the

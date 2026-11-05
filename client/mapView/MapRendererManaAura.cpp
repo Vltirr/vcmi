@@ -51,6 +51,15 @@ void MapRendererManaAura::prepareFrame(
 	const std::function<std::vector<ColorRGBA>(const int3 &)> & routePixels
 )
 {
+	if(settings.profile && ++profileFrames == 30)
+	{
+		logGlobal->info("MGMA profile textures: fogUploadMs=%g fogUploads=%llu contactUploadMs=%g contactUploads=%llu samples=%d",
+			profileFogUploadMs / profileFrames, static_cast<unsigned long long>(profileFogUploads),
+			profileContactUploadMs / profileFrames, static_cast<unsigned long long>(profileContactUploads), profileFrames);
+		profileFrames = 0;
+		profileFogUploads = profileContactUploads = 0;
+		profileFogUploadMs = profileContactUploadMs = 0;
+	}
 	const auto view = context.manaAuraVisualState();
 	if(!loaded && !view.sources.empty())
 		load();
@@ -435,6 +444,7 @@ void MapRendererManaAura::renderTile(Canvas & target, const int3 & position)
 	auto & block = it->second;
 	if(!block.image || block.stamp != stamp)
 	{
+		const auto uploadStart = settings.profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
 		const int native = blockTiles * 32;
 		if(!block.image)
 			block.image = std::make_shared<CanvasImage>(Point(native, native));
@@ -446,6 +456,11 @@ void MapRendererManaAura::renderTile(Canvas & target, const int3 & position)
 			std::memcpy(uploadPixels.data() + y * native * 4, source, native * 4);
 		}
 		block.image->writePixelsRGBA(uploadPixels);
+		if(settings.profile)
+		{
+			profileFogUploadMs += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - uploadStart).count();
+			++profileFogUploads;
+		}
 		block.stamp = stamp;
 	}
 	target.draw(block.image, Point(0, 0), Rect((position.x % blockTiles) * 32, (position.y % blockTiles) * 32, 32, 32));
@@ -669,6 +684,7 @@ void MapRendererManaAura::batchObject(
 
 void MapRendererManaAura::finishObjectBatch()
 {
+	const auto uploadStart = settings.profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
 	size_t uploads = 0, bytes = 0;
 	for(auto & page : contactPages)
 	{
@@ -680,6 +696,11 @@ void MapRendererManaAura::finishObjectBatch()
 		page.image->writePixelsRGBA(page.pixels);
 		++uploads;
 		bytes += page.pixels.size();
+	}
+	if(settings.profile)
+	{
+		profileContactUploadMs += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - uploadStart).count();
+		profileContactUploads += uploads;
 	}
 	if(!batchReported && !batchedObjects.empty())
 	{

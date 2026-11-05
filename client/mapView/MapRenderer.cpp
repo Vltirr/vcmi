@@ -9,6 +9,7 @@
  */
 
 #include "StdInc.h"
+#include <chrono>
 #include "MapRenderer.h"
 
 #include "IMapRendererContext.h"
@@ -983,6 +984,7 @@ uint8_t MapRendererPath::checksum(IMapRendererContext & context, const int3 & co
 
 void MapRenderer::prepareFrame(IMapRendererContext & context, const Rect & visibleTiles, int level)
 {
+	const auto start = std::chrono::steady_clock::now();
 	rendererPath.prepareFrame(context);
 	rendererObjects.prepareFrame();
 	rendererManaAura.prepareFrame(context, visibleTiles, level, [&](const int3 & position)
@@ -1000,7 +1002,25 @@ void MapRenderer::prepareFrame(IMapRendererContext & context, const Rect & visib
 			result.emplace_back(pixels[i], pixels[i + 1], pixels[i + 2], pixels[i + 3]);
 		return result;
 	});
+	const auto fieldDone = std::chrono::steady_clock::now();
 	rendererObjects.prepareManaAura(context, level, rendererManaAura);
+	if(profiling())
+	{
+		static int samples = 0;
+		static double fieldTotal = 0, contactsTotal = 0, fieldMax = 0, contactsMax = 0;
+		const auto ms = [](auto a, auto b) { return std::chrono::duration<double, std::milli>(b - a).count(); };
+		const double fieldMs = ms(start, fieldDone), contactsMs = ms(fieldDone, std::chrono::steady_clock::now());
+		fieldTotal += fieldMs;
+		contactsTotal += contactsMs;
+		fieldMax = std::max(fieldMax, fieldMs);
+		contactsMax = std::max(contactsMax, contactsMs);
+		if(++samples == 30)
+		{
+			logGlobal->info("MGMA profile prepare: fieldMeanMs=%g fieldMaxMs=%g contactsMeanMs=%g contactsMaxMs=%g samples=%d", fieldTotal / samples, fieldMax, contactsTotal / samples, contactsMax, samples);
+			samples = 0;
+			fieldTotal = contactsTotal = fieldMax = contactsMax = 0;
+		}
+	}
 }
 
 MapRenderer::TileChecksum MapRenderer::getTileChecksum(IMapRendererContext & context, const int3 & coordinates)
