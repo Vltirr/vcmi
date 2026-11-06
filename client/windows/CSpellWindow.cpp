@@ -34,6 +34,7 @@
 #include "render/CanvasImage.h"
 #include "render/IScreenHandler.h"
 #include "../widgets/GraphicalPrimitiveCanvas.h"
+#include "../widgets/Images.h"
 #include "../widgets/CComponent.h"
 #include "../widgets/CTextInput.h"
 #include "../widgets/TextControls.h"
@@ -60,6 +61,269 @@
 #include "../../lib/spells/CSpellHandler.h"
 
 #include <cmath>
+
+namespace
+{
+const std::string spellbookArt = "spellbookUI/approved/";
+
+Rect footerRibbon(bool large, int index)
+{
+	return Rect((large ? 520 : 331) + 49 * index, large ? 464 : 405, 37, 47);
+}
+
+class SpellbookSearchInput final : public CTextInput
+{
+	std::shared_ptr<CAnimImage> frame;
+	std::shared_ptr<CLabel> placeholder;
+	bool hovered = false;
+
+	void updateFrame()
+	{
+		frame->setFrame(hasFocus() ? 2 : hovered ? 1 : 0);
+		redraw();
+	}
+
+public:
+	SpellbookSearchInput(const Rect & bounds, std::shared_ptr<CAnimImage> frame, std::shared_ptr<CLabel> placeholder)
+		: CTextInput(bounds, FONT_SMALL, ETextAlignment::CENTERLEFT, false), frame(std::move(frame)), placeholder(std::move(placeholder))
+	{
+		addUsedEvents(HOVER);
+		setColor(ColorRGBA(40, 25, 15));
+	}
+
+	void hover(bool on) override
+	{
+		hovered = on;
+		updateFrame();
+	}
+
+	bool receiveEvent(const Point & position, int eventType) const override
+	{
+		if(eventType != LCLICK && eventType != HOVER)
+			return CTextInput::receiveEvent(position, eventType);
+
+		auto hitArea = frame->pos;
+		if(!getText().empty())
+			hitArea.w -= 22;
+		return hitArea.isInside(position);
+	}
+
+	void onFocusGot() override
+	{
+		placeholder->disable();
+		updateFrame();
+		CTextInput::onFocusGot();
+	}
+
+	void onFocusLost() override
+	{
+		placeholder->setEnabled(getText().empty());
+		updateFrame();
+		CTextInput::onFocusLost();
+	}
+};
+}
+
+class CSpellWindow::LevelTab final : public CIntObject
+{
+	CSpellWindow & owner;
+	const int level;
+	bool hovered = false;
+	bool pressed = false;
+	std::shared_ptr<CAnimImage> art;
+	std::shared_ptr<CLabel> label;
+
+public:
+	LevelTab(CSpellWindow & owner, int level, const Rect & bounds, const AnimationPath & path)
+		: CIntObject(LCLICK | SHOW_POPUP | HOVER), owner(owner), level(level)
+	{
+		pos = bounds;
+		OBJECT_CONSTRUCTION;
+		art = std::make_shared<CAnimImage>(path, 0);
+		static const std::array<const char *, 6> numerals = {"", "I", "II", "III", "IV", "V"};
+		const auto caption = level == 0 ? GAME->translator().translate("vcmi.spellBook.allLevels") : std::string(numerals.at(level));
+		label = std::make_shared<CLabel>(pos.w / 2, 16, FONT_SMALL, ETextAlignment::CENTER, ColorRGBA(239, 210, 134), caption, pos.w - 8);
+	}
+
+	void showAll(Canvas & to) override
+	{
+		const bool selected = level == 0 ? owner.selectedLevels == 0 : (owner.selectedLevels & (1u << level)) != 0;
+		art->setFrame(pressed ? 2 : selected ? 3 : hovered ? 1 : 0);
+		CIntObject::showAll(to);
+	}
+
+	void hover(bool on) override
+	{
+		hovered = on;
+		if(on)
+			owner.hoveredLevel = level;
+		else if(owner.hoveredLevel == level)
+			owner.hoveredLevel = -1;
+		ENGINE->windows().totalRedraw();
+	}
+
+	void clickPressed(const Point &) override
+	{
+		pressed = true;
+		owner.redraw();
+	}
+
+	void clickReleased(const Point &) override
+	{
+		pressed = false;
+		owner.selectLevel(level, false);
+	}
+
+	void clickCancel(const Point &) override
+	{
+		pressed = false;
+		owner.redraw();
+	}
+
+	void showPopupWindow(const Point &) override
+	{
+		owner.selectLevel(level, true);
+	}
+};
+
+void CSpellWindow::buildEnhancedBackground(bool archive)
+{
+	auto source = archive
+		? ENGINE->renderHandler().loadImage(ImagePath::builtin("SpellBookLarge"), EImageBlitMode::OPAQUE)
+		: background->getSurface();
+	const auto size = source->dimensions();
+	auto cleaned = ENGINE->renderHandler().createImage(size, CanvasScalingPolicy::IGNORE);
+	auto canvas = cleaned->getCanvas();
+	canvas.draw(source, Point(0, 0));
+
+	const std::array<Rect, 4> oldRibbons = isBigSpellbook
+		? std::array<Rect, 4>{Rect(278, 464, 37, 47), Rect(481, 465, 37, 41), Rect(575, 465, 37, 45), Rect(667, 465, 37, 47)}
+		: std::array<Rect, 4>{Rect(220, 405, 37, 47), Rect(354, 406, 37, 41), Rect(417, 406, 37, 45), Rect(478, 406, 37, 47)};
+	for(const auto & rect : oldRibbons)
+		for(int x = 0; x < rect.w; ++x)
+			canvas.draw(source, Point(rect.x + x, rect.y), Rect(rect.x - 2, rect.y, 1, rect.h));
+
+	if(archive)
+	{
+		auto cover = ENGINE->renderHandler().createImage(size, CanvasScalingPolicy::IGNORE);
+		auto coverCanvas = cover->getCanvas();
+		coverCanvas.drawColor(Rect(Point(0, 0), size), ColorRGBA(0, 0, 0, 0));
+		const Rect area(7, 30, 782, 445);
+		coverCanvas.draw(cleaned, area.topLeft(), area);
+		cleaned = cover;
+	}
+
+	auto result = cleaned->getCanvas();
+	const std::string variant = archive ? "archive" : isBigSpellbook ? "large" : "normal";
+	result.draw(ENGINE->renderHandler().loadImage(ImagePath::builtin(spellbookArt + "paper/" + variant + "-overlay.png"), EImageBlitMode::SIMPLE), Point(0, 0));
+	background = std::make_shared<CPicture>(cleaned, Point(0, 0));
+}
+
+namespace
+{
+std::shared_ptr<CPicture> makeSpellbookRibbon(const std::shared_ptr<IImage> & original, const Rect & source, Point position, const std::string & emblem = {})
+{
+	auto image = ENGINE->renderHandler().createImage(Point(37, 47), CanvasScalingPolicy::IGNORE);
+	auto canvas = image->getCanvas();
+	canvas.drawColor(Rect(0, 0, 37, 47), ColorRGBA(0, 0, 0, 0));
+	const int top = source.h == 41 ? 1 : 0;
+	for(int y = 0; y < source.h; ++y)
+	{
+		const int notch = std::max(0, y - (source.h - 10));
+		if(notch == 0)
+			canvas.draw(original, Point(0, top + y), Rect(source.x, source.y + y, source.w, 1));
+		else
+		{
+			const int width = (source.w / 2) * (10 - notch) / 10;
+			if(width > 0)
+				for(const int x : {0, source.w - width})
+					canvas.draw(original, Point(x, top + y), Rect(source.x + x, source.y + y, width, 1));
+		}
+	}
+	if(!emblem.empty())
+	{
+		canvas.draw(original, Point(3, 0), Rect(420, 406, 31, 35));
+		auto symbol = ENGINE->renderHandler().loadImage(ImagePath::builtin(spellbookArt + "context/" + emblem + "-symbol.png"), EImageBlitMode::SIMPLE);
+		canvas.draw(symbol, Point((37 - symbol->dimensions().x) / 2, emblem == "combat" ? 2 : 4));
+	}
+	auto picture = std::make_shared<CPicture>(image, position);
+	picture->removeUsedEvents(CIntObject::LCLICK | CIntObject::SHOW_POPUP);
+	return picture;
+}
+}
+
+void CSpellWindow::buildLevelTabs()
+{
+	const auto path = AnimationPath::builtin(spellbookArt + "levels/heraldic-" + (isBigSpellbook ? "large" : "normal"));
+	const int width = isBigSpellbook ? 54 : 48;
+	const int x = isBigSpellbook ? 228 : 156;
+	const int y = isBigSpellbook ? 0 : 28;
+	for(int i = 0; i < static_cast<int>(levelTabs.size()); ++i)
+		levelTabs[i] = std::make_shared<LevelTab>(*this, i, Rect(pos.x + x + i * (width + 4), pos.y + y, width, 40), path);
+
+	levelHelpBackground = ENGINE->renderHandler().loadImage(ImagePath::builtin(spellbookArt + "help/background-B.png"), EImageBlitMode::SIMPLE);
+}
+
+void CSpellWindow::selectLevel(int level, bool additive)
+{
+	const auto previous = selectedLevels;
+	if(level == 0)
+		selectedLevels = 0;
+	else if(!additive)
+		selectedLevels = 1u << level;
+	else if(selectedLevels != 0)
+		selectedLevels |= 1u << level;
+	if(previous != selectedLevels)
+		searchInput();
+	else
+		redraw();
+}
+
+void CSpellWindow::drawLevelHelp(Canvas & to)
+{
+	if(hoveredLevel < 0 || !isActive())
+		return;
+
+	const auto & tab = levelTabs.at(hoveredLevel)->pos;
+	const auto size = levelHelpBackground->dimensions();
+	const auto screen = ENGINE->screenDimensions();
+	if(screen.x < size.x + 16 || screen.y < size.y + 16)
+		return;
+	const int above = tab.y - size.y - 6;
+	int left = 8;
+	int right = screen.x - size.x - 8;
+	if(above < 8)
+	{
+		const int bookX = levelTabs.front()->pos.x - (isBigSpellbook ? 228 : 156);
+		const int pageLeft = std::max(left, bookX + (isBigSpellbook ? 80 : 95));
+		const int pageRight = std::min(right, bookX + (isBigSpellbook ? 719 : 524) - size.x);
+		if(pageLeft <= pageRight)
+		{
+			left = pageLeft;
+			right = pageRight;
+		}
+	}
+	const int x = std::clamp(tab.center().x - size.x / 2, left, right);
+	const int y = above >= 8 ? above : std::min(tab.y + tab.h + 6, screen.y - size.y - 8);
+	const Point origin(x, y);
+	to.draw(levelHelpBackground, origin);
+	const ColorRGBA ink(40, 25, 15);
+	to.drawText(origin + Point(22, 16), FONT_TINY, ink, ETextAlignment::TOPLEFT, GAME->translator().translate("vcmi.spellBook.levelHelpLeft"));
+	to.drawText(origin + Point(22, 34), FONT_TINY, ink, ETextAlignment::TOPLEFT, GAME->translator().translate("vcmi.spellBook.levelHelpRight"));
+}
+
+void CSpellWindow::updateContextRibbon()
+{
+	if(!enhancedLayout)
+		return;
+	contextRibbons[0]->setEnabled(battleSpellsOnly);
+	contextRibbons[1]->setEnabled(!battleSpellsOnly);
+	if(contextArea)
+	{
+		const auto text = GAME->translator().translate(battleSpellsOnly ? "vcmi.spellBook.switchToAdventure" : "vcmi.spellBook.switchToCombat");
+		contextArea->setHelp(text, text);
+	}
+}
 
 // Ordering of spell school tabs in SpelTab.def
 static const std::array schoolTabOrder =
@@ -250,10 +514,41 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 	if(!archiveTown)
 		background->setPlayerColor(GAME->interface()->playerID);
 
+	const std::string variant = archiveTown ? "archive" : isBigSpellbook ? "large" : "normal";
+	enhancedLayout = settings["general"]["enableUiEnhancements"].Bool()
+		&& CResourceHandler::get()->existsResource(ImagePath::builtin("SPRITES/" + spellbookArt + "paper/" + variant + "-overlay.png"));
+	if(enhancedLayout)
+		buildEnhancedBackground(archiveTown != nullptr);
+
 	pos = background->center(Point(pos.w/2 + pos.x, pos.h/2 + pos.y));
 
 	Rect r(90, archiveTown ? 443 : (isBigSpellbook ? 480 : 420), isBigSpellbook ? 160 : 110, 16);
-	if(settings["general"]["enableUiEnhancements"].Bool())
+	if(enhancedLayout)
+	{
+		const Point searchOrigin(90, isBigSpellbook ? 478 : 415);
+		const int width = isBigSpellbook ? 300 : 224;
+		auto frame = std::make_shared<CAnimImage>(AnimationPath::builtin(spellbookArt + "search/" + (isBigSpellbook ? "large" : "normal")), 0, 0, searchOrigin.x, searchOrigin.y);
+		auto quill = std::make_shared<CPicture>(ImagePath::builtin(spellbookArt + "search/quill.png"), searchOrigin + Point(17, 8), EImageBlitMode::SIMPLE);
+		quill->removeUsedEvents(LCLICK | SHOW_POPUP);
+		r = Rect(searchOrigin + Point(33, 6), Point(width - 58, 16));
+		searchBoxDescription = std::make_shared<CLabel>(r.x, r.center().y, FONT_SMALL, ETextAlignment::CENTERLEFT,
+			ColorRGBA(100, 76, 48), GAME->translator().translate("vcmi.spellBook.search"), r.w);
+		searchBox = std::make_shared<SpellbookSearchInput>(r, frame, searchBoxDescription);
+		searchBox->setCallback(std::bind(&CSpellWindow::searchInput, this));
+		clearSearch = std::make_shared<CPicture>(ImagePath::builtin(spellbookArt + "search/clear.png"), searchOrigin + Point(width - 22, 5), EImageBlitMode::SIMPLE);
+		clearSearch->addLClickCallback([this]
+		{
+			searchBox->setText("");
+			searchBox->giveFocus();
+			searchInput();
+		});
+		clearSearch->disable();
+		buildLevelTabs();
+		emptyResults = std::make_shared<CLabel>(isBigSpellbook ? 400 : 310, isBigSpellbook ? 240 : 255, FONT_SMALL,
+			ETextAlignment::CENTER, ColorRGBA(66, 44, 25), GAME->translator().translate("vcmi.spellBook.noMatchingSpells"), isBigSpellbook ? 570 : 420);
+		emptyResults->disable();
+	}
+	else if(settings["general"]["enableUiEnhancements"].Bool())
 	{
 		const ColorRGBA rectangleColor = ColorRGBA(0, 0, 0, 75);
 		const ColorRGBA borderColor = ColorRGBA(128, 100, 75);
@@ -267,18 +562,23 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 
 	if(onSpellSelect)
 	{
-		Point boxPos = r.bottomLeft() + Point(-2, 5);
+		Point boxPos = enhancedLayout ? Point(89, isBigSpellbook ? 514 : 448) : r.bottomLeft() + Point(-2, 5);
 		showAllSpells = std::make_shared<CToggleButton>(boxPos, AnimationPath::builtin("sysopchk.def"), CButton::tooltip(LIBRARY->generaltexth->translate("core.help.458.hover"), LIBRARY->generaltexth->translate("core.help.458.hover")), [this](bool state){ searchInput(); });
 		showAllSpellsDescription = std::make_shared<CLabel>(boxPos.x + 40, boxPos.y + 12, FONT_SMALL, ETextAlignment::CENTERLEFT, Colors::WHITE, LIBRARY->generaltexth->translate("core.help.458.hover"));
 	}
 	else if(myHero && (!archiveOwner || personalArchive) && myInt->cb->getSettings().getBoolean(EGameSettings::SPELLS_LEARN_NOW_CAST_LATER))
 	{
-		const Point bookmarkPosition(isBigSpellbook ? 379 : 288, isBigSpellbook ? 465 : 406);
+		const Point bookmarkPosition = enhancedLayout ? footerRibbon(isBigSpellbook, 0).topLeft() : Point(isBigSpellbook ? 379 : 288, isBigSpellbook ? 465 : 406);
 		showOnlyCastableSpells = myInt->localState->getShowOnlyCastableSpells(myHero->id);
 		const Rect bookmarkArtwork(417, 406, 37, 45);
 		// The mana ribbon is blank in SpelBack; its number is a separate label.
 		// Reuse these original pixels, just as createBigSpellBook does, without scaling.
-		if(archiveTown)
+		if(enhancedLayout)
+		{
+			auto spellbook = ENGINE->renderHandler().loadImage(ImagePath::builtin("SpelBack"), EImageBlitMode::OPAQUE);
+			availabilityBookmark = makeSpellbookRibbon(spellbook, bookmarkArtwork, bookmarkPosition);
+		}
+		else if(archiveTown)
 			availabilityBookmark = std::make_shared<CPicture>(background->getSurface(), Rect(575, 465, 37, 45), bookmarkPosition.x, bookmarkPosition.y);
 		else
 		{
@@ -314,7 +614,18 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 		schoolTabCustom.push_back(std::make_shared<CAnimImage>(LIBRARY->spellSchoolHandler->getById(customSpellSchools[i])->getSchoolBookmarkPath(), i == 0 ? 0 : 1, 0, isBigSpellbook ? 0 : 15, yStart + ((yEnd - yStart) * i) / denom));
 	schoolPicture = std::make_shared<CAnimImage>(AnimationPath::builtin("Schools"), 0, 0, 117 + offL, 74 + offT);
 
-	const Point manaPosition = isBigSpellbook ? Point(592, 485) : Point(434, 426);
+	const Point manaPosition = enhancedLayout ? footerRibbon(isBigSpellbook, 2).topLeft() + Point(18, 21) : isBigSpellbook ? Point(592, 485) : Point(434, 426);
+	if(enhancedLayout)
+	{
+		const auto original = ENGINE->renderHandler().loadImage(ImagePath::builtin("SpelBack"), EImageBlitMode::OPAQUE);
+		const auto contextPosition = footerRibbon(isBigSpellbook, 1).topLeft();
+		contextRibbons[0] = makeSpellbookRibbon(original, Rect(220, 405, 37, 47), contextPosition, "combat");
+		contextRibbons[1] = makeSpellbookRibbon(original, Rect(354, 406, 37, 41), contextPosition, "adventure");
+		// Keep these pictures owned alongside the other footer controls.
+		footerArtwork[0] = makeSpellbookRibbon(original, Rect(417, 406, 37, 45), footerRibbon(isBigSpellbook, 2).topLeft());
+		footerArtwork[1] = makeSpellbookRibbon(original, Rect(478, 406, 37, 47), footerRibbon(isBigSpellbook, 3).topLeft());
+		updateContextRibbon();
+	}
 	mana = std::make_shared<CLabel>(manaPosition.x, manaPosition.y, FONT_SMALL, ETextAlignment::CENTER, Colors::YELLOW, myHero && (!archiveOwner || personalArchive) ? std::to_string(myHero->mana) : "");
 
 	if(isBigSpellbook)
@@ -323,10 +634,27 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 		statusBar = CGStatusBar::create(7, 569, ImagePath::builtin("Spelroll.bmp"));
 
 	Rect schoolRect( 549 + pos.x + offR, 94 + pos.y, 45, 35);
-	interactiveAreas.push_back(std::make_shared<InteractiveArea>( Rect( 479 + pos.x + (isBigSpellbook ? 175 : 0), 405 + pos.y + offB, isBigSpellbook ? 60 : 36, 56), std::bind(&CSpellWindow::fexitb,         this),    460, this));
-	interactiveAreas.push_back(std::make_shared<InteractiveArea>( Rect( 221 + pos.x + (isBigSpellbook ? 43 : 0), 405 + pos.y + offB, isBigSpellbook ? 60 : 36, 56), std::bind(&CSpellWindow::fbattleSpellsb, this),    453, this));
-	interactiveAreas.push_back(std::make_shared<InteractiveArea>( Rect( 355 + pos.x + (isBigSpellbook ? 110 : 0), 405 + pos.y + offB, isBigSpellbook ? 60 : 36, 56), std::bind(&CSpellWindow::fadvSpellsb,    this),    452, this));
-	manaArea = std::make_shared<InteractiveArea>(Rect(418 + pos.x + (isBigSpellbook ? 142 : 0), 405 + pos.y + offB, isBigSpellbook ? 60 : 36, 56), std::bind(&CSpellWindow::fmanaPtsb, this), this);
+	if(enhancedLayout)
+	{
+		interactiveAreas.push_back(std::make_shared<InteractiveArea>(footerRibbon(isBigSpellbook, 3) + pos.topLeft(), std::bind(&CSpellWindow::fexitb, this), 460, this));
+		contextArea = std::make_shared<InteractiveArea>(footerRibbon(isBigSpellbook, 1) + pos.topLeft(), [this]
+		{
+			if(battleSpellsOnly)
+				fadvSpellsb();
+			else
+				fbattleSpellsb();
+		}, this);
+		contextArea->setInputEnabled(!onSpellSelect);
+		updateContextRibbon();
+		manaArea = std::make_shared<InteractiveArea>(footerRibbon(isBigSpellbook, 2) + pos.topLeft(), std::bind(&CSpellWindow::fmanaPtsb, this), this);
+	}
+	else
+	{
+		interactiveAreas.push_back(std::make_shared<InteractiveArea>(Rect(479 + pos.x + (isBigSpellbook ? 175 : 0), 405 + pos.y + offB, isBigSpellbook ? 60 : 36, 56), std::bind(&CSpellWindow::fexitb, this), 460, this));
+		interactiveAreas.push_back(std::make_shared<InteractiveArea>(Rect(221 + pos.x + (isBigSpellbook ? 43 : 0), 405 + pos.y + offB, isBigSpellbook ? 60 : 36, 56), std::bind(&CSpellWindow::fbattleSpellsb, this), 453, this));
+		interactiveAreas.push_back(std::make_shared<InteractiveArea>(Rect(355 + pos.x + (isBigSpellbook ? 110 : 0), 405 + pos.y + offB, isBigSpellbook ? 60 : 36, 56), std::bind(&CSpellWindow::fadvSpellsb, this), 452, this));
+		manaArea = std::make_shared<InteractiveArea>(Rect(418 + pos.x + (isBigSpellbook ? 142 : 0), 405 + pos.y + offB, isBigSpellbook ? 60 : 36, 56), std::bind(&CSpellWindow::fmanaPtsb, this), this);
+	}
 	interactiveAreas.push_back(std::make_shared<InteractiveArea>( schoolRect + Point(0, 0),   std::bind(&CSpellWindow::selectSchool,   this, SpellSchool::AIR), 454, this));
 	interactiveAreas.push_back(std::make_shared<InteractiveArea>( schoolRect + Point(0, 57),  std::bind(&CSpellWindow::selectSchool,   this, SpellSchool::EARTH), 457, this));
 	interactiveAreas.push_back(std::make_shared<InteractiveArea>( schoolRect + Point(0, 116), std::bind(&CSpellWindow::selectSchool,   this, SpellSchool::FIRE), 455, this));
@@ -388,7 +716,9 @@ CSpellWindow::~CSpellWindow()
 void CSpellWindow::searchInput()
 {
 	if(searchBox)
-		searchBoxDescription->setEnabled(searchBox->getText().empty());
+		searchBoxDescription->setEnabled(searchBox->getText().empty() && (!enhancedLayout || !searchBox->hasFocus()));
+	if(clearSearch)
+		clearSearch->setEnabled(!searchBox->getText().empty());
 
 	processSpells();
 
@@ -441,6 +771,9 @@ void CSpellWindow::processSpells()
 	mySpells.reserve(LIBRARY->spellh->objects.size());
 	for(auto const & spell : LIBRARY->spellh->objects)
 	{
+		const int level = spell->getLevel();
+		if(selectedLevels && (level < 1 || level > 5 || !(selectedLevels & (1u << level))))
+			continue;
 		bool searchTextFound = !searchBox || TextOperations::isFuzzyMatch(searchBox->getText(), spell->getNameTranslated());
 		if(archiveOwner)
 		{
@@ -554,10 +887,13 @@ void CSpellWindow::fexitb()
 
 void CSpellWindow::fadvSpellsb()
 {
+	if(enhancedLayout && onSpellSelect)
+		return;
 	if(battleSpellsOnly == true)
 	{
 		turnPageRight();
 		battleSpellsOnly = false;
+		updateContextRibbon();
 		setCurrentPage(0);
 	}
 	computeSpellsPerArea();
@@ -565,10 +901,13 @@ void CSpellWindow::fadvSpellsb()
 
 void CSpellWindow::fbattleSpellsb()
 {
+	if(enhancedLayout && onSpellSelect)
+		return;
 	if(battleSpellsOnly == false)
 	{
 		turnPageLeft();
 		battleSpellsOnly = true;
+		updateContextRibbon();
 		setCurrentPage(0);
 	}
 	computeSpellsPerArea();
@@ -659,6 +998,7 @@ void CSpellWindow::showAll(Canvas & to)
 			.intersect(Rect(Point(0, 0), ENGINE->screenDimensions()));
 		CMessage::drawBorder(*archiveOwner, to, frame.w, frame.h, frame.x, frame.y);
 	}
+	drawLevelHelp(to);
 }
 
 void CSpellWindow::updateArchiveLayout()
@@ -791,6 +1131,8 @@ void CSpellWindow::computeSpellsPerArea()
 			}
 		}
 	}
+	if(emptyResults)
+		emptyResults->setEnabled(spellsCurSite.empty());
 	//applying
 	if(selectedTab == SpellSchool::ANY || currentPage != 0)
 	{
@@ -1157,7 +1499,12 @@ void CSpellWindow::SpellArea::setSpell(const CSpell * spell)
 		}
 
 		ColorRGBA firstLineColor, secondLineColor;
-		if(!owner->onSpellSelect && owner->isSpellUnavailable(mySpell))
+		if(owner->enhancedLayout)
+		{
+			firstLineColor = ColorRGBA(40, 25, 15);
+			secondLineColor = !owner->onSpellSelect && owner->isSpellUnavailable(mySpell) ? ColorRGBA(100, 36, 19) : ColorRGBA(66, 44, 25);
+		}
+		else if(!owner->onSpellSelect && owner->isSpellUnavailable(mySpell))
 		{
 			firstLineColor = Colors::WHITE;
 			secondLineColor = Colors::ORANGE;

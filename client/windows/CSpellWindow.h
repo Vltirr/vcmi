@@ -32,6 +32,7 @@ class VideoWidgetOnce;
 /// The spell window
 class CSpellWindow : public CWindowObject, public IVideoHolder
 {
+	class LevelTab;
 	class SpellArea : public CIntObject
 	{
 		const CSpell * mySpell;
@@ -94,6 +95,22 @@ class CSpellWindow : public CWindowObject, public IVideoHolder
 	std::shared_ptr<CTextInput> searchBox;
 	std::shared_ptr<TransparentFilledRectangle> searchBoxRectangle;
 	std::shared_ptr<CLabel> searchBoxDescription;
+	std::shared_ptr<CPicture> clearSearch;
+	std::shared_ptr<CLabel> emptyResults;
+	std::array<std::shared_ptr<LevelTab>, 6> levelTabs;
+	std::array<std::shared_ptr<CPicture>, 2> contextRibbons;
+	std::array<std::shared_ptr<CPicture>, 2> footerArtwork;
+	std::shared_ptr<InteractiveArea> contextArea;
+	std::shared_ptr<IImage> levelHelpBackground;
+	unsigned selectedLevels = 0;
+	int hoveredLevel = -1;
+	bool enhancedLayout = false;
+
+	void buildEnhancedBackground(bool archive);
+	void buildLevelTabs();
+	void selectLevel(int level, bool additive);
+	void drawLevelHelp(Canvas & to);
+	void updateContextRibbon();
 
 	std::shared_ptr<CToggleButton> showAllSpells;
 	std::shared_ptr<CLabel> showAllSpellsDescription;
