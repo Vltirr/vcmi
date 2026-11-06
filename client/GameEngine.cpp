@@ -26,6 +26,7 @@
 #include "media/CEmptyVideoPlayer.h"
 
 #include "adventureMap/AdventureMapInterface.h"
+#include "mapView/ManaAuraFrameProfile.h"
 #include "render/Canvas.h"
 #include "render/Colors.h"
 #include "render/IFont.h"
@@ -39,10 +40,78 @@
 #include "../lib/CConfigHandler.h"
 #include "../lib/texts/TextOperations.h"
 #include "../lib/texts/CGeneralTextHandler.h"
+#include <sstream>
 
 std::unique_ptr<GameEngine> ENGINE;
 
 static thread_local bool inGuiThread = false;
+
+namespace
+{
+using ProfileClock = std::chrono::steady_clock;
+
+struct ProfileFrame
+{
+	ManaAuraFrameProfile::MapSample map;
+	int updates = 0;
+	double intervalMs = 0, updateMs = 0, presentMs = 0;
+};
+
+ProfileFrame pendingProfileFrame;
+std::array<ProfileFrame, 30> profileBatch;
+size_t profileBatchSize = 0;
+ProfileClock::time_point previousProfilePresent;
+
+void reportManaAuraFrame(ProfileClock::time_point start, ProfileClock::time_point presentStart)
+{
+	if(!pendingProfileFrame.updates)
+	{
+		previousProfilePresent = {};
+		return;
+	}
+
+	const auto now = ProfileClock::now();
+	const auto ms = [](auto duration) { return std::chrono::duration<double, std::milli>(duration).count(); };
+	pendingProfileFrame.intervalMs = previousProfilePresent == ProfileClock::time_point{} ? 0 : ms(now - previousProfilePresent);
+	pendingProfileFrame.updateMs = ms(presentStart - start);
+	pendingProfileFrame.presentMs = ms(now - presentStart);
+	previousProfilePresent = now;
+	profileBatch.at(profileBatchSize++) = pendingProfileFrame;
+	if(profileBatchSize != profileBatch.size())
+		return;
+
+	std::ostringstream rows;
+	rows.imbue(std::locale::classic());
+	rows.precision(6);
+	for(const auto & frame : profileBatch)
+	{
+		const auto & map = frame.map;
+		rows << frame.intervalMs << ',' << frame.updateMs << ',' << frame.presentMs << ','
+			<< map.fieldMs << ',' << map.compositionMs << ',' << map.contactsMs << ',' << map.tilesMs << ','
+			<< map.aura << ',' << map.cameraX << ',' << map.cameraY << ',' << map.level << ','
+			<< map.zoom << ',' << map.viewWidth << ',' << map.viewHeight << ',' << map.scale << ','
+			<< map.visibleTiles << ',' << map.redrawn << ',' << frame.updates << '|';
+	}
+	logGlobal->info("MGMA profile frames v1: %s", rows.str());
+	profileBatchSize = 0;
+}
+}
+
+void ManaAuraFrameProfile::recordMapUpdate(MapSample sample)
+{
+	if(!inGuiThread)
+		return;
+
+	// A view change during update can cause a second cache pass before presentation.
+	const auto & previous = pendingProfileFrame.map;
+	sample.fieldMs += previous.fieldMs;
+	sample.compositionMs += previous.compositionMs;
+	sample.contactsMs += previous.contactsMs;
+	sample.tilesMs += previous.tilesMs;
+	sample.redrawn += previous.redrawn;
+	pendingProfileFrame.map = sample;
+	++pendingProfileFrame.updates;
+}
 
 ObjectConstruction::ObjectConstruction(CIntObject *obj)
 {
@@ -129,8 +198,11 @@ void GameEngine::fakeMouseMove()
 		}
 
 		lastFrameRendered = now;
+		pendingProfileFrame = {};
 		updateFrame();
+		const auto presentStart = pendingProfileFrame.updates ? ProfileClock::now() : ProfileClock::time_point{};
 		screenHandlerInstance->presentScreenTexture();
+		reportManaAuraFrame(now, presentStart);
 		framerate().framerateDelay(); // holds a constant FPS
 	}
 }

@@ -1010,6 +1010,7 @@ void MapRenderer::prepareFrame(IMapRendererContext & context, const Rect & visib
 		static double fieldTotal = 0, contactsTotal = 0, fieldMax = 0, contactsMax = 0;
 		const auto ms = [](auto a, auto b) { return std::chrono::duration<double, std::milli>(b - a).count(); };
 		const double fieldMs = ms(start, fieldDone), contactsMs = ms(fieldDone, std::chrono::steady_clock::now());
+		lastPreparationProfile = {fieldMs, contactsMs};
 		fieldTotal += fieldMs;
 		contactsTotal += contactsMs;
 		fieldMax = std::max(fieldMax, fieldMs);

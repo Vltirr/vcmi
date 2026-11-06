@@ -13,6 +13,7 @@
 #include "MapViewCache.h"
 
 #include "IMapRendererContext.h"
+#include "ManaAuraFrameProfile.h"
 #include "MapRenderer.h"
 #include "MapViewModel.h"
 
@@ -305,6 +306,13 @@ void MapViewCache::update(const std::shared_ptr<IMapRendererContext> & context)
 		static double setupTotal = 0, tilesMsTotal = 0, setupMax = 0, tilesMax = 0;
 		const auto ms = [](auto a, auto b) { return std::chrono::duration<double, std::milli>(b - a).count(); };
 		const double setup = ms(profileStart, profilePrepared), tiles = ms(profilePrepared, std::chrono::steady_clock::now());
+		const auto camera = model->getMapViewCenter();
+		const auto view = model->getPixelsVisibleDimensions();
+		const auto & preparation = mapRenderer->preparationProfile();
+		ManaAuraFrameProfile::recordMapUpdate({camera.x, camera.y, level,
+			model->getSingleTileSize().x, view.x, view.y, ENGINE->screenHandler().getScalingFactor(),
+			dimensions.w * dimensions.h, profileRedrawn + auraTiles, mapRenderer->auraActive(),
+			preparation.fieldMs, mapRenderer->auraCompositionMs(), preparation.contactsMs, tiles});
 		setupTotal += setup; tilesMsTotal += tiles;
 		setupMax = std::max(setupMax, setup); tilesMax = std::max(tilesMax, tiles);
 		tilesTotal += profileRedrawn + auraTiles; dirtyTotal += animatedTilesDirty;

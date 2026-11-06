@@ -24,6 +24,8 @@ class MapRendererManaAura
 public:
 	static constexpr int blockTiles = 4;
 	bool profiling() const { return settings.profile; }
+	bool isActive() const { return active; }
+	double compositionMs() const { return profileCompositionMs; }
 	bool batchesOpaqueTiles() const { return active && field && settings.batchOpaqueTiles && !settings.debug; }
 	void prepareFrame(IMapRendererContext & context, const Rect & visible, int level, const std::function<std::vector<ColorRGBA>(const int3 &)> & routePixels);
 	uint32_t checksum(const int3 & position, const IMapRendererContext * context = nullptr) const;
@@ -62,6 +64,7 @@ private:
 	bool routeShowsRoads = false, routeShowsRivers = false;
 	uint32_t revision = 0, stamp = 0;
 	int profileFrames = 0;
+	double profileCompositionMs = 0;
 	uint64_t profileFogUploads = 0, profileContactUploads = 0;
 	double profileFogUploadMs = 0, profileContactUploadMs = 0;
 	int64_t frame = -1;

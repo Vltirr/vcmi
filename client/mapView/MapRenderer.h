@@ -230,7 +230,15 @@ class MapRenderer
 	MapRendererManaAura rendererManaAura;
 
 public:
+	struct PreparationProfile
+	{
+		double fieldMs = 0, contactsMs = 0;
+	};
+
 	bool profiling() const { return rendererManaAura.profiling(); }
+	bool auraActive() const { return rendererManaAura.isActive(); }
+	double auraCompositionMs() const { return rendererManaAura.compositionMs(); }
+	const PreparationProfile & preparationProfile() const { return lastPreparationProfile; }
 	bool batchesOpaqueAura() const { return rendererManaAura.batchesOpaqueTiles(); }
 	uint32_t batchedAuraStamp(IMapRendererContext & context, const int3 & coordinates);
 	void renderAuraStrip(Canvas & target, const int3 & coordinates, int width);
@@ -243,4 +251,7 @@ public:
 	TileChecksum getTileChecksum(IMapRendererContext & context, const int3 & coordinates);
 
 	void renderTile(IMapRendererContext & context, Canvas & target, const int3 & coordinates, bool withOverlays);
+
+private:
+	PreparationProfile lastPreparationProfile;
 };

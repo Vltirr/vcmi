@@ -51,6 +51,7 @@ void MapRendererManaAura::prepareFrame(
 	const std::function<std::vector<ColorRGBA>(const int3 &)> & routePixels
 )
 {
+	profileCompositionMs = 0;
 	if(settings.profile && ++profileFrames == 30)
 	{
 		logGlobal->info("MGMA profile textures: fogUploadMs=%g fogUploads=%llu contactUploadMs=%g contactUploads=%llu samples=%d",
@@ -387,6 +388,7 @@ void MapRendererManaAura::prepareFrame(
 			static int samples = 0;
 			static double total = 0, maximum = 0, pixels = 0;
 			const double elapsed = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
+			profileCompositionMs = elapsed;
 			total += elapsed;
 			maximum = std::max(maximum, elapsed);
 			pixels += static_cast<double>(composedPixels);
