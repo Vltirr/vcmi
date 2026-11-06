@@ -48,6 +48,10 @@ public:
 	);
 
 private:
+	uint32_t gradientStamp(const int3 & position) const;
+	void renderGradient(Canvas & target, uint32_t levels);
+	std::map<uint32_t, std::shared_ptr<IImage>> gradientTiles;
+	int gradientScale = 0;
 	std::shared_ptr<CanvasImage> blockImage(const int3 & position);
 	bool loaded = false;
 	bool active = false;

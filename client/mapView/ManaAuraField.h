@@ -33,6 +33,7 @@ double objectCoverage(double depth, double height);
 struct ManaAuraVisualSettings
 {
 	bool enabled = true;
+	bool gradient = false;
 	bool debug = false;
 	bool profile = false;
 	bool batchOpaqueTiles = false;

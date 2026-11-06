@@ -87,6 +87,13 @@ void MapRendererManaAura::prepareFrame(
 			maxX = std::max(maxX, p.x + view.radius + 3);
 			maxY = std::max(maxY, p.y + view.radius + 3);
 		}
+	if(settings.gradient)
+	{
+		sources = std::move(current);
+		radius = view.radius;
+		level = newLevel;
+		return;
+	}
 	const bool sameSources = sources == current && level == newLevel && radius == view.radius;
 	const int left = std::max(0, minX), top = std::max(0, minY);
 	const int right = std::min(mapSize.x, maxX), bottom = std::min(mapSize.y, maxY);
@@ -508,7 +515,7 @@ bool MapRendererManaAura::coversObject(const CGObjectInstance & object) const
 
 bool MapRendererManaAura::shadowsBelowMist(const int3 & position) const
 {
-	return settings.objectContact && settings.objectPresence > 0 && checksum(position);
+	return field && settings.objectContact && settings.objectPresence > 0 && checksum(position);
 }
 
 bool MapRendererManaAura::hidesTerrain(const int3 & position) const
@@ -518,6 +525,8 @@ bool MapRendererManaAura::hidesTerrain(const int3 & position) const
 
 uint32_t MapRendererManaAura::opaqueStamp(const int3 & position) const
 {
+	if(!field)
+		return 0;
 	const auto currentStamp = checksum(position);
 	if(!currentStamp || frameStamp != stamp
 		|| !frameBounds.isInside(position.x * 32, position.y * 32))
@@ -528,7 +537,11 @@ uint32_t MapRendererManaAura::opaqueStamp(const int3 & position) const
 
 uint32_t MapRendererManaAura::checksum(const int3 & position, const IMapRendererContext * context) const
 {
-	if(!active || !field || position.z != level)
+	if(!active || position.z != level)
+		return 0;
+	if(settings.gradient)
+		return gradientStamp(position);
+	if(!field)
 		return 0;
 	if(field->containsTile(position.x, position.y))
 		return stamp ? stamp : 1;
@@ -537,6 +550,70 @@ uint32_t MapRendererManaAura::checksum(const int3 & position, const IMapRenderer
 			if(const auto * object = context->getObject(id); object && coversObject(*object))
 				return stamp ? stamp : 1;
 	return 0;
+}
+
+uint32_t MapRendererManaAura::gradientStamp(const int3 & position) const
+{
+	const auto squaredRadius = static_cast<int64_t>(radius) * radius;
+	const auto covered = std::ranges::any_of(sources, [&](const int3 & source)
+	{
+		const auto dx = static_cast<int64_t>(position.x) - source.x;
+		const auto dy = static_cast<int64_t>(position.y) - source.y;
+		return dx * dx + dy * dy <= squaredRadius;
+	});
+	if(radius < 2 || !covered)
+		return 0;
+
+	uint32_t levels = 0;
+	for(unsigned corner = 0; corner < 4; ++corner)
+	{
+		double intensity = 0;
+		for(const auto & source : sources)
+		{
+			const double dx = static_cast<double>(position.x) - source.x + (corner % 2 ? 0.5 : -0.5);
+			const double dy = static_cast<double>(position.y) - source.y + (corner / 2 ? 0.5 : -0.5);
+			const double distance = std::sqrt(dx * dx + dy * dy);
+			intensity = std::max(intensity, (radius - distance) / (radius - 1));
+		}
+		levels |= static_cast<uint32_t>(1 + std::lround(254 * std::min(1.0, intensity))) << (8 * corner);
+	}
+	return levels;
+}
+
+void MapRendererManaAura::renderGradient(Canvas & target, uint32_t levels)
+{
+	const int scale = target.getScalingFactor();
+	if(gradientScale != scale || (gradientTiles.size() >= 512 && !gradientTiles.contains(levels)))
+	{
+		gradientTiles.clear();
+		gradientScale = scale;
+	}
+	auto & image = gradientTiles[levels];
+	if(!image)
+	{
+		const int size = 32 * scale;
+		auto gradient = ENGINE->renderHandler().createImage(Point(size, size), CanvasScalingPolicy::IGNORE);
+		auto canvas = gradient->getCanvas();
+		const int64_t area = 4LL * size * size;
+		const int64_t denominator = 254 * area;
+		for(int y = 0; y < size; ++y)
+			for(int x = 0; x < size; ++x)
+			{
+				const int right = 2 * x + 1, bottom = 2 * y + 1;
+				const int left = 2 * size - right, top = 2 * size - bottom;
+				const int64_t level = static_cast<int64_t>(levels & 255) * left * top
+					+ static_cast<int64_t>((levels >> 8) & 255) * right * top
+					+ static_cast<int64_t>((levels >> 16) & 255) * left * bottom
+					+ static_cast<int64_t>(levels >> 24) * right * bottom - area;
+				const auto channel = [&](int edge, int center)
+				{
+					return static_cast<uint8_t>(edge - ((edge - center) * level + denominator / 2) / denominator);
+				};
+				canvas.drawPoint(Point(x, y), ColorRGBA(channel(105, 15), channel(155, 41), channel(235, 157), 217));
+			}
+		image = std::move(gradient);
+	}
+	target.draw(image, Point(0, 0));
 }
 
 std::shared_ptr<CanvasImage> MapRendererManaAura::blockImage(const int3 & position)
@@ -590,8 +667,14 @@ void MapRendererManaAura::renderStrip(Canvas & target, const int3 & position, in
 
 void MapRendererManaAura::renderTile(Canvas & target, const int3 & position)
 {
-	if(!checksum(position))
+	const auto tileStamp = checksum(position);
+	if(!tileStamp)
 		return;
+	if(settings.gradient)
+	{
+		renderGradient(target, tileStamp);
+		return;
+	}
 	renderStrip(target, position, 1);
 
 	if(settings.debug)

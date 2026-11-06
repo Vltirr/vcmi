@@ -172,6 +172,11 @@ ManaAuraVisualSettings ManaAuraVisualSettings::fromJson(const JsonNode & json)
 		return fallback;
 	};
 	out.enabled = boolean("enabled", true);
+	const auto & mode = json["mode"];
+	if(mode.isString() && mode.String() == "gradient")
+		out.gradient = true;
+	else if(!mode.isNull() && (!mode.isString() || mode.String() != "mist"))
+		logGlobal->warn("config/manaAuraVisuals.json: mode must be mist or gradient; using mist");
 	out.debug = boolean("debug", false);
 	out.profile = boolean("profile", false);
 	out.batchOpaqueTiles = boolean("batchOpaqueTiles", false);
