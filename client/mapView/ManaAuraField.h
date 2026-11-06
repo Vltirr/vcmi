@@ -36,6 +36,7 @@ struct ManaAuraVisualSettings
 	bool debug = false;
 	bool profile = false;
 	bool batchOpaqueTiles = false;
+	bool asyncFrames = false;
 	double framesPerSecond = 12;
 	double rate = 1.5;
 	double motionAmplitude = 1;
@@ -107,6 +108,8 @@ public:
 	void update(double seconds, bool animate);
 	void updateRoutes(const Rect & bounds, const std::vector<Tile> & tiles);
 	void writePixels(const Rect & bounds, std::span<ColorRGBA> output) const;
+	static std::vector<uint8_t> classifyOpaqueTiles(const Rect & bounds, std::span<const ColorRGBA> pixels);
+	bool canDuplicateForAnimation() const;
 	void inheritAnimation(const ManaAuraField & previous);
 	void updateEligibility(const std::vector<bool> & allowed);
 	ColorRGBA pixel(int worldX, int worldY) const;
@@ -211,6 +214,31 @@ public:
 		double preparationMs = 0;
 		Rect bounds;
 		std::unique_ptr<ManaAuraField> field;
+		std::unique_ptr<ManaAuraField> animationSpare;
+		std::exception_ptr error;
+	};
+	struct Routes
+	{
+		Rect bounds;
+		std::vector<ManaAuraField::Tile> tiles;
+	};
+	struct FrameRequest
+	{
+		uint64_t generation = 0;
+		uint32_t revision = 0;
+		int64_t frame = 0;
+		Rect bounds;
+		std::unique_ptr<ManaAuraField> field;
+		std::shared_ptr<const Routes> routes, appliedRoutes;
+		std::vector<bool> allowed;
+		uint64_t eligibilitySignature = 0;
+	};
+	struct FrameResult
+	{
+		FrameRequest request;
+		std::vector<ColorRGBA> pixels;
+		std::vector<uint8_t> opaqueTiles;
+		double backgroundMs = 0;
 		std::exception_ptr error;
 	};
 	ManaAuraFieldBuilder(ManaAuraVisualSettings settings, std::shared_ptr<const ManaAuraMaterial> material);
@@ -219,6 +247,8 @@ public:
 	static Rect region(const Rect & visible, const Rect & coverage, const Rect & previous, int pixelBudget);
 	void cancel();
 	std::optional<Result> take();
+	void requestFrame(FrameRequest request);
+	std::optional<FrameResult> takeFrame(int64_t currentFrame, uint64_t fieldGeneration, uint32_t revision);
 	void retire(std::unique_ptr<ManaAuraField> field);
 
 private:
@@ -236,6 +266,8 @@ private:
 	uint64_t generation = 0;
 	std::optional<Work> pending;
 	std::optional<Result> ready;
+	std::optional<FrameRequest> pendingFrame;
+	std::optional<FrameResult> readyFrame;
 	std::vector<std::unique_ptr<ManaAuraField>> retired;
 	std::jthread worker;
 	void run(std::stop_token stop);

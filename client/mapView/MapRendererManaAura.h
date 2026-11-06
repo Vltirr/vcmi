@@ -56,6 +56,11 @@ private:
 	Rect requestedBounds;
 	uint64_t requestedGeneration = 0;
 	std::unique_ptr<ManaAuraField> field;
+	std::unique_ptr<ManaAuraField> animationSpare;
+	uint64_t fieldGeneration = 0, pendingFrameGeneration = 0;
+	std::shared_ptr<const ManaAuraFieldBuilder::Routes> frameRoutes, spareRoutes;
+	int asyncQueued = 0, asyncAdopted = 0, asyncDiscarded = 0, asyncFallback = 0;
+	double asyncBackgroundMaxMs = 0;
 	Rect prepared;
 	std::vector<int3> sources;
 	int radius = 0, level = -1;
@@ -86,6 +91,7 @@ private:
 	std::vector<ColorRGBA> framePixels;
 	std::vector<uint8_t> opaqueTiles;
 	Rect frameBounds;
+	Rect contactTiles;
 	uint32_t frameStamp = 0;
 	std::list<std::pair<int, int>> imageOrder;
 

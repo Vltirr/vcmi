@@ -60,6 +60,13 @@ void MapRendererManaAura::prepareFrame(
 		profileFrames = 0;
 		profileFogUploads = profileContactUploads = 0;
 		profileFogUploadMs = profileContactUploadMs = 0;
+		if(settings.asyncFrames || asyncDiscarded)
+		{
+			logGlobal->info("MGMA profile async: queued=%d adopted=%d discarded=%d fallback=%d backgroundMaxMs=%g",
+				asyncQueued, asyncAdopted, asyncDiscarded, asyncFallback, asyncBackgroundMaxMs);
+			asyncQueued = asyncAdopted = asyncDiscarded = asyncFallback = 0;
+			asyncBackgroundMaxMs = 0;
+		}
 	}
 	const auto view = context.manaAuraVisualState();
 	if(!loaded && !view.sources.empty())
@@ -91,7 +98,11 @@ void MapRendererManaAura::prepareFrame(
 		{
 			builder->cancel();
 			builder->retire(std::move(field));
+			builder->retire(std::move(animationSpare));
 		}
+		fieldGeneration = 0;
+		frameRoutes.reset();
+		spareRoutes.reset();
 		requestedGeneration = 0;
 		routeImages.clear();
 		routeOrder.clear();
@@ -162,6 +173,7 @@ void MapRendererManaAura::prepareFrame(
 						settings.enabled = false;
 						builder->cancel();
 						builder->retire(std::move(field));
+						builder->retire(std::move(animationSpare));
 						images.clear();
 						imageOrder.clear();
 						stamp = 0;
@@ -172,7 +184,13 @@ void MapRendererManaAura::prepareFrame(
 				if(field)
 					ready->field->inheritAnimation(*field);
 				builder->retire(std::move(field));
+				builder->retire(std::move(animationSpare));
 				field = std::move(ready->field);
+				animationSpare = std::move(ready->animationSpare);
+				fieldGeneration = ready->generation;
+				spareRoutes.reset();
+				if(settings.asyncFrames && !animationSpare)
+					logGlobal->info("MGMA frame worker unavailable for this field, using synchronous composition");
 				prepared = ready->bounds;
 				logGlobal->info(
 					"MGMA ready generation=%llu backgroundMs=%g controlStep=%d",
@@ -185,7 +203,10 @@ void MapRendererManaAura::prepareFrame(
 				adopted = true;
 			}
 			else
+			{
 				builder->retire(std::move(ready->field));
+				builder->retire(std::move(ready->animationSpare));
+			}
 		}
 	if(rebuild)
 	{
@@ -239,9 +260,19 @@ void MapRendererManaAura::prepareFrame(
 		return;
 	}
 
-	const int bx = relevant.x / 4 * 4, by = relevant.y / 4 * 4;
-	const int rightTile = (relevant.right() + 3) / 4 * 4, bottomTile = (relevant.bottom() + 3) / 4 * 4;
-	const Rect frameTiles(bx, by, rightTile - bx, bottomTile - by);
+	const auto alignedTiles = [](const Rect & area)
+	{
+		const int x = area.x / blockTiles * blockTiles, y = area.y / blockTiles * blockTiles;
+		const int right = (area.right() + blockTiles - 1) / blockTiles * blockTiles;
+		const int bottom = (area.bottom() + blockTiles - 1) / blockTiles * blockTiles;
+		return Rect(x, y, right - x, bottom - y);
+	};
+	const auto contains = [](const Rect & outer, const Rect & inner)
+	{
+		return outer.x <= inner.x && outer.y <= inner.y && outer.right() >= inner.right() && outer.bottom() >= inner.bottom();
+	};
+	const Rect frameTiles = alignedTiles(relevant);
+	contactTiles = frameTiles;
 	const Rect nextFrame = frameTiles * 32;
 	const Rect mapRect(0, 0, mapSize.x, mapSize.y);
 	const Rect routeNeeded = frameTiles.resize(3).intersect(mapRect);
@@ -297,6 +328,8 @@ void MapRendererManaAura::prepareFrame(
 				}
 			}
 		field->updateRoutes(routeBounds, routeTiles);
+		if(settings.asyncFrames && (animationSpare || pendingFrameGeneration == fieldGeneration))
+			frameRoutes = std::make_shared<ManaAuraFieldBuilder::Routes>(ManaAuraFieldBuilder::Routes{routeBounds, std::move(routeTiles)});
 		routeWindow = routeBounds;
 		routeShowsRoads = showRoads;
 		routeShowsRivers = showRivers;
@@ -304,9 +337,67 @@ void MapRendererManaAura::prepareFrame(
 	}
 
 	const int64_t currentFrame = view.animated ? static_cast<int64_t>(view.timeMs * settings.framesPerSecond / 1000) : 0;
-	const uint32_t currentStamp = static_cast<uint32_t>(currentFrame) * 2654435761U + revision * 2246822519U + 1;
-	if(frame != currentFrame || stamp != currentStamp)
+	const auto stampFor = [&](int64_t animationFrame)
 	{
+		return static_cast<uint32_t>(animationFrame) * 2654435761U + revision * 2246822519U + 1;
+	};
+	if(pendingFrameGeneration)
+		if(auto ready = builder->takeFrame(view.animated ? currentFrame : std::numeric_limits<int64_t>::max(), fieldGeneration, revision))
+		{
+			pendingFrameGeneration = 0;
+			asyncBackgroundMaxMs = std::max(asyncBackgroundMaxMs, ready->backgroundMs);
+			auto & request = ready->request;
+			if(request.generation != fieldGeneration)
+			{
+				builder->retire(std::move(request.field));
+				++asyncDiscarded;
+			}
+			else if(ready->error)
+			{
+				try
+				{
+					std::rethrow_exception(ready->error);
+				}
+				catch(const std::exception & error)
+				{
+					logGlobal->warn("MGMA frame preparation failed: %s; using synchronous composition", error.what());
+				}
+				builder->retire(std::move(request.field));
+				settings.asyncFrames = false;
+				++asyncDiscarded;
+			}
+			else if(view.animated && !adopted && !routesChanged && request.revision == revision
+				&& request.frame > frame && request.frame <= currentFrame && currentFrame - request.frame <= 2
+				&& contains(request.bounds, nextFrame))
+			{
+				animationSpare = std::move(field);
+				spareRoutes = frameRoutes;
+				field = std::move(request.field);
+				eligibilitySignature = request.eligibilitySignature;
+				frame = request.frame;
+				stamp = frameStamp = stampFor(frame);
+				frameBounds = request.bounds;
+				framePixels = std::move(ready->pixels);
+				opaqueTiles = std::move(ready->opaqueTiles);
+				++asyncAdopted;
+			}
+			else
+			{
+				animationSpare = std::move(request.field);
+				spareRoutes = std::move(request.appliedRoutes);
+				++asyncDiscarded;
+			}
+		}
+	const bool useAsync = settings.asyncFrames && view.animated && frameRoutes
+		&& static_cast<int64_t>(nextFrame.w) * nextFrame.h <= settings.maxRasterPixels
+		&& (animationSpare || pendingFrameGeneration == fieldGeneration);
+	const uint32_t currentStamp = stampFor(currentFrame);
+	const bool keepPublishedFrame = useAsync && stamp && !adopted && !routesChanged
+		&& currentFrame >= frame && currentFrame - frame <= 2;
+	if(!keepPublishedFrame && (frame != currentFrame || stamp != currentStamp))
+	{
+		if(settings.asyncFrames && view.animated)
+			++asyncFallback;
 		uint64_t hash = 1469598103934665603ULL;
 		const auto allowed = allowedTiles(prepared, hash);
 		if(adopted || routesChanged || hash != eligibilitySignature)
@@ -318,7 +409,7 @@ void MapRendererManaAura::prepareFrame(
 		frame = currentFrame;
 		stamp = currentStamp;
 	}
-	if(frameStamp != stamp || !frameBounds.operator==(nextFrame))
+	if(frameStamp != stamp || (useAsync ? !contains(frameBounds, nextFrame) : !frameBounds.operator==(nextFrame)))
 	{
 		const auto started = std::chrono::steady_clock::now();
 		const Rect overlap = frameStamp == stamp ? nextFrame.intersect(frameBounds) : Rect();
@@ -371,18 +462,7 @@ void MapRendererManaAura::prepareFrame(
 		frameBounds = nextFrame;
 		frameStamp = stamp;
 		// Test the final alpha, including route openings, before omitting any lower layer.
-		opaqueTiles.assign(frameTiles.w * frameTiles.h, 0);
-		for(int y = 0; y < frameTiles.h; ++y)
-			for(int x = 0; x < frameTiles.w; ++x)
-			{
-				bool opaque = true;
-				for(int row = 0; row < 32 && opaque; ++row)
-				{
-					const auto * pixels = framePixels.data() + (y * 32 + row) * frameBounds.w + x * 32;
-					opaque = std::all_of(pixels, pixels + 32, [](const ColorRGBA & c) { return c.a == 255; });
-				}
-				opaqueTiles[y * frameTiles.w + x] = opaque;
-			}
+		opaqueTiles = ManaAuraField::classifyOpaqueTiles(frameBounds, framePixels);
 		if(settings.profile)
 		{
 			static int samples = 0;
@@ -399,6 +479,22 @@ void MapRendererManaAura::prepareFrame(
 				total = maximum = pixels = 0;
 			}
 		}
+	}
+	if(useAsync && animationSpare && !pendingFrameGeneration)
+	{
+		Rect workBounds = nextFrame;
+		const Rect margin = frameTiles.resize(blockTiles).intersect(alignedTiles(prepared));
+		const Rect marginPixels = margin * 32;
+		if(contains(margin, frameTiles) && static_cast<int64_t>(marginPixels.w) * marginPixels.h <= settings.maxRasterPixels
+			&& ((!showRoads && !showRivers) || contains(routeWindow, margin.resize(3).intersect(mapRect))))
+			workBounds = marginPixels;
+		uint64_t hash = 1469598103934665603ULL;
+		auto allowed = allowedTiles(prepared, hash);
+		animationSpare->inheritAnimation(*field);
+		builder->requestFrame({fieldGeneration, revision, std::max(frame + 1, currentFrame), workBounds,
+			std::move(animationSpare), frameRoutes, std::move(spareRoutes), std::move(allowed), hash});
+		pendingFrameGeneration = fieldGeneration;
+		++asyncQueued;
 	}
 }
 
@@ -610,10 +706,11 @@ void MapRendererManaAura::writeObjectBand(
 		columns.push_back({ManaAuraContact::objectHeight(worldTop.x + band.x + x, seconds, key + 1., settings.objectPresence), 1. / (foot + 1), foot});
 	}
 	const int worldX = worldTop.x + band.x;
+	const Rect contactFrame = contactTiles * 32;
 	for(int y = 0; y < band.h; ++y)
 	{
 		const int wy = worldTop.y + band.y + y;
-		const auto * frameRow = wy >= frameBounds.y && wy < frameBounds.bottom()
+		const auto * frameRow = wy >= contactFrame.y && wy < contactFrame.bottom()
 			? framePixels.data() + (wy - frameBounds.y) * frameBounds.w : nullptr;
 		const auto * spriteRow = mask.opaque.data() + (band.y + y - mask.bounds.y) * mask.bounds.w;
 		auto * row = pixels + y * stride;
@@ -628,7 +725,7 @@ void MapRendererManaAura::writeObjectBand(
 				if(opacity)
 				{
 					const int wx = worldX + x;
-					if(frameRow && wx >= frameBounds.x && wx < frameBounds.right())
+					if(frameRow && wx >= contactFrame.x && wx < contactFrame.right())
 						colour = frameRow[wx - frameBounds.x];
 					if(colour.a == 0)
 						colour = field->objectPixel(wx, wy);
@@ -654,7 +751,7 @@ std::optional<Rect> MapRendererManaAura::beginObjectBatch(int scale)
 {
 	if(!active || !field || !stamp || !settings.objectContact || settings.objectPresence <= 0)
 		return std::nullopt;
-	const Rect visible(frameBounds.x / 32, frameBounds.y / 32, frameBounds.w / 32, frameBounds.h / 32);
+	const Rect visible = contactTiles;
 	if(batchStamp == stamp && batchBounds.operator==(visible) && batchScale == scale)
 		return std::nullopt;
 	batchStamp = stamp;

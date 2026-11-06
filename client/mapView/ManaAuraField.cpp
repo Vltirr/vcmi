@@ -175,6 +175,7 @@ ManaAuraVisualSettings ManaAuraVisualSettings::fromJson(const JsonNode & json)
 	out.debug = boolean("debug", false);
 	out.profile = boolean("profile", false);
 	out.batchOpaqueTiles = boolean("batchOpaqueTiles", false);
+	out.asyncFrames = boolean("asyncFrames", false);
 	out.framesPerSecond = number(json, "framesPerSecond", 12, 1, 30);
 	out.rate = number(json, "rate", 1.5, 0, 4);
 	out.motionAmplitude = number(json, "motionAmplitude", 1, 0, 4);
@@ -1110,6 +1111,30 @@ bool ManaAuraField::containsTile(int x, int y) const
 	return tileVisual.at((y - tileBounds.y) * tileBounds.w + x - tileBounds.x);
 }
 
+std::vector<uint8_t> ManaAuraField::classifyOpaqueTiles(const Rect & bounds, std::span<const ColorRGBA> pixels)
+{
+	const int columns = bounds.w / 32, rows = bounds.h / 32;
+	std::vector<uint8_t> result(columns * rows);
+	for(int y = 0; y < rows; ++y)
+		for(int x = 0; x < columns; ++x)
+		{
+			bool opaque = true;
+			for(int row = 0; row < 32 && opaque; ++row)
+			{
+				const auto * start = pixels.data() + (y * 32 + row) * bounds.w + x * 32;
+				opaque = std::all_of(start, start + 32, [](const ColorRGBA & c) { return c.a == 255; });
+			}
+			result[y * columns + x] = opaque;
+		}
+	return result;
+}
+
+bool ManaAuraField::canDuplicateForAnimation() const
+{
+	constexpr size_t maxExtraControlBytes = 32 * 1024 * 1024;
+	return cells.size() <= maxExtraControlBytes / (sizeof(Cell) + sizeof(Motion));
+}
+
 ManaAuraFieldBuilder::ManaAuraFieldBuilder(ManaAuraVisualSettings settings, std::shared_ptr<const ManaAuraMaterial> material)
 	: settings(std::move(settings))
 	, material(std::move(material))
@@ -1135,8 +1160,11 @@ uint64_t ManaAuraFieldBuilder::request(Request request)
 	std::lock_guard lock(mutex);
 	buildStop.request_stop();
 	buildStop = std::stop_source();
-	if(ready && ready->field)
+	if(ready)
+	{
 		retired.push_back(std::move(ready->field));
+		retired.push_back(std::move(ready->animationSpare));
+	}
 	ready.reset();
 	pending = Work{++generation, std::move(request), buildStop.get_token()};
 	changed.notify_one();
@@ -1149,8 +1177,11 @@ void ManaAuraFieldBuilder::cancel()
 	++generation;
 	buildStop.request_stop();
 	pending.reset();
-	if(ready && ready->field)
+	if(ready)
+	{
 		retired.push_back(std::move(ready->field));
+		retired.push_back(std::move(ready->animationSpare));
+	}
 	ready.reset();
 	changed.notify_one();
 }
@@ -1160,6 +1191,25 @@ std::optional<ManaAuraFieldBuilder::Result> ManaAuraFieldBuilder::take()
 	std::lock_guard lock(mutex);
 	auto result = std::move(ready);
 	ready.reset();
+	return result;
+}
+
+void ManaAuraFieldBuilder::requestFrame(FrameRequest request)
+{
+	std::lock_guard lock(mutex);
+	assert(!pendingFrame && !readyFrame);
+	pendingFrame.emplace(std::move(request));
+	changed.notify_one();
+}
+
+std::optional<ManaAuraFieldBuilder::FrameResult> ManaAuraFieldBuilder::takeFrame(int64_t currentFrame, uint64_t fieldGeneration, uint32_t revision)
+{
+	std::lock_guard lock(mutex);
+	if(readyFrame && readyFrame->request.generation == fieldGeneration && readyFrame->request.revision == revision
+		&& readyFrame->request.frame > currentFrame && !readyFrame->error)
+		return std::nullopt;
+	auto result = std::move(readyFrame);
+	readyFrame.reset();
 	return result;
 }
 
@@ -1178,6 +1228,7 @@ void ManaAuraFieldBuilder::run(std::stop_token stop)
 	while(!stop.stop_requested())
 	{
 		std::optional<Work> work;
+		std::optional<FrameRequest> frameWork;
 		std::vector<std::unique_ptr<ManaAuraField>> garbage;
 		{
 			std::unique_lock lock(mutex);
@@ -1186,16 +1237,49 @@ void ManaAuraFieldBuilder::run(std::stop_token stop)
 				stop,
 				[this]
 				{
-					return pending.has_value() || !retired.empty();
+					return pending.has_value() || pendingFrame.has_value() || !retired.empty();
 				}
 			);
 			if(stop.stop_requested())
 				return;
 			work = std::move(pending);
 			pending.reset();
+			if(!work)
+			{
+				frameWork = std::move(pendingFrame);
+				pendingFrame.reset();
+			}
 			garbage.swap(retired);
 		}
 		garbage.clear();
+		if(frameWork)
+		{
+			const auto started = std::chrono::steady_clock::now();
+			FrameResult result;
+			result.request = std::move(*frameWork);
+			auto & request = result.request;
+			try
+			{
+				if(request.appliedRoutes != request.routes)
+				{
+					request.field->updateRoutes(request.routes->bounds, request.routes->tiles);
+					request.appliedRoutes = request.routes;
+				}
+				request.field->updateEligibility(request.allowed);
+				request.field->update(request.frame / settings.framesPerSecond, true);
+				result.pixels.resize(static_cast<size_t>(request.bounds.w) * request.bounds.h);
+				request.field->writePixels(request.bounds, result.pixels);
+				result.opaqueTiles = ManaAuraField::classifyOpaqueTiles(request.bounds, result.pixels);
+			}
+			catch(...)
+			{
+				result.error = std::current_exception();
+			}
+			result.backgroundMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
+			std::lock_guard lock(mutex);
+			readyFrame.emplace(std::move(result));
+			continue;
+		}
 		if(!work)
 			continue;
 		const auto started = std::chrono::steady_clock::now();
@@ -1211,6 +1295,17 @@ void ManaAuraFieldBuilder::run(std::stop_token stop)
 				continue;
 			result.field = std::make_unique<ManaAuraField>(settings, *material);
 			result.field->rebuild(request.bounds, request.mapSize, request.level, request.sources, request.radius, request.tiles, work->stop);
+			if(settings.asyncFrames && !work->stop.stop_requested() && result.field->canDuplicateForAnimation())
+			{
+				try
+				{
+					result.animationSpare = std::make_unique<ManaAuraField>(*result.field);
+				}
+				catch(const std::bad_alloc &)
+				{
+					logGlobal->warn("MGMA animation spare allocation failed, composing on the render thread");
+				}
+			}
 		}
 		catch(...)
 		{

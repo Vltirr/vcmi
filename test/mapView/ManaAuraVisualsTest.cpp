@@ -226,6 +226,84 @@ TEST(ManaAuraVisuals, ReplacingCameraGeometryPreservesPulseTiming)
 	EXPECT_EQ(next.getPulses().front().duration, previous.getPulses().front().duration);
 }
 
+TEST(ManaAuraVisuals, BackgroundFramesMatchSynchronousPixelsWithRoutesAndPulses)
+{
+	ManaAuraVisualSettings config;
+	config.asyncFrames = true;
+	config.routeContact = true;
+	config.pulseRate = 5;
+	auto material = std::make_shared<ManaAuraMaterial>(approvedMaterial());
+	ManaAuraFieldBuilder builder(config, material);
+	const Rect tiles(0, 0, 22, 22), visiblePixels(256, 256, 192, 192), paddedPixels(224, 224, 256, 256);
+	const auto generation = builder.request({tiles, int3(64, 64, 2), 0, 8, {int3(10, 10, 0)}, visibleTiles(tiles)});
+	std::optional<ManaAuraFieldBuilder::Result> prepared;
+	const auto buildDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+	while(!prepared && std::chrono::steady_clock::now() < buildDeadline)
+	{
+		prepared = builder.take();
+		if(!prepared)
+			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	}
+	ASSERT_TRUE(prepared);
+	ASSERT_FALSE(prepared->error);
+	ASSERT_TRUE(prepared->animationSpare);
+	ASSERT_EQ(prepared->generation, generation);
+
+	auto routes = std::make_shared<ManaAuraFieldBuilder::Routes>();
+	routes->bounds = tiles;
+	routes->tiles = visibleTiles(tiles);
+	for(int x = 6; x <= 15; ++x)
+	{
+		auto & route = routes->tiles.at(10 * tiles.w + x).route;
+		route.resize(1024);
+		std::fill(route.begin() + 12 * 32, route.begin() + 20 * 32, ColorRGBA(160, 100, 60, 255));
+	}
+	const std::vector<bool> allowed(tiles.w * tiles.h, true);
+	auto & display = prepared->field;
+	display->updateRoutes(routes->bounds, routes->tiles);
+	display->updateEligibility(allowed);
+	for(int frame = 0; frame < 30; ++frame)
+		display->update(frame / config.framesPerSecond, true);
+	ASSERT_FALSE(display->getPulses().empty());
+
+	ManaAuraField reference = *display;
+	auto spare = std::move(prepared->animationSpare);
+	std::shared_ptr<const ManaAuraFieldBuilder::Routes> spareRoutes;
+	for(int64_t frame : {30, 31, 32})
+	{
+		spare->inheritAnimation(*display);
+		builder.requestFrame({generation, 1, frame, paddedPixels, std::move(spare), routes, spareRoutes, allowed, 1});
+		EXPECT_FALSE(builder.takeFrame(frame - 1, generation, 1));
+		reference.update(frame / config.framesPerSecond, true);
+		std::vector<ColorRGBA> expected(visiblePixels.w * visiblePixels.h);
+		reference.writePixels(visiblePixels, expected);
+
+		std::optional<ManaAuraFieldBuilder::FrameResult> result;
+		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+		while(!result && std::chrono::steady_clock::now() < deadline)
+		{
+			result = builder.takeFrame(frame, generation, 1);
+			if(!result)
+				std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		}
+		ASSERT_TRUE(result);
+		ASSERT_FALSE(result->error);
+		EXPECT_EQ(result->request.frame, frame);
+		EXPECT_EQ(result->request.field->emittedCount(), reference.emittedCount());
+		EXPECT_EQ(result->request.field->objectPixel(320, 320), reference.objectPixel(320, 320));
+		for(int y = 0; y < visiblePixels.h; ++y)
+		{
+			const auto expectedRow = expected.begin() + y * visiblePixels.w;
+			const auto actualRow = result->pixels.begin() + (y + visiblePixels.y - paddedPixels.y) * paddedPixels.w
+				+ visiblePixels.x - paddedPixels.x;
+			EXPECT_TRUE(std::equal(expectedRow, expectedRow + visiblePixels.w, actualRow)) << "frame=" << frame << " row=" << y;
+		}
+		spare = std::move(display);
+		spareRoutes = routes;
+		display = std::move(result->request.field);
+	}
+}
+
 TEST(ManaAuraVisuals, SmallAurasStayCachedAcrossPixelCameraMoves)
 {
 	const Rect coverage(4, 4, 35, 35);
