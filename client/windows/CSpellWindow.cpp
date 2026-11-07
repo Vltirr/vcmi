@@ -122,6 +122,22 @@ public:
 		CTextInput::onFocusLost();
 	}
 };
+
+class SpellbookEmptyResults final : public CMultiLineLabel
+{
+public:
+	SpellbookEmptyResults(const Point & center, const std::shared_ptr<IImage> & parchment)
+		: CMultiLineLabel(
+			Rect(center - parchment->dimensions() / 2 + Point(22, 12), parchment->dimensions() - Point(44, 24)),
+			FONT_TIMES, ETextAlignment::CENTER, ColorRGBA(40, 25, 15),
+			GAME->translator().translate("vcmi.spellBook.noMatchingSpells"))
+	{
+		OBJECT_CONSTRUCTION;
+		auto frame = std::make_shared<CPicture>(parchment, Point(-22, -12));
+		frame->removeUsedEvents(LCLICK | SHOW_POPUP);
+		background = std::move(frame);
+	}
+};
 }
 
 class CSpellWindow::LevelTab final : public CIntObject
@@ -545,8 +561,8 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 		});
 		clearSearch->disable();
 		buildLevelTabs();
-		emptyResults = std::make_shared<CLabel>(isBigSpellbook ? 400 : 310, isBigSpellbook ? 240 : 255, FONT_SMALL,
-			ETextAlignment::CENTER, ColorRGBA(66, 44, 25), GAME->translator().translate("vcmi.spellBook.noMatchingSpells"), isBigSpellbook ? 570 : 420);
+		const Point pageCenter(background->pos.w / 2, isBigSpellbook ? 248 : 238);
+		emptyResults = std::make_shared<SpellbookEmptyResults>(pageCenter, levelHelpBackground);
 		emptyResults->disable();
 	}
 	else if(settings["general"]["enableUiEnhancements"].Bool())
