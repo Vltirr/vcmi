@@ -85,7 +85,7 @@ class SpellbookSearchInput final : public CTextInput
 
 public:
 	SpellbookSearchInput(const Rect & bounds, std::shared_ptr<CAnimImage> frame, std::shared_ptr<CLabel> placeholder)
-		: CTextInput(bounds, FONT_SMALL, ETextAlignment::CENTERLEFT, false), frame(std::move(frame)), placeholder(std::move(placeholder))
+		: CTextInput(bounds, FONT_TIMES, ETextAlignment::CENTERLEFT, false), frame(std::move(frame)), placeholder(std::move(placeholder))
 	{
 		addUsedEvents(HOVER);
 		setColor(ColorRGBA(40, 25, 15));
@@ -192,7 +192,8 @@ void CSpellWindow::buildEnhancedBackground(bool archive)
 		? ENGINE->renderHandler().loadImage(ImagePath::builtin("SpellBookLarge"), EImageBlitMode::OPAQUE)
 		: background->getSurface();
 	const auto size = source->dimensions();
-	auto cleaned = ENGINE->renderHandler().createImage(size, CanvasScalingPolicy::IGNORE);
+	// Compose at the original pixel size and scale with the book widgets when drawn.
+	auto cleaned = std::make_shared<CanvasImage>(size);
 	auto canvas = cleaned->getCanvas();
 	canvas.draw(source, Point(0, 0));
 
@@ -205,7 +206,7 @@ void CSpellWindow::buildEnhancedBackground(bool archive)
 
 	if(archive)
 	{
-		auto cover = ENGINE->renderHandler().createImage(size, CanvasScalingPolicy::IGNORE);
+		auto cover = std::make_shared<CanvasImage>(size);
 		auto coverCanvas = cover->getCanvas();
 		coverCanvas.drawColor(Rect(Point(0, 0), size), ColorRGBA(0, 0, 0, 0));
 		const Rect area(7, 30, 782, 445);
@@ -223,7 +224,7 @@ namespace
 {
 std::shared_ptr<CPicture> makeSpellbookRibbon(const std::shared_ptr<IImage> & original, const Rect & source, Point position, const std::string & emblem = {})
 {
-	auto image = ENGINE->renderHandler().createImage(Point(37, 47), CanvasScalingPolicy::IGNORE);
+	auto image = std::make_shared<CanvasImage>(Point(37, 47));
 	auto canvas = image->getCanvas();
 	canvas.drawColor(Rect(0, 0, 37, 47), ColorRGBA(0, 0, 0, 0));
 	const int top = source.h == 41 ? 1 : 0;
@@ -528,11 +529,11 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 		const Point searchOrigin(90, isBigSpellbook ? 478 : 415);
 		const int width = isBigSpellbook ? 300 : 224;
 		auto frame = std::make_shared<CAnimImage>(AnimationPath::builtin(spellbookArt + "search/" + (isBigSpellbook ? "large" : "normal")), 0, 0, searchOrigin.x, searchOrigin.y);
-		auto quill = std::make_shared<CPicture>(ImagePath::builtin(spellbookArt + "search/quill.png"), searchOrigin + Point(17, 8), EImageBlitMode::SIMPLE);
-		quill->removeUsedEvents(LCLICK | SHOW_POPUP);
+		searchQuill = std::make_shared<CPicture>(ImagePath::builtin(spellbookArt + "search/quill.png"), searchOrigin + Point(17, 8), EImageBlitMode::SIMPLE);
+		searchQuill->removeUsedEvents(LCLICK | SHOW_POPUP);
 		r = Rect(searchOrigin + Point(33, 6), Point(width - 58, 16));
-		searchBoxDescription = std::make_shared<CLabel>(r.x, r.center().y, FONT_SMALL, ETextAlignment::CENTERLEFT,
-			ColorRGBA(100, 76, 48), GAME->translator().translate("vcmi.spellBook.search"), r.w);
+		searchBoxDescription = std::make_shared<CLabel>(r.x, r.center().y, FONT_TIMES, ETextAlignment::CENTERLEFT,
+			ColorRGBA(100, 76, 48), GAME->translator().translate("vcmi.spellBook.searchPlaceholder"), r.w);
 		searchBox = std::make_shared<SpellbookSearchInput>(r, frame, searchBoxDescription);
 		searchBox->setCallback(std::bind(&CSpellWindow::searchInput, this));
 		clearSearch = std::make_shared<CPicture>(ImagePath::builtin(spellbookArt + "search/clear.png"), searchOrigin + Point(width - 22, 5), EImageBlitMode::SIMPLE);
@@ -614,7 +615,7 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 		schoolTabCustom.push_back(std::make_shared<CAnimImage>(LIBRARY->spellSchoolHandler->getById(customSpellSchools[i])->getSchoolBookmarkPath(), i == 0 ? 0 : 1, 0, isBigSpellbook ? 0 : 15, yStart + ((yEnd - yStart) * i) / denom));
 	schoolPicture = std::make_shared<CAnimImage>(AnimationPath::builtin("Schools"), 0, 0, 117 + offL, 74 + offT);
 
-	const Point manaPosition = enhancedLayout ? footerRibbon(isBigSpellbook, 2).topLeft() + Point(18, 21) : isBigSpellbook ? Point(592, 485) : Point(434, 426);
+	const Point manaPosition = enhancedLayout ? footerRibbon(isBigSpellbook, 2).topLeft() + Point(18, 20) : isBigSpellbook ? Point(592, 485) : Point(434, 426);
 	if(enhancedLayout)
 	{
 		const auto original = ENGINE->renderHandler().loadImage(ImagePath::builtin("SpelBack"), EImageBlitMode::OPAQUE);
@@ -626,7 +627,7 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 		footerArtwork[1] = makeSpellbookRibbon(original, Rect(478, 406, 37, 47), footerRibbon(isBigSpellbook, 3).topLeft());
 		updateContextRibbon();
 	}
-	mana = std::make_shared<CLabel>(manaPosition.x, manaPosition.y, FONT_SMALL, ETextAlignment::CENTER, Colors::YELLOW, myHero && (!archiveOwner || personalArchive) ? std::to_string(myHero->mana) : "");
+	mana = std::make_shared<CLabel>(manaPosition.x, manaPosition.y, enhancedLayout ? FONT_TINY : FONT_SMALL, ETextAlignment::CENTER, Colors::YELLOW, myHero && (!archiveOwner || personalArchive) ? std::to_string(myHero->mana) : "");
 
 	if(isBigSpellbook)
 		statusBar = CGStatusBar::create(400, archiveTown ? 520 : 587);

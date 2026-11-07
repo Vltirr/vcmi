@@ -95,6 +95,7 @@ class CSpellWindow : public CWindowObject, public IVideoHolder
 	std::shared_ptr<CTextInput> searchBox;
 	std::shared_ptr<TransparentFilledRectangle> searchBoxRectangle;
 	std::shared_ptr<CLabel> searchBoxDescription;
+	std::shared_ptr<CPicture> searchQuill;
 	std::shared_ptr<CPicture> clearSearch;
 	std::shared_ptr<CLabel> emptyResults;
 	std::array<std::shared_ptr<LevelTab>, 6> levelTabs;

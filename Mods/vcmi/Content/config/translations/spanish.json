@@ -1036,6 +1036,7 @@
 	"vcmi.settingsMainWindow.generalTab.help": "Cambiar a la pestaña de Opciones Generales, la cual contiene ajustes relacionados con el comportamiento general del juego.",
 	"vcmi.settingsMainWindow.generalTab.hover": "General",
 	"vcmi.spellBook.search": "buscar...",
+	"vcmi.spellBook.searchPlaceholder": "Buscar...",
 	"vcmi.spellBook.allLevels": "Todos",
 	"vcmi.spellBook.levelHelpLeft": "Clic izquierdo: sólo este nivel.",
 	"vcmi.spellBook.levelHelpRight": "Clic derecho: añadir este nivel.",

@@ -1184,6 +1184,7 @@
 	"vcmi.settingsMainWindow.generalTab.help": "Switches to General Options tab, which contains settings related to general game client behavior.",
 	"vcmi.settingsMainWindow.generalTab.hover": "General",
 	"vcmi.spellBook.search": "search...",
+	"vcmi.spellBook.searchPlaceholder": "Search...",
 	"vcmi.spellBook.allLevels": "All",
 	"vcmi.spellBook.levelHelpLeft": "Left click: this level only.",
 	"vcmi.spellBook.levelHelpRight": "Right click: add this level.",
