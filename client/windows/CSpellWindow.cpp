@@ -485,6 +485,7 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 		personalArchive = myHero && myHero->hasSpellbook() && myInt->cb->getSettings().getBoolean(EGameSettings::SPELLS_LEARN_NOW_CAST_LATER)
 			&& myInt->cb->getSettings().getBoolean(EGameSettings::SPELLS_ARCANE_ARCHIVE_PERSONAL);
 	}
+	const bool hasPersonalSpellbook = myHero && (!archiveTown || personalArchive);
 
 	int maxCustomSchools = (isBigSpellbook ? MAX_CUSTOM_SPELL_SCHOOLS_BIG : MAX_CUSTOM_SPELL_SCHOOLS) * 2;
 	int customSchoolsAvailable = 0;
@@ -583,7 +584,10 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 		showAllSpells = std::make_shared<CToggleButton>(boxPos, AnimationPath::builtin("sysopchk.def"), CButton::tooltip(LIBRARY->generaltexth->translate("core.help.458.hover"), LIBRARY->generaltexth->translate("core.help.458.hover")), [this](bool state){ searchInput(); });
 		showAllSpellsDescription = std::make_shared<CLabel>(boxPos.x + 40, boxPos.y + 12, FONT_SMALL, ETextAlignment::CENTERLEFT, Colors::WHITE, LIBRARY->generaltexth->translate("core.help.458.hover"));
 	}
-	else if(myHero && (!archiveOwner || personalArchive) && myInt->cb->getSettings().getBoolean(EGameSettings::SPELLS_LEARN_NOW_CAST_LATER))
+	// A save can retain the LNCL rule after the module has been disabled in the active preset.
+	else if(hasPersonalSpellbook
+		&& LIBRARY->engineSettings()->getBoolean(EGameSettings::SPELLS_LEARN_NOW_CAST_LATER)
+		&& myInt->cb->getSettings().getBoolean(EGameSettings::SPELLS_LEARN_NOW_CAST_LATER))
 	{
 		const Point bookmarkPosition = enhancedLayout ? footerRibbon(isBigSpellbook, 0).topLeft() : Point(isBigSpellbook ? 379 : 288, isBigSpellbook ? 465 : 406);
 		showOnlyCastableSpells = myInt->localState->getShowOnlyCastableSpells(myHero->id);
@@ -639,11 +643,12 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 		contextRibbons[0] = makeSpellbookRibbon(original, Rect(220, 405, 37, 47), contextPosition, "combat");
 		contextRibbons[1] = makeSpellbookRibbon(original, Rect(354, 406, 37, 41), contextPosition, "adventure");
 		// Keep these pictures owned alongside the other footer controls.
-		footerArtwork[0] = makeSpellbookRibbon(original, Rect(417, 406, 37, 45), footerRibbon(isBigSpellbook, 2).topLeft());
+		if(hasPersonalSpellbook)
+			footerArtwork[0] = makeSpellbookRibbon(original, Rect(417, 406, 37, 45), footerRibbon(isBigSpellbook, 2).topLeft());
 		footerArtwork[1] = makeSpellbookRibbon(original, Rect(478, 406, 37, 47), footerRibbon(isBigSpellbook, 3).topLeft());
 		updateContextRibbon();
 	}
-	mana = std::make_shared<CLabel>(manaPosition.x, manaPosition.y, enhancedLayout ? FONT_TINY : FONT_SMALL, ETextAlignment::CENTER, Colors::YELLOW, myHero && (!archiveOwner || personalArchive) ? std::to_string(myHero->mana) : "");
+	mana = std::make_shared<CLabel>(manaPosition.x, manaPosition.y, enhancedLayout ? FONT_TINY : FONT_SMALL, ETextAlignment::CENTER, Colors::YELLOW, hasPersonalSpellbook ? std::to_string(myHero->mana) : "");
 
 	if(isBigSpellbook)
 		statusBar = CGStatusBar::create(400, archiveTown ? 520 : 587);
@@ -663,7 +668,8 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 		}, this);
 		contextArea->setInputEnabled(!onSpellSelect);
 		updateContextRibbon();
-		manaArea = std::make_shared<InteractiveArea>(footerRibbon(isBigSpellbook, 2) + pos.topLeft(), std::bind(&CSpellWindow::fmanaPtsb, this), this);
+		if(hasPersonalSpellbook)
+			manaArea = std::make_shared<InteractiveArea>(footerRibbon(isBigSpellbook, 2) + pos.topLeft(), std::bind(&CSpellWindow::fmanaPtsb, this), this);
 	}
 	else
 	{
@@ -1228,8 +1234,11 @@ void CSpellWindow::setCurrentPage(int value)
 	rightCornerArea->setEnabled(canTurnRight);
 
 	mana->setText(myHero && (!archiveOwner || personalArchive) ? std::to_string(myHero->mana) : "");
-	const auto manaDescription = myHero && (!archiveOwner || personalArchive) ? UIHelper::getHeroManaDescription(*myHero) : std::string();
-	manaArea->setHelp(manaDescription, manaDescription);
+	if(manaArea)
+	{
+		const auto manaDescription = myHero && (!archiveOwner || personalArchive) ? UIHelper::getHeroManaDescription(*myHero) : std::string();
+		manaArea->setHelp(manaDescription, manaDescription);
+	}
 	ENGINE->fakeMouseMove(); // refresh hover text after updating page controls and mana
 }
 
