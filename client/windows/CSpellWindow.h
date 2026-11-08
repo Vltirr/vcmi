@@ -104,7 +104,7 @@ class CSpellWindow : public CWindowObject, public IVideoHolder
 	std::shared_ptr<InteractiveArea> contextArea;
 	std::shared_ptr<IImage> levelHelpBackground;
 	unsigned selectedLevels = 0;
-	int hoveredLevel = -1;
+	int levelHelpTab = -1;
 	bool enhancedLayout = false;
 
 	void buildEnhancedBackground(bool archive);

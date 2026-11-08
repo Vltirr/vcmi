@@ -60,6 +60,7 @@
 #include "../../lib/mapObjects/CGTownInstance.h"
 #include "../../lib/spells/CSpellHandler.h"
 
+#include <chrono>
 #include <cmath>
 
 namespace
@@ -142,10 +143,14 @@ public:
 
 class CSpellWindow::LevelTab final : public CIntObject
 {
+	using Clock = std::chrono::steady_clock;
+	static constexpr auto helpDelay = std::chrono::milliseconds(500);
+
 	CSpellWindow & owner;
 	const int level;
 	bool hovered = false;
 	bool pressed = false;
+	Clock::time_point helpDue;
 	std::shared_ptr<CAnimImage> art;
 	std::shared_ptr<CLabel> label;
 
@@ -172,10 +177,45 @@ public:
 	{
 		hovered = on;
 		if(on)
-			owner.hoveredLevel = level;
-		else if(owner.hoveredLevel == level)
-			owner.hoveredLevel = -1;
+		{
+			helpDue = Clock::now() + helpDelay;
+			addUsedEvents(TIME);
+		}
+		else
+		{
+			removeUsedEvents(TIME);
+			if(owner.levelHelpTab == level)
+				owner.levelHelpTab = -1;
+		}
 		ENGINE->windows().totalRedraw();
+	}
+
+	void tick(uint32_t) override
+	{
+		if(Clock::now() < helpDue)
+			return;
+
+		removeUsedEvents(TIME);
+		owner.levelHelpTab = level;
+		ENGINE->windows().totalRedraw();
+	}
+
+	void activate() override
+	{
+		if(isActive())
+			return;
+
+		CIntObject::activate();
+		// The dispatcher retains the hover state while another window is active.
+		if(isHovered() && receiveEvent(ENGINE->getCursorPosition(), HOVER))
+			hover(true);
+	}
+
+	void deactivate() override
+	{
+		if(hovered)
+			hover(false);
+		CIntObject::deactivate();
 	}
 
 	void clickPressed(const Point &) override
@@ -298,10 +338,10 @@ void CSpellWindow::selectLevel(int level, bool additive)
 
 void CSpellWindow::drawLevelHelp(Canvas & to)
 {
-	if(hoveredLevel < 0 || !isActive())
+	if(levelHelpTab < 0 || !isActive())
 		return;
 
-	const auto & tab = levelTabs.at(hoveredLevel)->pos;
+	const auto & tab = levelTabs.at(levelHelpTab)->pos;
 	const auto size = levelHelpBackground->dimensions();
 	const auto screen = ENGINE->screenDimensions();
 	if(screen.x < size.x + 16 || screen.y < size.y + 16)
