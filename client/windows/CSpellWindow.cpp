@@ -328,7 +328,7 @@ void CSpellWindow::selectLevel(int level, bool additive)
 		selectedLevels = 0;
 	else if(!additive)
 		selectedLevels = 1u << level;
-	else if(selectedLevels != 0)
+	else
 		selectedLevels |= 1u << level;
 	if(previous != selectedLevels)
 		searchInput();
