@@ -66,6 +66,12 @@
 namespace
 {
 const std::string spellbookArt = "spellbookUI/approved/";
+const std::string favoritesArt = "spellbookUI/favorites/";
+
+std::string favoriteText(const std::string & key)
+{
+	return GAME->translator().translate("vcmi.spellBook.favorites." + key);
+}
 
 Rect footerRibbon(bool large, int index)
 {
@@ -239,6 +245,331 @@ public:
 	void showPopupWindow(const Point &) override
 	{
 		owner.selectLevel(level, true);
+	}
+};
+
+namespace
+{
+std::shared_ptr<CButton> makeFavoriteButton(Point position, const std::string & art, const std::function<void()> & action,
+	const std::string & help = {})
+{
+	auto button = std::make_shared<CButton>(position, AnimationPath::builtin(favoritesArt + art), CButton::tooltip(help, help), action);
+	button->setHoverable(true);
+	button->setRedrawParent(true);
+	return button;
+}
+
+void favoriteCaption(CButton & button, const std::string & text, EFonts font, int inset = 0)
+{
+	auto label = std::make_shared<CLabel>(0, 0, font, ETextAlignment::CENTER, ColorRGBA(40, 25, 15), text, button.pos.w - 12 - inset);
+	label->setAutoRedraw(false);
+	button.setOverlay(label);
+	label->moveBy(Point(-inset / 2, 0));
+}
+
+class FavoriteRibbon final : public CButton
+{
+	const int gripHeight;
+
+public:
+	FavoriteRibbon(bool large, const std::function<void()> & action)
+		: CButton(large ? Point(82, 15) : Point(96, 54),
+			AnimationPath::builtin(favoritesArt + (large ? "ribbon-large" : "ribbon-normal")), CButton::tooltip(), action),
+		gripHeight(large ? 19 : 16)
+	{
+		setHoverable(true);
+		setRedrawParent(true);
+		setOpen(false, false);
+	}
+
+	void setOpen(bool open, bool adding)
+	{
+		const int first = open ? 3 : 0;
+		setImageOrder(first, first + 1, first, first + 2);
+		const auto help = favoriteText(adding ? "cancel" : open ? "back" : "open");
+		setHelp(CButton::tooltip(help, help));
+	}
+
+	bool receiveEvent(const Point & position, int eventType) const override
+	{
+		return Rect(pos.topLeft(), Point(pos.w, gripHeight)).isInside(position);
+	}
+};
+
+class FavoritesScopeMenu final : public CWindowObject
+{
+	std::function<Point()> anchor;
+	std::array<std::shared_ptr<CButton>, 2> choices;
+
+public:
+	FavoritesScopeMenu(const std::function<Point()> & position, const std::array<std::string, 2> & labels,
+		const std::function<void(bool)> & select)
+		: CWindowObject(SHADOW_DISABLED), anchor(position)
+	{
+		pos = Rect(anchor(), Point(126, 44));
+		addUsedEvents(LCLICK | KEYBOARD);
+		OBJECT_CONSTRUCTION;
+		for(size_t i = 0; i < choices.size(); ++i)
+		{
+			choices[i] = makeFavoriteButton(Point(0, 22 * static_cast<int>(i)), "scope-option", [this, select, i]
+			{
+				close();
+				select(i == 1);
+			});
+			favoriteCaption(*choices[i], labels[i], FONT_SMALL);
+		}
+	}
+
+	bool receiveEvent(const Point & position, int eventType) const override
+	{
+		return eventType == LCLICK && !pos.isInside(position);
+	}
+
+	void clickPressed(const Point &) override { close(); }
+	void keyPressed(EShortcut key) override { if(key == EShortcut::GLOBAL_RETURN) close(); }
+	void onScreenResize() override { moveTo(anchor()); }
+};
+}
+
+class CSpellWindow::Favorites final : public CIntObject
+{
+	enum class View { BOOK, PLAYER, HERO, ADDING };
+
+	struct Removal
+	{
+		std::string spell;
+		bool hero;
+		JsonNode previous;
+	};
+
+	CSpellWindow & owner;
+	const std::string heroKey;
+	View view = View::BOOK;
+	View lastList = View::PLAYER;
+	std::optional<Removal> removal;
+	std::array<int, 2> counts{};
+	std::array<std::shared_ptr<IImage>, 4> stars;
+	std::shared_ptr<FavoriteRibbon> ribbon;
+	std::shared_ptr<CButton> scope, add, restore, back, cancel, undo;
+	std::shared_ptr<CPicture> prompt;
+	std::shared_ptr<CLabel> promptText;
+
+	bool heroList() const { return view == View::HERO || view == View::ADDING; }
+	bool hasHero() const { return !heroKey.empty(); }
+	bool listOpen() const { return view == View::PLAYER || view == View::HERO; }
+
+	std::string heroName() const
+	{
+		return GAME->translator().translate(owner.myHero->getNameTextID());
+	}
+
+	std::string forHero(const std::string & key) const
+	{
+		MetaString text = MetaString::createFromRawString(favoriteText(key));
+		text.replaceRawString(heroName());
+		return text.toString(&GAME->translator());
+	}
+
+	const JsonNode & preferences(bool hero) const
+	{
+		const auto & data = owner.myInt->localState->getSpellbookFavorites();
+		return hero ? data["heroes"][heroKey] : data["player"];
+	}
+
+	bool marked(const std::string & spell, bool hero) const
+	{
+		const auto & specific = preferences(hero)[spell];
+		if(specific.isBool())
+			return specific.Bool();
+		const auto & player = preferences(false)[spell];
+		return hero && player.isBool() && player.Bool();
+	}
+
+	void setPreference(const std::string & spell, bool hero, const JsonNode & value)
+	{
+		auto data = owner.myInt->localState->getSpellbookFavorites();
+		auto & list = hero ? data["heroes"][heroKey] : data["player"];
+		if(value.isNull())
+			list.Struct().erase(spell);
+		else
+			list[spell] = value;
+		owner.myInt->localState->setSpellbookFavorites(std::move(data));
+	}
+
+	void setMarked(const std::string & spell, bool hero, bool value)
+	{
+		JsonNode entry;
+		if(hero ? value != marked(spell, false) : value)
+			entry.Bool() = value;
+		setPreference(spell, hero, entry);
+	}
+
+	void changeView(View next)
+	{
+		view = next;
+		if(listOpen())
+			lastList = view;
+		removal.reset();
+		owner.statusBar->clear();
+		owner.searchInput();
+	}
+
+	std::string scopeLabel(bool hero) const
+	{
+		return (hero ? heroName() : favoriteText("player")) + " (" + std::to_string(counts[hero ? 1 : 0]) + ")";
+	}
+
+	void showScopes()
+	{
+		if(!hasHero())
+			return;
+		ENGINE->windows().createAndPushWindow<FavoritesScopeMenu>([this]{ return scope->pos.topLeft() - Point(0, 45); },
+			std::array{scopeLabel(false), scopeLabel(true)}, [this](bool hero){ changeView(hero ? View::HERO : View::PLAYER); });
+	}
+
+	void restorePlayerList()
+	{
+		auto data = owner.myInt->localState->getSpellbookFavorites();
+		data["heroes"].Struct().erase(heroKey);
+		owner.myInt->localState->setSpellbookFavorites(std::move(data));
+		removal.reset();
+		owner.refreshSpells(owner.currentPage);
+	}
+
+	void undoRemoval()
+	{
+		if(!removal)
+			return;
+		setPreference(removal->spell, removal->hero, removal->previous);
+		removal.reset();
+		owner.refreshSpells(owner.currentPage);
+	}
+
+public:
+	Favorites(CSpellWindow & owner, const CGHeroInstance * hero)
+		: owner(owner), heroKey(hero ? std::to_string(hero->id.getNum()) : std::string())
+	{
+		setRedrawParent(true);
+		OBJECT_CONSTRUCTION;
+		for(size_t i = 0; i < stars.size(); ++i)
+			stars[i] = ENGINE->renderHandler().loadImage(ImagePath::builtin(favoritesArt + "star-" + std::to_string(i) + ".png"), EImageBlitMode::SIMPLE);
+		ribbon = std::make_shared<FavoriteRibbon>(owner.isBigSpellbook, [this]
+		{
+			if(!cancelAdding())
+				changeView(listOpen() ? View::BOOK : lastList);
+		});
+		const int y = owner.archiveOwner ? 512 : owner.isBigSpellbook ? 516 : 457;
+		const int end = footerRibbon(owner.isBigSpellbook, 3).x + 37;
+		scope = makeFavoriteButton(Point(90, y), "scope", [this]{ showScopes(); }, favoriteText(hasHero() ? "scopeHelp" : "playerHelp"));
+		add = makeFavoriteButton(Point(end - 223, y), "primary", [this]{ changeView(View::ADDING); }, hasHero() ? forHero("addHelp") : std::string());
+		restore = makeFavoriteButton(Point(end - 104, y), "secondary", [this]{ restorePlayerList(); }, hasHero() ? forHero("restoreHelp") : std::string());
+		back = makeFavoriteButton(Point(end - 105, y), "back", [this]{ changeView(View::BOOK); }, favoriteText("back"));
+		cancel = makeFavoriteButton(Point(end - 83, y), "cancel", [this]{ cancelAdding(); }, favoriteText("cancel"));
+		undo = makeFavoriteButton(Point(end - 78, y), "undo", [this]{ undoRemoval(); }, favoriteText("undoHelp"));
+		favoriteCaption(*add, favoriteText("add"), FONT_SMALL);
+		favoriteCaption(*restore, favoriteText("restore"), FONT_TINY);
+		favoriteCaption(*back, favoriteText("back"), FONT_TINY);
+		favoriteCaption(*cancel, favoriteText("cancel"), FONT_TINY);
+		favoriteCaption(*undo, favoriteText("undo"), FONT_TINY);
+		scope->setHoverEnabledWhenBlocked(true);
+		scope->block(!hasHero());
+		prompt = std::make_shared<CPicture>(ImagePath::builtin(favoritesArt + "prompt.png"), Point(90, y), EImageBlitMode::SIMPLE);
+		prompt->removeUsedEvents(LCLICK | SHOW_POPUP);
+		promptText = std::make_shared<CLabel>(192, y + 11, FONT_TINY, ETextAlignment::CENTER, ColorRGBA(40, 25, 15),
+			hasHero() ? forHero("pick") : std::string(), 190);
+		updateControls();
+	}
+
+	bool cancelAdding()
+	{
+		if(view != View::ADDING)
+			return false;
+		changeView(View::HERO);
+		return true;
+	}
+
+	bool selectForHero(const CSpell & spell)
+	{
+		if(view != View::ADDING)
+			return false;
+		setMarked(spell.getJsonKey(), true, true);
+		changeView(View::HERO);
+		return true;
+	}
+
+	bool markersEnabled() const { return view != View::ADDING; }
+	bool isMarked(const CSpell & spell) const { return marked(spell.getJsonKey(), heroList()); }
+
+	void toggle(const CSpell & spell)
+	{
+		const auto key = spell.getJsonKey();
+		const bool hero = heroList();
+		const bool wasMarked = marked(key, hero);
+		removal.reset();
+		if(wasMarked && listOpen())
+			removal = Removal{key, hero, preferences(hero)[key]};
+		setMarked(key, hero, !wasMarked);
+		owner.refreshSpells(owner.currentPage);
+	}
+
+	std::string markerHelp(const CSpell & spell) const
+	{
+		const bool selected = isMarked(spell);
+		return heroList() ? forHero(selected ? "removeHero" : "addHero") : favoriteText(selected ? "removePlayer" : "addPlayer");
+	}
+
+	const std::shared_ptr<IImage> & star(bool marked, bool hover) const
+	{
+		return stars[(marked ? 2 : 0) + (hover ? 1 : 0)];
+	}
+
+	void resetCounts() { counts = {}; }
+
+	bool include(const CSpell & spell)
+	{
+		const auto key = spell.getJsonKey();
+		const bool player = marked(key, false);
+		const bool hero = hasHero() && marked(key, true);
+		counts[0] += player;
+		counts[1] += hero;
+		switch(view)
+		{
+			case View::BOOK: return true;
+			case View::PLAYER: return player;
+			case View::HERO: return hero;
+			case View::ADDING: return !hero;
+		}
+		return false;
+	}
+
+	std::string emptyText() const
+	{
+		if(view == View::ADDING)
+			return favoriteText("noCandidates");
+		if(listOpen() && counts[heroList() ? 1 : 0] == 0)
+			return favoriteText("empty");
+		return GAME->translator().translate("vcmi.spellBook.noMatchingSpells");
+	}
+
+	void updateControls()
+	{
+		const bool open = listOpen();
+		const bool adding = view == View::ADDING;
+		ribbon->setOpen(open, adding);
+		scope->setEnabled(open);
+		if(open)
+			favoriteCaption(*scope, scopeLabel(heroList()), FONT_SMALL, 18);
+		add->setEnabled(view == View::HERO);
+		const int secondaryWidth = removal ? 78 : 104;
+		add->moveTo(Point(back->pos.x + back->pos.w - secondaryWidth - 7 - add->pos.w, add->pos.y));
+		restore->setEnabled(view == View::HERO && !removal);
+		if(view == View::HERO)
+			restore->block(preferences(true).Struct().empty());
+		back->setEnabled(view == View::PLAYER && !removal);
+		undo->setEnabled(open && removal.has_value());
+		cancel->setEnabled(adding);
+		prompt->setEnabled(adding);
+		promptText->setEnabled(adding);
 	}
 };
 
@@ -659,6 +990,9 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 		updateAvailabilityBookmark();
 	}
 
+	if(enhancedLayout && !onSpellSelect
+		&& CResourceHandler::get()->existsResource(ImagePath::builtin("SPRITES/" + favoritesArt + "star-0.png")))
+		favorites = std::make_shared<Favorites>(*this, hasPersonalSpellbook ? myHero : nullptr);
 	processSpells();
 
 	//numbers of spell pages computed
@@ -782,13 +1116,13 @@ void CSpellWindow::searchInput()
 		searchBoxDescription->setEnabled(searchBox->getText().empty() && (!enhancedLayout || !searchBox->hasFocus()));
 	if(clearSearch)
 		clearSearch->setEnabled(!searchBox->getText().empty());
+	refreshSpells(0);
+}
 
+void CSpellWindow::refreshSpells(int page)
+{
 	processSpells();
-
-	int cp = 0;
-	// spellbook last page battle index is not reset after battle, so this needs to stay here
-	vstd::abetween(cp, 0, std::max(0, pagesWithinCurrentTab() - 1));
-	setCurrentPage(cp);
+	setCurrentPage(std::clamp(page, 0, std::max(0, pagesWithinCurrentTab() - 1)));
 	computeSpellsPerArea();
 }
 
@@ -829,41 +1163,31 @@ void CSpellWindow::processSpells()
 	mySpells.clear();
 	sitesPerTabAdv.clear(); // hold page counts of previous run - would be added up otherwise
 	sitesPerTabBattle.clear();
+	if(favorites)
+		favorites->resetCounts();
 
 	//initializing castable spells
 	mySpells.reserve(LIBRARY->spellh->objects.size());
 	for(auto const & spell : LIBRARY->spellh->objects)
 	{
+		if(spell->isCreatureAbility())
+			continue;
+		bool available;
+		if(archiveOwner)
+			available = archiveSpells.contains(spell->id);
+		else if(onSpellSelect)
+			available = spell->isCombat() == openOnBattleSpells
+				&& (myHero->canCastThisSpell(spell.get()) || (showAllSpells->isSelected() && !spell->isSpecial()));
+		else
+			available = (!spell->isSpecial() && myHero->spellbookContainsSpell(spell->id)) || myHero->canCastThisSpell(spell.get());
+		if(!available || (showOnlyCastableSpells && isSpellBlockedByWisdom(spell.get())))
+			continue;
+		if(favorites && !favorites->include(*spell))
+			continue;
 		const int level = spell->getLevel();
 		if(selectedLevels && (level < 1 || level > 5 || !(selectedLevels & (1u << level))))
 			continue;
-		bool searchTextFound = !searchBox || TextOperations::isFuzzyMatch(searchBox->getText(), spell->getNameTranslated());
-		if(archiveOwner)
-		{
-			if(archiveSpells.count(spell->id) && !spell->isCreatureAbility() && searchTextFound
-				&& (!showOnlyCastableSpells || !isSpellBlockedByWisdom(spell.get())))
-				mySpells.push_back(spell.get());
-			continue;
-		}
-
-		if(onSpellSelect)
-		{
-			bool spellAvailable = myHero->canCastThisSpell(spell.get()) || (showAllSpells->isSelected() && !spell->isSpecial());
-
-			if(spell->isCombat() == openOnBattleSpells
-				&& !spell->isCreatureAbility()
-				&& searchTextFound
-				&& spellAvailable)
-			{
-				mySpells.push_back(spell.get());
-			}
-			continue;
-		}
-
-		if(!spell->isCreatureAbility()
-			&& ((!spell->isSpecial() && myHero->spellbookContainsSpell(spell->getId())) || myHero->canCastThisSpell(spell.get()))
-			&& (!showOnlyCastableSpells || !isSpellBlockedByWisdom(spell.get()))
-			&& searchTextFound)
+		if(!searchBox || TextOperations::isFuzzyMatch(searchBox->getText(), spell->getNameTranslated()))
 			mySpells.push_back(spell.get());
 	}
 
@@ -924,6 +1248,8 @@ void CSpellWindow::processSpells()
 
 void CSpellWindow::fexitb()
 {
+	if(favorites && favorites->cancelAdding())
+		return;
 	if(archiveOwner)
 	{
 		close();
@@ -1073,7 +1399,8 @@ void CSpellWindow::updateArchiveLayout()
 	center(Rect(Point(0, 0), viewport));
 	// Centre the visible cover near 54% height, reserving room for the lower controls.
 	const int wideScreenOffset = std::min(extraWidth / 25, 8);
-	const int bookY = std::min(viewport.y * 54 / 100 - 252 + wideScreenOffset, viewport.y - 535);
+	const int footerReserve = favorites && screen.y - viewport.y < 30 ? 550 : 535;
+	const int bookY = std::min(viewport.y * 54 / 100 - 252 + wideScreenOffset, viewport.y - footerReserve);
 	const Point bookOffset((viewport.x - 800) / 2, bookY);
 	for(auto * child : children)
 		child->moveBy(bookOffset - archiveBookOffset);
@@ -1194,8 +1521,14 @@ void CSpellWindow::computeSpellsPerArea()
 			}
 		}
 	}
+	if(favorites)
+		favorites->updateControls();
 	if(emptyResults)
+	{
 		emptyResults->setEnabled(spellsCurSite.empty());
+		if(favorites && spellsCurSite.empty())
+			emptyResults->setText(favorites->emptyText());
+	}
 	//applying
 	if(selectedTab == SpellSchool::ANY || currentPage != 0)
 	{
@@ -1353,6 +1686,8 @@ CSpellWindow::SpellArea::SpellArea(Rect pos, CSpellWindow * owner)
 	this->pos = pos;
 	this->owner = owner;
 	addUsedEvents(LCLICK | SHOW_POPUP | HOVER);
+	if(owner->favorites)
+		addUsedEvents(MOVE);
 
 	schoolLevel = -1;
 	mySpell = nullptr;
@@ -1385,6 +1720,16 @@ void CSpellWindow::SpellArea::clickPressed(const Point & cursorPosition)
 	if(mySpell)
 	{
 		ENGINE->input().hapticFeedback();
+		if(owner->favorites)
+		{
+			if(owner->favorites->selectForHero(*mySpell))
+				return;
+			if(favoriteArea().isInside(cursorPosition))
+			{
+				owner->favorites->toggle(*mySpell);
+				return;
+			}
+		}
 		if(owner->archiveOwner)
 		{
 			GAME->interface()->showInfoDialog(owner->archiveDescription(mySpell), std::make_shared<CComponent>(ComponentType::SPELL, mySpell->id));
@@ -1516,10 +1861,19 @@ void CSpellWindow::SpellArea::showPopupWindow(const Point & cursorPosition)
 
 void CSpellWindow::SpellArea::hover(bool on)
 {
+	favoriteHovered = on && mySpell && owner->favorites && owner->favorites->markersEnabled()
+		&& favoriteArea().isInside(ENGINE->getCursorPosition());
+	if(owner->favorites)
+		owner->redraw();
 	if(mySpell)
 	{
 		if(on)
 		{
+			if(favoriteHovered)
+			{
+				owner->statusBar->write(owner->favorites->markerHelp(*mySpell));
+				return;
+			}
 			MetaString message = MetaString::createFromRawString("%s (%s)");
 			message.replaceTextID(mySpell->getNameTextID());
 			message.replaceTextID("core.genrltxt", 171 + mySpell->getLevel());
@@ -1530,6 +1884,40 @@ void CSpellWindow::SpellArea::hover(bool on)
 	}
 }
 
+Rect CSpellWindow::SpellArea::favoriteArea() const
+{
+	return Rect(pos.topLeft() + Point(65, 50), Point(15, 15));
+}
+
+bool CSpellWindow::SpellArea::receiveEvent(const Point & position, int eventType) const
+{
+	if(owner->favorites && mySpell)
+	{
+		if(!owner->favorites->markersEnabled() && eventType == LCLICK)
+			return Rect(pos.topLeft(), Point(80, 97)).isInside(position);
+		if(owner->favorites->markersEnabled() && favoriteArea().isInside(position))
+			return true;
+	}
+	return CIntObject::receiveEvent(position, eventType);
+}
+
+void CSpellWindow::SpellArea::mouseMoved(const Point & position, const Point &)
+{
+	if(mySpell && owner->favorites->markersEnabled() && favoriteHovered != favoriteArea().isInside(position))
+		hover(true);
+}
+
+void CSpellWindow::SpellArea::showAll(Canvas & to)
+{
+	CIntObject::showAll(to);
+	if(!mySpell || !owner->favorites || !owner->favorites->markersEnabled())
+		return;
+
+	const bool marked = owner->favorites->isMarked(*mySpell);
+	if(marked || isHovered())
+		to.draw(owner->favorites->star(marked, favoriteHovered), favoriteArea().topLeft());
+}
+
 void CSpellWindow::SpellArea::setSpell(const CSpell * spell)
 {
 	schoolBorder.reset();
@@ -1538,6 +1926,8 @@ void CSpellWindow::SpellArea::setSpell(const CSpell * spell)
 	level->setText("");
 	cost->setText("");
 	mySpell = spell;
+	favoriteHovered = mySpell && owner->favorites && isHovered() && owner->favorites->markersEnabled()
+		&& favoriteArea().isInside(ENGINE->getCursorPosition());
 	if(mySpell)
 	{
 		SpellSchool whichSchool = mySpell->schools.empty() ? SpellSchool::ANY : *mySpell->schools.begin();

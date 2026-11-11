@@ -34,6 +34,17 @@ void PlayerLocalState::setSpellbookSettings(const PlayerSpellbookSetting & newSe
 	spellbookSettings = newSettings;
 }
 
+const JsonNode & PlayerLocalState::getSpellbookFavorites() const
+{
+	return spellbookFavorites;
+}
+
+void PlayerLocalState::setSpellbookFavorites(JsonNode favorites)
+{
+	spellbookFavorites = std::move(favorites);
+	synchronizeState();
+}
+
 bool PlayerLocalState::getShowOnlyCastableSpells(ObjectInstanceID hero) const
 {
 	return heroesShowingOnlyCastableSpells.contains(hero);
@@ -369,6 +380,8 @@ void PlayerLocalState::serialize(JsonNode & dest) const
 	dest["spellbook"]["pageAdvmap"].Integer() = spellbookSettings.spellbookLastPageAdvmap;
 	dest["spellbook"]["tabBattle"].Integer() = spellbookSettings.spellbookLastTabBattle;
 	dest["spellbook"]["tabAdvmap"].Integer() = spellbookSettings.spellbookLastTabAdvmap;
+	if(!spellbookFavorites.isNull())
+		dest["spellbook"]["favorites"] = spellbookFavorites;
 	for(const auto hero : heroesShowingOnlyCastableSpells)
 	{
 		JsonNode record;
@@ -394,6 +407,7 @@ void PlayerLocalState::deserialize(const JsonNode & source)
 	wanderingHeroes.clear();
 	ownedTowns.clear();
 	heroesShowingOnlyCastableSpells.clear();
+	spellbookFavorites = source["spellbook"]["favorites"];
 
 	for (auto const & town : source["towns"].Vector())
 	{

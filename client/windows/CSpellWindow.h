@@ -33,6 +33,7 @@ class VideoWidgetOnce;
 class CSpellWindow : public CWindowObject, public IVideoHolder
 {
 	class LevelTab;
+	class Favorites;
 	class SpellArea : public CIntObject
 	{
 		const CSpell * mySpell;
@@ -44,6 +45,8 @@ class CSpellWindow : public CWindowObject, public IVideoHolder
 		std::shared_ptr<CLabel> level;
 		std::shared_ptr<CLabel> cost;
 		std::string learnedSpellRequirement() const;
+		Rect favoriteArea() const;
+		bool favoriteHovered = false;
 	public:
 		SpellArea(Rect pos, CSpellWindow * owner);
 		~SpellArea();
@@ -52,6 +55,9 @@ class CSpellWindow : public CWindowObject, public IVideoHolder
 		void clickPressed(const Point & cursorPosition) override;
 		void showPopupWindow(const Point & cursorPosition) override;
 		void hover(bool on) override;
+		void mouseMoved(const Point & cursorPosition, const Point & lastUpdateDistance) override;
+		bool receiveEvent(const Point & cursorPosition, int eventType) const override;
+		void showAll(Canvas & to) override;
 	};
 
 	class InteractiveArea : public CIntObject
@@ -103,6 +109,7 @@ class CSpellWindow : public CWindowObject, public IVideoHolder
 	std::array<std::shared_ptr<CPicture>, 2> footerArtwork;
 	std::shared_ptr<InteractiveArea> contextArea;
 	std::shared_ptr<IImage> levelHelpBackground;
+	std::shared_ptr<Favorites> favorites;
 	unsigned selectedLevels = 0;
 	int levelHelpTab = -1;
 	bool enhancedLayout = false;
@@ -165,6 +172,7 @@ class CSpellWindow : public CWindowObject, public IVideoHolder
 	void toggleSpellAvailability();
 	void updateAvailabilityBookmark();
 	void searchInput();
+	void refreshSpells(int page);
 	void computeSpellsPerArea(); //recalculates spellAreas::mySpell
 
 	void setSchoolImages(SpellSchool school);

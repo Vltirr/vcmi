@@ -10,6 +10,7 @@
 #pragma once
 
 #include "../lib/constants/EntityIdentifiers.h"
+#include "../lib/json/JsonNode.h"
 
 class CGHeroInstance;
 class CGTownInstance;
@@ -44,6 +45,7 @@ class PlayerLocalState
 	std::vector<const CGTownInstance *> ownedTowns; //our towns on the adventure map
 
 	PlayerSpellbookSetting spellbookSettings;
+	JsonNode spellbookFavorites;
 	/// Per-player UI preference, keyed by the hero's stable ID rather than its pointer.
 	std::set<ObjectInstanceID> heroesShowingOnlyCastableSpells;
 
@@ -60,6 +62,8 @@ public:
 
 	const PlayerSpellbookSetting & getSpellbookSettings() const;
 	void setSpellbookSettings(const PlayerSpellbookSetting & newSettings);
+	const JsonNode & getSpellbookFavorites() const;
+	void setSpellbookFavorites(JsonNode favorites);
 	bool getShowOnlyCastableSpells(ObjectInstanceID hero) const;
 	void setShowOnlyCastableSpells(ObjectInstanceID hero, bool enabled);
 
