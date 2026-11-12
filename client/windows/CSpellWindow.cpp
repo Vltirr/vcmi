@@ -27,11 +27,13 @@
 #include "../gui/Shortcut.h"
 #include "../gui/WindowHandler.h"
 #include "media/IVideoPlayer.h"
+#include "media/ISoundPlayer.h"
 #include "render/CAnimation.h"
 #include "render/IRenderHandler.h"
 #include "render/IImage.h"
 #include "render/Canvas.h"
 #include "render/CanvasImage.h"
+#include "render/IFont.h"
 #include "render/IScreenHandler.h"
 #include "../widgets/GraphicalPrimitiveCanvas.h"
 #include "../widgets/Images.h"
@@ -65,7 +67,7 @@
 
 namespace
 {
-const std::string spellbookArt = "spellbookUI/approved/";
+const std::string spellbookArt = "spellbookUI/";
 const std::string favoritesArt = "spellbookUI/favorites/";
 
 std::string favoriteText(const std::string & key)
@@ -77,6 +79,24 @@ Rect footerRibbon(bool large, int index)
 {
 	return Rect((large ? 520 : 331) + 49 * index, large ? 464 : 405, 37, 47);
 }
+
+class SpellbookLayeredPicture final : public CPicture
+{
+	std::shared_ptr<IImage> overlay;
+	Point overlayOffset;
+
+public:
+	SpellbookLayeredPicture(const std::shared_ptr<IImage> & base, Point position, std::shared_ptr<IImage> overlay, Point overlayOffset = Point(0, 0))
+		: CPicture(base, position), overlay(std::move(overlay)), overlayOffset(overlayOffset)
+	{
+	}
+
+	void showAll(Canvas & to) override
+	{
+		CPicture::showAll(to);
+		to.draw(overlay, pos.topLeft() + overlayOffset);
+	}
+};
 
 class SpellbookSearchInput final : public CTextInput
 {
@@ -149,14 +169,11 @@ public:
 
 class CSpellWindow::LevelTab final : public CIntObject
 {
-	using Clock = std::chrono::steady_clock;
-	static constexpr auto helpDelay = std::chrono::milliseconds(500);
 
 	CSpellWindow & owner;
 	const int level;
 	bool hovered = false;
 	bool pressed = false;
-	Clock::time_point helpDue;
 	std::shared_ptr<CAnimImage> art;
 	std::shared_ptr<CLabel> label;
 
@@ -184,26 +201,13 @@ public:
 		hovered = on;
 		if(on)
 		{
-			helpDue = Clock::now() + helpDelay;
-			addUsedEvents(TIME);
+			const auto left = GAME->translator().translate("vcmi.spellBook.levelHelpLeft");
+			const auto right = GAME->translator().translate("vcmi.spellBook.levelHelpRight");
+			owner.statusBar->write(left + "  " + right);
 		}
 		else
-		{
-			removeUsedEvents(TIME);
-			if(owner.levelHelpTab == level)
-				owner.levelHelpTab = -1;
-		}
-		ENGINE->windows().totalRedraw();
-	}
-
-	void tick(uint32_t) override
-	{
-		if(Clock::now() < helpDue)
-			return;
-
-		removeUsedEvents(TIME);
-		owner.levelHelpTab = level;
-		ENGINE->windows().totalRedraw();
+			owner.statusBar->clear();
+		owner.redraw();
 	}
 
 	void activate() override
@@ -227,12 +231,16 @@ public:
 	void clickPressed(const Point &) override
 	{
 		pressed = true;
+		if(!ENGINE->input().inputModeUsesGestures())
+			ENGINE->sound().playSound(soundBase::button);
 		owner.redraw();
 	}
 
 	void clickReleased(const Point &) override
 	{
 		pressed = false;
+		if(ENGINE->input().inputModeUsesGestures())
+			ENGINE->sound().playSound(soundBase::button);
 		owner.selectLevel(level, false);
 	}
 
@@ -244,6 +252,7 @@ public:
 
 	void showPopupWindow(const Point &) override
 	{
+		ENGINE->sound().playSound(soundBase::button);
 		owner.selectLevel(level, true);
 	}
 };
@@ -270,13 +279,19 @@ void favoriteCaption(CButton & button, const std::string & text, EFonts font, in
 class FavoriteRibbon final : public CButton
 {
 	const int gripHeight;
+	const std::function<bool()> hasPreviousPage;
+	std::shared_ptr<IImage> occludedMask;
+	bool isOpen = false;
 
 public:
-	FavoriteRibbon(bool large, const std::function<void()> & action)
-		: CButton(large ? Point(82, 15) : Point(96, 54),
+	FavoriteRibbon(bool large, const std::function<void()> & action, std::function<bool()> previousPage)
+		: CButton(large ? Point(90, 15) : Point(96, 54),
 			AnimationPath::builtin(favoritesArt + (large ? "ribbon-large" : "ribbon-normal")), CButton::tooltip(), action),
-		gripHeight(large ? 19 : 16)
+		gripHeight(large ? 25 : 24), hasPreviousPage(std::move(previousPage))
 	{
+		const auto maskPath = ImagePath::builtin(favoritesArt + (large ? "ribbon-large-6.png" : "ribbon-normal-6.png"));
+		if(CResourceHandler::get()->existsResource(maskPath.addPrefix("SPRITES/")))
+			occludedMask = ENGINE->renderHandler().loadImage(maskPath, EImageBlitMode::SIMPLE);
 		setHoverable(true);
 		setRedrawParent(true);
 		setOpen(false, false);
@@ -284,7 +299,8 @@ public:
 
 	void setOpen(bool open, bool adding)
 	{
-		const int first = open ? 3 : 0;
+		isOpen = open;
+		const int first = !open ? 0 : occludedMask && hasPreviousPage() ? 6 : 3;
 		setImageOrder(first, first + 1, first, first + 2);
 		const auto help = favoriteText(adding ? "cancel" : open ? "back" : "open");
 		setHelp(CButton::tooltip(help, help));
@@ -292,7 +308,12 @@ public:
 
 	bool receiveEvent(const Point & position, int eventType) const override
 	{
-		return Rect(pos.topLeft(), Point(pos.w, gripHeight)).isInside(position);
+		if(!CButton::receiveEvent(position, eventType))
+			return false;
+		const auto offset = position - pos.topLeft();
+		if(!isOpen)
+			return offset.y < gripHeight;
+		return !occludedMask || !hasPreviousPage() || !occludedMask->isTransparent(offset);
 	}
 };
 
@@ -316,7 +337,7 @@ public:
 				close();
 				select(i == 1);
 			});
-			favoriteCaption(*choices[i], labels[i], FONT_SMALL);
+			favoriteCaption(*choices[i], labels[i], FONT_TINY);
 		}
 	}
 
@@ -330,6 +351,8 @@ public:
 	void onScreenResize() override { moveTo(anchor()); }
 };
 }
+
+bool isLegacySpellSchool(SpellSchool school);
 
 class CSpellWindow::Favorites final : public CIntObject
 {
@@ -346,6 +369,7 @@ class CSpellWindow::Favorites final : public CIntObject
 	const std::string heroKey;
 	View view = View::BOOK;
 	View lastList = View::PLAYER;
+	std::optional<bool> preferFavorites;
 	std::optional<Removal> removal;
 	std::array<int, 2> counts{};
 	std::array<std::shared_ptr<IImage>, 4> stars;
@@ -354,7 +378,7 @@ class CSpellWindow::Favorites final : public CIntObject
 	std::shared_ptr<CPicture> prompt;
 	std::shared_ptr<CLabel> promptText;
 
-	bool heroList() const { return view == View::HERO || view == View::ADDING; }
+	bool heroList() const { return view == View::HERO || (view == View::ADDING && lastList == View::HERO); }
 	bool hasHero() const { return !heroKey.empty(); }
 	bool listOpen() const { return view == View::PLAYER || view == View::HERO; }
 
@@ -407,11 +431,18 @@ class CSpellWindow::Favorites final : public CIntObject
 	void changeView(View next)
 	{
 		view = next;
+		if(view != View::ADDING)
+			preferFavorites = listOpen();
 		if(listOpen())
 			lastList = view;
 		removal.reset();
 		owner.statusBar->clear();
 		owner.searchInput();
+	}
+
+	const JsonNode & preferencesView() const
+	{
+		return owner.myInt->localState->getSpellbookFavorites()["views"][heroKey][owner.openOnBattleSpells ? "combat" : "adventure"];
 	}
 
 	std::string scopeLabel(bool hero) const
@@ -453,20 +484,19 @@ public:
 		OBJECT_CONSTRUCTION;
 		for(size_t i = 0; i < stars.size(); ++i)
 			stars[i] = ENGINE->renderHandler().loadImage(ImagePath::builtin(favoritesArt + "star-" + std::to_string(i) + ".png"), EImageBlitMode::SIMPLE);
-		ribbon = std::make_shared<FavoriteRibbon>(owner.isBigSpellbook, [this]
+		ribbon = std::make_shared<FavoriteRibbon>(owner.isBigSpellbook, [this]{ toggleView(); }, [this]
 		{
-			if(!cancelAdding())
-				changeView(listOpen() ? View::BOOK : lastList);
+			return this->owner.currentPage > 0;
 		});
 		const int y = owner.archiveOwner ? 512 : owner.isBigSpellbook ? 516 : 457;
 		const int end = footerRibbon(owner.isBigSpellbook, 3).x + 37;
 		scope = makeFavoriteButton(Point(90, y), "scope", [this]{ showScopes(); }, favoriteText(hasHero() ? "scopeHelp" : "playerHelp"));
-		add = makeFavoriteButton(Point(end - 223, y), "primary", [this]{ changeView(View::ADDING); }, hasHero() ? forHero("addHelp") : std::string());
+		add = makeFavoriteButton(Point(end - 223, y), "primary", [this]{ changeView(View::ADDING); });
 		restore = makeFavoriteButton(Point(end - 104, y), "secondary", [this]{ restorePlayerList(); }, hasHero() ? forHero("restoreHelp") : std::string());
 		back = makeFavoriteButton(Point(end - 105, y), "back", [this]{ changeView(View::BOOK); }, favoriteText("back"));
 		cancel = makeFavoriteButton(Point(end - 83, y), "cancel", [this]{ cancelAdding(); }, favoriteText("cancel"));
-		undo = makeFavoriteButton(Point(end - 78, y), "undo", [this]{ undoRemoval(); }, favoriteText("undoHelp"));
-		favoriteCaption(*add, favoriteText("add"), FONT_SMALL);
+		undo = makeFavoriteButton(Point(end - 78 + (owner.isBigSpellbook ? 0 : 18), y), "undo", [this]{ undoRemoval(); }, favoriteText("undoHelp"));
+		favoriteCaption(*add, favoriteText("add"), FONT_TINY);
 		favoriteCaption(*restore, favoriteText("restore"), FONT_TINY);
 		favoriteCaption(*back, favoriteText("back"), FONT_TINY);
 		favoriteCaption(*cancel, favoriteText("cancel"), FONT_TINY);
@@ -476,26 +506,107 @@ public:
 		prompt = std::make_shared<CPicture>(ImagePath::builtin(favoritesArt + "prompt.png"), Point(90, y), EImageBlitMode::SIMPLE);
 		prompt->removeUsedEvents(LCLICK | SHOW_POPUP);
 		promptText = std::make_shared<CLabel>(192, y + 11, FONT_TINY, ETextAlignment::CENTER, ColorRGBA(40, 25, 15),
-			hasHero() ? forHero("pick") : std::string(), 190);
+			std::string(), 190);
 		updateControls();
+	}
+
+	void restoreView()
+	{
+		const auto & saved = preferencesView();
+		lastList = View::HERO;
+		if(saved.isStruct())
+		{
+			if(saved["open"].isBool())
+				preferFavorites = saved["open"].Bool();
+			lastList = saved["hero"].Bool() ? View::HERO : View::PLAYER;
+			owner.selectedLevels = static_cast<unsigned>(saved["levels"].Integer()) & 0x3e;
+			const auto school = SpellSchool(saved["school"].Integer());
+			if(isLegacySpellSchool(school) || vstd::contains(owner.customSpellSchools, school))
+				owner.selectedTab = school;
+			for(const auto & entry : saved["additionalSchools"].Vector())
+			{
+				const auto extra = SpellSchool(entry.Integer());
+				if(owner.selectedTab != SpellSchool::ANY && extra != owner.selectedTab && extra != SpellSchool::ANY
+					&& (isLegacySpellSchool(extra) || vstd::contains(owner.customSpellSchools, extra))
+					&& !vstd::contains(owner.additionalSchools, extra))
+					owner.additionalSchools.push_back(extra);
+			}
+		}
+		else
+			owner.selectedTab = SpellSchool::ANY;
+
+		view = preferFavorites.value_or(true) ? lastList : View::BOOK;
+		owner.processSpells();
+		const auto matchesContext = [this](const CSpell * spell)
+		{
+			return spell->isCombat() == owner.battleSpellsOnly;
+		};
+		const auto matchesFilters = [this, &matchesContext](const CSpell * spell)
+		{
+			return matchesContext(spell) && owner.matchesSchool(*spell);
+		};
+		if(!std::any_of(owner.mySpells.begin(), owner.mySpells.end(), matchesFilters))
+		{
+			owner.selectedLevels = 0;
+			owner.additionalSchools.clear();
+			owner.selectedTab = SpellSchool::ANY;
+			owner.processSpells();
+		}
+		if(listOpen() && !std::any_of(owner.mySpells.begin(), owner.mySpells.end(), [&](const CSpell * spell)
+		{
+			return matchesContext(spell) && (preferFavorites.has_value() || !owner.isSpellUnavailable(spell));
+		}))
+		{
+			view = View::BOOK;
+			owner.processSpells();
+		}
+	}
+
+	void saveView() const
+	{
+		if(owner.archiveOwner || !hasHero())
+			return;
+		auto data = owner.myInt->localState->getSpellbookFavorites();
+		auto & saved = data["views"][heroKey][owner.openOnBattleSpells ? "combat" : "adventure"];
+		if(preferFavorites)
+			saved["open"].Bool() = *preferFavorites;
+		saved["hero"].Bool() = lastList == View::HERO;
+		saved["school"].Integer() = owner.selectedTab;
+		auto & additional = saved["additionalSchools"].Vector();
+		additional.clear();
+		for(const auto school : owner.additionalSchools)
+		{
+			additional.emplace_back();
+			additional.back().Integer() = school;
+		}
+		saved["levels"].Integer() = owner.selectedLevels;
+		owner.myInt->localState->setSpellbookFavorites(std::move(data));
+	}
+
+	void toggleView()
+	{
+		if(!cancelAdding())
+			changeView(listOpen() ? View::BOOK : lastList);
 	}
 
 	bool cancelAdding()
 	{
 		if(view != View::ADDING)
 			return false;
-		changeView(View::HERO);
+		changeView(lastList);
 		return true;
 	}
 
-	bool selectForHero(const CSpell & spell)
+	bool selectCandidate(const CSpell & spell)
 	{
 		if(view != View::ADDING)
 			return false;
-		setMarked(spell.getJsonKey(), true, true);
-		changeView(View::HERO);
+		setMarked(spell.getJsonKey(), heroList(), true);
+		changeView(lastList);
 		return true;
 	}
+
+	bool ribbonContains(const Point & point) const { return ribbon->receiveEvent(point, LCLICK); }
 
 	bool markersEnabled() const { return view != View::ADDING; }
 	bool isMarked(const CSpell & spell) const { return marked(spell.getJsonKey(), heroList()); }
@@ -537,7 +648,7 @@ public:
 			case View::BOOK: return true;
 			case View::PLAYER: return player;
 			case View::HERO: return hero;
-			case View::ADDING: return !hero;
+			case View::ADDING: return heroList() ? !hero : !player;
 		}
 		return false;
 	}
@@ -558,15 +669,24 @@ public:
 		ribbon->setOpen(open, adding);
 		scope->setEnabled(open);
 		if(open)
-			favoriteCaption(*scope, scopeLabel(heroList()), FONT_SMALL, 18);
-		add->setEnabled(view == View::HERO);
-		const int secondaryWidth = removal ? 78 : 104;
-		add->moveTo(Point(back->pos.x + back->pos.w - secondaryWidth - 7 - add->pos.w, add->pos.y));
-		restore->setEnabled(view == View::HERO && !removal);
+		{
+			favoriteCaption(*scope, scopeLabel(heroList()), FONT_TINY, 18);
+			const auto help = heroList() ? forHero("addHelp") : favoriteText("addPlayerHelp");
+			add->setHelp(CButton::tooltip(help, help));
+		}
+		add->setEnabled(open);
+		auto & secondary = heroList() ? restore : back;
+		const int end = undo->pos.x + undo->pos.w - (owner.isBigSpellbook ? 0 : 18);
+		const int secondaryRight = removal ? undo->pos.x - 7 : end;
+		secondary->moveTo(Point(secondaryRight - secondary->pos.w, secondary->pos.y));
+		add->moveTo(Point(secondary->pos.x - 7 - add->pos.w, add->pos.y));
+		restore->setEnabled(view == View::HERO);
 		if(view == View::HERO)
 			restore->block(preferences(true).Struct().empty());
-		back->setEnabled(view == View::PLAYER && !removal);
+		back->setEnabled(view == View::PLAYER);
 		undo->setEnabled(open && removal.has_value());
+		if(adding)
+			promptText->setText(heroList() ? forHero("pick") : favoriteText("pickPlayer"));
 		cancel->setEnabled(adding);
 		prompt->setEnabled(adding);
 		promptText->setEnabled(adding);
@@ -579,7 +699,6 @@ void CSpellWindow::buildEnhancedBackground(bool archive)
 		? ENGINE->renderHandler().loadImage(ImagePath::builtin("SpellBookLarge"), EImageBlitMode::OPAQUE)
 		: background->getSurface();
 	const auto size = source->dimensions();
-	// Compose at the original pixel size and scale with the book widgets when drawn.
 	auto cleaned = std::make_shared<CanvasImage>(size);
 	auto canvas = cleaned->getCanvas();
 	canvas.draw(source, Point(0, 0));
@@ -601,10 +720,9 @@ void CSpellWindow::buildEnhancedBackground(bool archive)
 		cleaned = cover;
 	}
 
-	auto result = cleaned->getCanvas();
 	const std::string variant = archive ? "archive" : isBigSpellbook ? "large" : "normal";
-	result.draw(ENGINE->renderHandler().loadImage(ImagePath::builtin(spellbookArt + "paper/" + variant + "-overlay.png"), EImageBlitMode::SIMPLE), Point(0, 0));
-	background = std::make_shared<CPicture>(cleaned, Point(0, 0));
+	auto paper = ENGINE->renderHandler().loadImage(ImagePath::builtin(spellbookArt + "paper/" + variant + "-overlay.png"), EImageBlitMode::SIMPLE);
+	background = std::make_shared<SpellbookLayeredPicture>(cleaned, Point(0, 0), paper);
 }
 
 namespace
@@ -628,13 +746,16 @@ std::shared_ptr<CPicture> makeSpellbookRibbon(const std::shared_ptr<IImage> & or
 					canvas.draw(original, Point(x, top + y), Rect(source.x + x, source.y + y, width, 1));
 		}
 	}
-	if(!emblem.empty())
+	std::shared_ptr<CPicture> picture;
+	if(emblem.empty())
+		picture = std::make_shared<CPicture>(image, position);
+	else
 	{
 		canvas.draw(original, Point(3, 0), Rect(420, 406, 31, 35));
 		auto symbol = ENGINE->renderHandler().loadImage(ImagePath::builtin(spellbookArt + "context/" + emblem + "-symbol.png"), EImageBlitMode::SIMPLE);
-		canvas.draw(symbol, Point((37 - symbol->dimensions().x) / 2, emblem == "combat" ? 2 : 4));
+		const Point offset((37 - symbol->dimensions().x) / 2, emblem == "combat" ? 2 : 4);
+		picture = std::make_shared<SpellbookLayeredPicture>(image, position, symbol, offset);
 	}
-	auto picture = std::make_shared<CPicture>(image, position);
 	picture->removeUsedEvents(CIntObject::LCLICK | CIntObject::SHOW_POPUP);
 	return picture;
 }
@@ -667,37 +788,68 @@ void CSpellWindow::selectLevel(int level, bool additive)
 		redraw();
 }
 
-void CSpellWindow::drawLevelHelp(Canvas & to)
+void CSpellWindow::setHoverHelp(const std::string & text)
 {
-	if(levelHelpTab < 0 || !isActive())
+	if(hoverHelp == text)
+		return;
+	hoverHelp = text;
+	hoverHelpDelay = text.empty() ? 0 : 500;
+	if(text.empty())
+		removeUsedEvents(TIME);
+	else
+	{
+		const auto cursor = ENGINE->getCursorPosition();
+		hoverHelpAnchor = Rect(cursor, Point(1, 1));
+		for(const auto & level : levelTabs)
+			if(level->pos.isInside(cursor))
+				hoverHelpAnchor = level->pos;
+		addUsedEvents(TIME);
+	}
+	redraw();
+}
+
+void CSpellWindow::tick(uint32_t msPassed)
+{
+	if(msPassed < hoverHelpDelay)
+	{
+		hoverHelpDelay -= msPassed;
+		return;
+	}
+	hoverHelpDelay = 0;
+	removeUsedEvents(TIME);
+	redraw();
+}
+
+void CSpellWindow::drawHoverHelp(Canvas & to)
+{
+	if(hoverHelp.empty() || hoverHelpDelay || !isActive())
 		return;
 
-	const auto & tab = levelTabs.at(levelHelpTab)->pos;
 	const auto size = levelHelpBackground->dimensions();
 	const auto screen = ENGINE->screenDimensions();
-	if(screen.x < size.x + 16 || screen.y < size.y + 16)
+	const auto lines = CMessage::breakText(hoverHelp, size.x - 44, FONT_TINY);
+	const int lineHeight = ENGINE->renderHandler().loadFont(FONT_TINY)->getLineHeight();
+	const int height = std::max(size.y, static_cast<int>(lines.size()) * lineHeight + 24);
+	if(screen.x < size.x + 16 || screen.y < height + 16)
 		return;
-	const int above = tab.y - size.y - 6;
-	int left = 8;
-	int right = screen.x - size.x - 8;
-	if(above < 8)
-	{
-		const int bookX = levelTabs.front()->pos.x - (isBigSpellbook ? 228 : 156);
-		const int pageLeft = std::max(left, bookX + (isBigSpellbook ? 80 : 95));
-		const int pageRight = std::min(right, bookX + (isBigSpellbook ? 719 : 524) - size.x);
-		if(pageLeft <= pageRight)
-		{
-			left = pageLeft;
-			right = pageRight;
-		}
-	}
-	const int x = std::clamp(tab.center().x - size.x / 2, left, right);
-	const int y = above >= 8 ? above : std::min(tab.y + tab.h + 6, screen.y - size.y - 8);
+
+	const auto & anchor = hoverHelpAnchor;
+	const int x = std::clamp(anchor.center().x - size.x / 2, 8, screen.x - size.x - 8);
+	const int above = anchor.y - height - 8;
+	const int y = above >= 8 ? above : std::min(anchor.y + anchor.h + 12, screen.y - height - 8);
 	const Point origin(x, y);
-	to.draw(levelHelpBackground, origin);
+	const int half = size.y / 2;
+	to.draw(levelHelpBackground, origin, Rect(0, 0, size.x, half));
+	for(int row = half; row < height - (size.y - half); ++row)
+		to.draw(levelHelpBackground, origin + Point(0, row), Rect(0, half, size.x, 1));
+	to.draw(levelHelpBackground, origin + Point(0, height - (size.y - half)), Rect(0, half, size.x, size.y - half));
 	const ColorRGBA ink(40, 25, 15);
-	to.drawText(origin + Point(22, 16), FONT_TINY, ink, ETextAlignment::TOPLEFT, GAME->translator().translate("vcmi.spellBook.levelHelpLeft"));
-	to.drawText(origin + Point(22, 34), FONT_TINY, ink, ETextAlignment::TOPLEFT, GAME->translator().translate("vcmi.spellBook.levelHelpRight"));
+	int lineY = (height - static_cast<int>(lines.size()) * lineHeight) / 2;
+	for(const auto & line : lines)
+	{
+		to.drawText(origin + Point(22, lineY), FONT_TINY, ink, ETextAlignment::TOPLEFT, line);
+		lineY += lineHeight;
+	}
 }
 
 void CSpellWindow::updateContextRibbon()
@@ -737,7 +889,61 @@ bool isLegacySpellSchool(SpellSchool school)
 	return getAnimFrameFromSchool(school) != -1;
 }
 
-CSpellWindow::InteractiveArea::InteractiveArea(const Rect & myRect, const std::function<void()> & funcL, int helpTextId, CSpellWindow * _owner)
+class SpellbookSchoolTabs final : public CIntObject
+{
+	std::shared_ptr<CAnimation> animation;
+	std::shared_ptr<IImage> inactive;
+	int primary = 4;
+	std::array<bool, 5> extra{};
+
+public:
+	explicit SpellbookSchoolTabs(Point position)
+		: CIntObject(0, position),
+		animation(ENGINE->renderHandler().loadAnimation(AnimationPath::builtin("SpelTab"), EImageBlitMode::COLORKEY))
+	{
+		const auto dimensions = animation->getImage(0)->dimensions();
+		pos.w = dimensions.x;
+		pos.h = dimensions.y;
+	}
+
+	void setSelection(SpellSchool school, const std::vector<SpellSchool> & additional)
+	{
+		primary = getAnimFrameFromSchool(school);
+		if(primary < 0 && !inactive)
+			inactive = ENGINE->renderHandler().loadImage(ImagePath::builtin("SpelTabNone.png"), EImageBlitMode::COLORKEY);
+		extra.fill(false);
+		for(const auto id : additional)
+		{
+			const int frame = getAnimFrameFromSchool(id);
+			if(frame >= 0)
+				extra[frame] = true;
+		}
+	}
+
+	void showAll(Canvas & to) override
+	{
+		const auto base = primary >= 0 ? animation->getImage(primary) : inactive;
+		if(std::none_of(extra.begin(), extra.end(), [](bool selected){ return selected; }))
+		{
+			to.draw(base, pos.topLeft());
+			return;
+		}
+
+		// The rows meet in transparent gaps common to every SpelTab frame.
+		static constexpr std::array rows = {0, 55, 114, 177, 239, 294};
+		static constexpr std::array frames = {0, 3, 1, 2, 4};
+		for(size_t row = 0; row < frames.size(); ++row)
+		{
+			const int frame = frames[row];
+			const auto art = extra[frame] ? animation->getImage(frame) : base;
+			const Rect slice(0, rows[row], pos.w, rows[row + 1] - rows[row]);
+			to.draw(art, pos.topLeft() + slice.topLeft(), slice);
+		}
+	}
+};
+
+CSpellWindow::InteractiveArea::InteractiveArea(const Rect & myRect, const std::function<void()> & funcL, int helpTextId, CSpellWindow * _owner, bool turnOnRelease)
+	: turnOnRelease(turnOnRelease)
 {
 	addUsedEvents(LCLICK | SHOW_POPUP | HOVER);
 	pos = myRect;
@@ -771,19 +977,63 @@ CSpellWindow::InteractiveArea::InteractiveArea(const Rect & myRect, const std::f
 
 void CSpellWindow::InteractiveArea::setHelp(const std::string & hover, const std::string & help)
 {
+	const bool refreshHover = hoverText != hover && isHovered();
+	if(refreshHover && !hoverText.empty() && !hover.empty() && owner->hoverHelp == hoverText)
+	{
+		owner->hoverHelp = hover;
+		owner->redraw();
+	}
 	hoverText = hover;
 	helpText = help;
+	if(refreshHover)
+		this->hover(true);
 }
 
-void CSpellWindow::InteractiveArea::clickPressed(const Point & cursorPosition)
+void CSpellWindow::InteractiveArea::setSchoolAction(SpellSchool school)
+{
+	onRight = [this, school]{ owner->addSchool(school); };
+	hoverText += "  " + GAME->translator().translate("vcmi.spellBook.schoolHelp");
+}
+
+void CSpellWindow::InteractiveArea::setHitExclusion(std::function<bool(const Point &)> predicate)
+{
+	excludesPoint = std::move(predicate);
+}
+
+bool CSpellWindow::InteractiveArea::receiveEvent(const Point & position, int eventType) const
+{
+	return (!excludesPoint || !excludesPoint(position)) && CIntObject::receiveEvent(position, eventType);
+}
+
+void CSpellWindow::InteractiveArea::clickPressed(const Point &)
+{
+	if(!turnOnRelease)
+		activateLeft();
+}
+
+void CSpellWindow::InteractiveArea::clickReleased(const Point &)
+{
+	if(turnOnRelease)
+		activateLeft();
+}
+
+void CSpellWindow::InteractiveArea::activateLeft()
 {
 	ENGINE->input().hapticFeedback();
+	if(owner->enhancedLayout)
+		ENGINE->sound().playSound(soundBase::button);
 	onLeft();
 }
 
 void CSpellWindow::InteractiveArea::showPopupWindow(const Point & cursorPosition)
 {
-	CRClickPopup::createAndPush(helpText);
+	if(onRight)
+	{
+		ENGINE->sound().playSound(soundBase::button);
+		onRight();
+	}
+	else
+		CRClickPopup::createAndPush(helpText);
 }
 
 void CSpellWindow::InteractiveArea::hover(bool on)
@@ -904,8 +1154,14 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 		background->setPlayerColor(GAME->interface()->playerID);
 
 	const std::string variant = archiveTown ? "archive" : isBigSpellbook ? "large" : "normal";
-	enhancedLayout = settings["general"]["enableUiEnhancements"].Bool()
-		&& CResourceHandler::get()->existsResource(ImagePath::builtin("SPRITES/" + spellbookArt + "paper/" + variant + "-overlay.png"));
+	const auto layoutConfigPath = JsonPath::builtin("config/widgets/spellbookUI.json");
+	if(settings["general"]["enableUiEnhancements"].Bool() && CResourceHandler::get()->existsResource(layoutConfigPath))
+	{
+		const JsonNode layoutConfig(layoutConfigPath);
+		enhancedLayout = layoutConfig["enabled"].Bool()
+			&& CResourceHandler::get()->existsResource(ImagePath::builtin("SPRITES/" + spellbookArt + "paper/" + variant + "-overlay.png"));
+		positionedHelp = enhancedLayout && layoutConfig["positionedTooltips"].Bool();
+	}
 	if(enhancedLayout)
 		buildEnhancedBackground(archiveTown != nullptr);
 
@@ -927,6 +1183,7 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 		clearSearch = std::make_shared<CPicture>(ImagePath::builtin(spellbookArt + "search/clear.png"), searchOrigin + Point(width - 22, 5), EImageBlitMode::SIMPLE);
 		clearSearch->addLClickCallback([this]
 		{
+			ENGINE->sound().playSound(soundBase::button);
 			searchBox->setText("");
 			searchBox->giveFocus();
 			searchInput();
@@ -997,17 +1254,34 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 
 	//numbers of spell pages computed
 
-	leftCorner = std::make_shared<CPicture>(ImagePath::builtin("SpelTrnL.bmp"), 97 + offL, 77 + offT);
-	rightCorner = std::make_shared<CPicture>(ImagePath::builtin("SpelTrnR.bmp"), 487 + offR, 72 + offT);
+	const auto pageArt = [](const std::string & path)
+	{
+		return ImagePath::builtin(spellbookArt + "page/" + path + ".png");
+	};
+	const bool customCorners = enhancedLayout && CResourceHandler::get()->existsResource(pageArt("previous").addPrefix("SPRITES/"));
+	if(customCorners)
+	{
+		leftCorner = std::make_shared<CPicture>(pageArt("previous"), Point(isBigSpellbook ? 90 : 91, 77 + offT), EImageBlitMode::SIMPLE);
+		rightCorner = std::make_shared<CPicture>(pageArt("next"), Point(487 + offR, 72 + offT), EImageBlitMode::SIMPLE);
+	}
+	else
+	{
+		leftCorner = std::make_shared<CPicture>(ImagePath::builtin("SpelTrnL.bmp"), 97 + offL, 77 + offT);
+		rightCorner = std::make_shared<CPicture>(ImagePath::builtin("SpelTrnR.bmp"), 487 + offR, 72 + offT);
+	}
 
-	schoolTab = std::make_shared<CAnimImage>(AnimationPath::builtin("SpelTab"), getAnimFrameFromSchool(selectedTab), 0, 524 + offR, 88);
+	schoolTab = std::make_shared<SpellbookSchoolTabs>(Point(524 + offR, 88));
 	int customSchoolCount = customSpellSchools.size();
 	int yStart = 93;
 	int yEnd = yStart + (std::min(customSchoolCount, isBigSpellbook ? MAX_CUSTOM_SPELL_SCHOOLS_BIG : MAX_CUSTOM_SPELL_SCHOOLS) - 1) * 62;
 	int denom = std::max(customSchoolCount - 1, 1);
 	for(int i = 0; i < customSchoolCount; i++)
 		schoolTabCustom.push_back(std::make_shared<CAnimImage>(LIBRARY->spellSchoolHandler->getById(customSpellSchools[i])->getSchoolBookmarkPath(), i == 0 ? 0 : 1, 0, isBigSpellbook ? 0 : 15, yStart + ((yEnd - yStart) * i) / denom));
-	schoolPicture = std::make_shared<CAnimImage>(AnimationPath::builtin("Schools"), 0, 0, 117 + offL, 74 + offT);
+	const int favoriteInset = favorites ? (isBigSpellbook ? 15 : 8) : 0;
+	const int leftSpellColumn = 117 + offL + favoriteInset;
+	// The ribbon reaches past the first spell column.
+	const int schoolHeaderX = leftSpellColumn + (favorites ? (isBigSpellbook ? 6 : 5) : 0);
+	schoolPicture = std::make_shared<CAnimImage>(AnimationPath::builtin("Schools"), 0, 0, schoolHeaderX, 74 + offT);
 
 	const Point manaPosition = enhancedLayout ? footerRibbon(isBigSpellbook, 2).topLeft() + Point(18, 20) : isBigSpellbook ? Point(592, 485) : Point(434, 426);
 	if(enhancedLayout)
@@ -1019,7 +1293,16 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 		// Keep these pictures owned alongside the other footer controls.
 		if(hasPersonalSpellbook)
 			footerArtwork[0] = makeSpellbookRibbon(original, Rect(417, 406, 37, 45), footerRibbon(isBigSpellbook, 2).topLeft());
-		footerArtwork[1] = makeSpellbookRibbon(original, Rect(478, 406, 37, 47), footerRibbon(isBigSpellbook, 3).topLeft());
+		const auto closePath = ImagePath::builtin(spellbookArt + "context/close-ribbon.png");
+		if(CResourceHandler::get()->existsResource(closePath.addPrefix("SPRITES/")))
+		{
+			auto cloth = ENGINE->renderHandler().loadImage(closePath, EImageBlitMode::SIMPLE);
+			auto symbol = ENGINE->renderHandler().loadImage(ImagePath::builtin(spellbookArt + "context/close-symbol.png"), EImageBlitMode::SIMPLE);
+			footerArtwork[1] = std::make_shared<SpellbookLayeredPicture>(cloth, footerRibbon(isBigSpellbook, 3).topLeft(), symbol, Point(5, 6));
+			footerArtwork[1]->removeUsedEvents(LCLICK | SHOW_POPUP);
+		}
+		else
+			footerArtwork[1] = makeSpellbookRibbon(original, Rect(478, 406, 37, 47), footerRibbon(isBigSpellbook, 3).topLeft());
 		updateContextRibbon();
 	}
 	mana = std::make_shared<CLabel>(manaPosition.x, manaPosition.y, enhancedLayout ? FONT_TINY : FONT_SMALL, ETextAlignment::CENTER, Colors::YELLOW, hasPersonalSpellbook ? std::to_string(myHero->mana) : "");
@@ -1028,6 +1311,9 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 		statusBar = CGStatusBar::create(400, archiveTown ? 520 : 587);
 	else
 		statusBar = CGStatusBar::create(7, 569, ImagePath::builtin("Spelroll.bmp"));
+
+	if(positionedHelp)
+		statusBar->setHoverTextHandler([this](const std::string & text){ setHoverHelp(text); });
 
 	Rect schoolRect( 549 + pos.x + offR, 94 + pos.y, 45, 35);
 	if(enhancedLayout)
@@ -1052,20 +1338,33 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 		interactiveAreas.push_back(std::make_shared<InteractiveArea>(Rect(355 + pos.x + (isBigSpellbook ? 110 : 0), 405 + pos.y + offB, isBigSpellbook ? 60 : 36, 56), std::bind(&CSpellWindow::fadvSpellsb, this), 452, this));
 		manaArea = std::make_shared<InteractiveArea>(Rect(418 + pos.x + (isBigSpellbook ? 142 : 0), 405 + pos.y + offB, isBigSpellbook ? 60 : 36, 56), std::bind(&CSpellWindow::fmanaPtsb, this), this);
 	}
-	interactiveAreas.push_back(std::make_shared<InteractiveArea>( schoolRect + Point(0, 0),   std::bind(&CSpellWindow::selectSchool,   this, SpellSchool::AIR), 454, this));
-	interactiveAreas.push_back(std::make_shared<InteractiveArea>( schoolRect + Point(0, 57),  std::bind(&CSpellWindow::selectSchool,   this, SpellSchool::EARTH), 457, this));
-	interactiveAreas.push_back(std::make_shared<InteractiveArea>( schoolRect + Point(0, 116), std::bind(&CSpellWindow::selectSchool,   this, SpellSchool::FIRE), 455, this));
-	interactiveAreas.push_back(std::make_shared<InteractiveArea>( schoolRect + Point(0, 176), std::bind(&CSpellWindow::selectSchool,   this, SpellSchool::WATER), 456, this));
-	interactiveAreas.push_back(std::make_shared<InteractiveArea>( schoolRect + Point(0, 236), std::bind(&CSpellWindow::selectSchool,   this, SpellSchool::ANY), 458, this));
-	int iaHeight = customSchoolCount > 1 ? std::min((yEnd - yStart) / denom, 60) : 60;
-	for(int i = 0; i < customSchoolCount; i++)
-		interactiveAreas.push_back(std::make_shared<InteractiveArea>(Rect(schoolTabCustom[i]->pos.topLeft(), Point(80, iaHeight)), std::bind(&CSpellWindow::selectSchool, this, customSpellSchools[i]), LIBRARY->spellSchoolHandler->getById(customSpellSchools[i])->getNameTextID(), this));
+	const auto addSchoolArea = [this](SpellSchool school, const Rect & rect, auto label)
+	{
+		auto area = std::make_shared<InteractiveArea>(rect, [this, school]{ selectSchool(school); }, label, this);
+		if(enhancedLayout)
+		{
+			area->setSchoolAction(school);
+		}
+		interactiveAreas.push_back(area);
+	};
+	addSchoolArea(SpellSchool::AIR, schoolRect, 454);
+	addSchoolArea(SpellSchool::EARTH, schoolRect + Point(0, 57), 457);
+	addSchoolArea(SpellSchool::FIRE, schoolRect + Point(0, 116), 455);
+	addSchoolArea(SpellSchool::WATER, schoolRect + Point(0, 176), 456);
+	addSchoolArea(SpellSchool::ANY, schoolRect + Point(0, 236), 458);
+	const int iaHeight = customSchoolCount > 1 ? std::min((yEnd - yStart) / denom, 60) : 60;
+	for(int i = 0; i < customSchoolCount; ++i)
+		addSchoolArea(customSpellSchools[i], Rect(schoolTabCustom[i]->pos.topLeft(), Point(80, iaHeight)),
+			LIBRARY->spellSchoolHandler->getById(customSpellSchools[i])->getNameTextID());
 
-	leftCornerArea = std::make_shared<InteractiveArea>( Rect(  97 + offL + pos.x, 77 + offT + pos.y, leftCorner->pos.h,  leftCorner->pos.w  ), std::bind(&CSpellWindow::fLcornerb, this), 450, this);
-	rightCornerArea = std::make_shared<InteractiveArea>( Rect( 487 + offR + pos.x, 72 + offT + pos.y, rightCorner->pos.h, rightCorner->pos.w ), std::bind(&CSpellWindow::fRcornerb, this), 451, this);
+	// Keep the ribbon's hit area stable until the page-turn click is released.
+	leftCornerArea = std::make_shared<InteractiveArea>(leftCorner->pos, std::bind(&CSpellWindow::fLcornerb, this), 450, this, enhancedLayout);
+	if(favorites)
+		leftCornerArea->setHitExclusion([this](const Point & point){ return favorites->ribbonContains(point); });
+	rightCornerArea = std::make_shared<InteractiveArea>(rightCorner->pos, std::bind(&CSpellWindow::fRcornerb, this), 451, this, enhancedLayout);
 
 	//areas for spells
-	int xpos = 117 + offL + pos.x;
+	int xpos = leftSpellColumn + pos.x;
 	int ypos = 90 + offT + pos.y;
 
 	for(int v=0; v<spellsPerPage; ++v)
@@ -1074,7 +1373,7 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 
 		if(v == (spellsPerPage / 2) - 1) //to right page
 		{
-			xpos = offRM + 336 + pos.x; ypos = 90 + offT + pos.y;
+			xpos = offRM + 336 + pos.x - favoriteInset; ypos = 90 + offT + pos.y;
 		}
 		else
 		{
@@ -1093,11 +1392,14 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 	bool schoolFound = isLegacySpellSchool(school) || std::find(customSpellSchools.begin(), customSpellSchools.end(), school) != customSpellSchools.end();
 	if(schoolFound)
 		selectedTab = school;
+	const bool rememberFavoriteView = favorites && !archiveTown;
+	if(rememberFavoriteView)
+		favorites->restoreView();
 	setSchoolImages(selectedTab);
 	int cp = battleSpellsOnly ? myInt->localState->getSpellbookSettings().spellbookLastPageBattle : myInt->localState->getSpellbookSettings().spellbookLastPageAdvmap;
 	// spellbook last page battle index is not reset after battle, so this needs to stay here
 	vstd::abetween(cp, 0, std::max(0, pagesWithinCurrentTab() - 1));
-	if(!schoolFound)
+	if(!schoolFound || rememberFavoriteView)
 		cp = 0;
 	setCurrentPage(cp);
 	computeSpellsPerArea();
@@ -1108,6 +1410,7 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 
 CSpellWindow::~CSpellWindow()
 {
+	statusBar->setHoverTextHandler({});
 }
 
 void CSpellWindow::searchInput()
@@ -1154,7 +1457,6 @@ void CSpellWindow::toggleSpellAvailability()
 	showOnlyCastableSpells = !showOnlyCastableSpells;
 	myInt->localState->setShowOnlyCastableSpells(myHero->id, showOnlyCastableSpells);
 	updateAvailabilityBookmark();
-	availabilityBookmarkArea->hover(true);
 	searchInput();
 }
 
@@ -1250,6 +1552,8 @@ void CSpellWindow::fexitb()
 {
 	if(favorites && favorites->cancelAdding())
 		return;
+	if(favorites)
+		favorites->saveView();
 	if(archiveOwner)
 	{
 		close();
@@ -1316,8 +1620,9 @@ void CSpellWindow::fmanaPtsb()
 
 void CSpellWindow::selectSchool(SpellSchool school)
 {
-	if(selectedTab != school)
+	if(selectedTab != school || !additionalSchools.empty())
 	{
+		additionalSchools.clear();
 		if(selectedTab < school)
 			turnPageLeft();
 		else
@@ -1327,6 +1632,28 @@ void CSpellWindow::selectSchool(SpellSchool school)
 		setCurrentPage(0);
 	}
 	computeSpellsPerArea();
+}
+
+bool CSpellWindow::matchesSchool(const CSpell & spell) const
+{
+	return selectedTab == SpellSchool::ANY || spell.schools.count(selectedTab)
+		|| std::any_of(additionalSchools.begin(), additionalSchools.end(), [&](SpellSchool school){ return spell.schools.count(school); });
+}
+
+void CSpellWindow::addSchool(SpellSchool school)
+{
+	if(school == SpellSchool::ANY || selectedTab == SpellSchool::ANY)
+	{
+		selectSchool(school);
+		return;
+	}
+
+	if(school != selectedTab && !vstd::contains(additionalSchools, school))
+	{
+		additionalSchools.push_back(school);
+		setCurrentPage(0);
+		computeSpellsPerArea();
+	}
 }
 
 void CSpellWindow::fLcornerb()
@@ -1387,7 +1714,7 @@ void CSpellWindow::showAll(Canvas & to)
 			.intersect(Rect(Point(0, 0), ENGINE->screenDimensions()));
 		CMessage::drawBorder(*archiveOwner, to, frame.w, frame.h, frame.x, frame.y);
 	}
-	drawLevelHelp(to);
+	drawHoverHelp(to);
 }
 
 void CSpellWindow::updateArchiveLayout()
@@ -1478,6 +1805,11 @@ std::string CSpellWindow::archiveDescription(const CSpell * spell) const
 	return result;
 }
 
+bool CSpellWindow::hasSchoolHeader() const
+{
+	return selectedTab != SpellSchool::ANY && additionalSchools.empty();
+}
+
 void CSpellWindow::computeSpellsPerArea()
 {
 	std::vector<const CSpell *> spellsCurSite;
@@ -1485,14 +1817,14 @@ void CSpellWindow::computeSpellsPerArea()
 	for(const CSpell * spell : mySpells)
 	{
 		if(spell->isCombat() ^ !battleSpellsOnly
-		   && ((selectedTab == SpellSchool::ANY) || spell->schools.count(selectedTab))
+		   && matchesSchool(*spell)
 			)
 		{
 			spellsCurSite.push_back(spell);
 		}
 	}
 
-	if(selectedTab == SpellSchool::ANY)
+	if(!hasSchoolHeader())
 	{
 		if(spellsCurSite.size() > spellsPerPage)
 		{
@@ -1530,7 +1862,7 @@ void CSpellWindow::computeSpellsPerArea()
 			emptyResults->setText(favorites->emptyText());
 	}
 	//applying
-	if(selectedTab == SpellSchool::ANY || currentPage != 0)
+	if(!hasSchoolHeader() || currentPage != 0)
 	{
 		for(size_t c=0; c<spellsPerPage; ++c)
 		{
@@ -1563,34 +1895,29 @@ void CSpellWindow::setSchoolImages(SpellSchool school)
 {
 	OBJECT_CONSTRUCTION;
 
-	schoolTabAnyDisabled.reset();
-	if(isLegacySpellSchool(school))
-	{
-		schoolTab->setFrame(getAnimFrameFromSchool(school), 0);
-		schoolTab->visible = true;
-	}
-	else
-	{
-		schoolTabAnyDisabled = std::make_shared<CPicture>(ImagePath::builtin("SpelTabNone.png"), 524 + offR, 88);
-		schoolTab->visible = false;
-	}
+	schoolTab->setSelection(school, additionalSchools);
 
-	auto it = std::find(customSpellSchools.begin(), customSpellSchools.end(), school);
-	int pos = (it == customSpellSchools.end()) ? -1 : std::distance(customSpellSchools.begin(), it);
-	for(int i = 0; i < schoolTabCustom.size(); i++)
-		schoolTabCustom[i]->setFrame(i == pos ? 0 : 1, 0);
-	for(int i = 0; i < schoolTabCustom.size(); i++)
+	for(size_t i = 0; i < schoolTabCustom.size(); ++i)
+	{
+		const auto id = customSpellSchools[i];
+		schoolTabCustom[i]->setFrame(id == school || vstd::contains(additionalSchools, id) ? 0 : 1, 0);
 		moveChildForeground(schoolTabCustom[i].get());
-	if(pos >= 0)
-		moveChildForeground(schoolTabCustom[pos].get());
+	}
+	for(size_t i = 0; i < schoolTabCustom.size(); ++i)
+		if(customSpellSchools[i] == school || vstd::contains(additionalSchools, customSpellSchools[i]))
+			moveChildForeground(schoolTabCustom[i].get());
 
-	schoolPicture->visible = school != SpellSchool::ANY && currentPage == 0 && isLegacySpellSchool(school);
-	if(school != SpellSchool::ANY && isLegacySpellSchool(school))
+	const bool showHeader = hasSchoolHeader() && currentPage == 0;
+	schoolPicture->visible = showHeader && isLegacySpellSchool(school);
+	if(schoolPicture->visible)
 		schoolPicture->setFrame(getAnimFrameFromSchool(school), 0);
 	
 	schoolPictureCustom.reset();
-	if(!isLegacySpellSchool(school) && currentPage == 0) // on later pages the header would cover spells
-		schoolPictureCustom = std::make_shared<CPicture>(LIBRARY->spellSchoolHandler->getById(school)->getSchoolHeaderPath(), 117 + offL, 74 + offT);
+	if(showHeader && !isLegacySpellSchool(school))
+	{
+		schoolPictureCustom = std::make_shared<CPicture>(LIBRARY->spellSchoolHandler->getById(school)->getSchoolHeaderPath());
+		schoolPictureCustom->moveTo(schoolPicture->pos.topLeft());
+	}
 }
 
 void CSpellWindow::setCurrentPage(int value)
@@ -1673,11 +2000,26 @@ void CSpellWindow::keyPressed(EShortcut key)
 		case EShortcut::SPELLBOOK_SEARCH_FOCUS:
 			toggleSearchBoxFocus();
 			break;
+		case EShortcut::SPELLBOOK_TOGGLE_FAVORITES:
+			if(favorites && (!searchBox || !searchBox->hasFocus()))
+			{
+				ENGINE->sound().playSound(soundBase::button);
+				favorites->toggleView();
+			}
+			break;
 	}
 }
 
 int CSpellWindow::pagesWithinCurrentTab()
 {
+	if(!additionalSchools.empty())
+	{
+		const auto count = std::count_if(mySpells.begin(), mySpells.end(), [&](const CSpell * spell)
+		{
+			return spell->isCombat() == battleSpellsOnly && matchesSchool(*spell);
+		});
+		return static_cast<int>((count + spellsPerPage - 1) / spellsPerPage);
+	}
 	return battleSpellsOnly ? sitesPerTabBattle[selectedTab] : sitesPerTabAdv[selectedTab];
 }
 
@@ -1722,10 +2064,14 @@ void CSpellWindow::SpellArea::clickPressed(const Point & cursorPosition)
 		ENGINE->input().hapticFeedback();
 		if(owner->favorites)
 		{
-			if(owner->favorites->selectForHero(*mySpell))
+			if(owner->favorites->selectCandidate(*mySpell))
+			{
+				ENGINE->sound().playSound(soundBase::button);
 				return;
+			}
 			if(favoriteArea().isInside(cursorPosition))
 			{
+				ENGINE->sound().playSound(soundBase::button);
 				owner->favorites->toggle(*mySpell);
 				return;
 			}
@@ -1799,6 +2145,8 @@ void CSpellWindow::SpellArea::clickPressed(const Point & cursorPosition)
 		else //adventure spell
 		{
 			const CGHeroInstance * h = owner->myHero;
+			if(owner->favorites)
+				owner->favorites->saveView();
 			ENGINE->windows().popWindows(1);
 
 			auto guard = vstd::makeScopeGuard([this]()
@@ -1893,6 +2241,8 @@ bool CSpellWindow::SpellArea::receiveEvent(const Point & position, int eventType
 {
 	if(owner->favorites && mySpell)
 	{
+		if(owner->favorites->ribbonContains(position))
+			return false;
 		if(!owner->favorites->markersEnabled() && eventType == LCLICK)
 			return Rect(pos.topLeft(), Point(80, 97)).isInside(position);
 		if(owner->favorites->markersEnabled() && favoriteArea().isInside(position))
@@ -1944,7 +2294,7 @@ void CSpellWindow::SpellArea::setSpell(const CSpell * spell)
 			image = std::make_shared<CPicture>(sprite, Point(0, 0));
 			image->removeUsedEvents(LCLICK | SHOW_POPUP);
 
-			const auto borderSchool = owner->selectedTab == SpellSchool::ANY ? whichSchool : owner->selectedTab;
+			const auto borderSchool = owner->selectedTab == SpellSchool::ANY || !owner->additionalSchools.empty() ? whichSchool : owner->selectedTab;
 			if(borderSchool.hasValue())
 			{
 				auto borderSprite = ENGINE->renderHandler().loadImage(LIBRARY->spellSchoolHandler->getById(borderSchool)->getSpellBordersPath(), schoolLevel, 0, EImageBlitMode::COLORKEY);

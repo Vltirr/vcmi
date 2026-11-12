@@ -131,6 +131,7 @@ class CGStatusBar : public CLabel, public std::enable_shared_from_this<CGStatusB
 {
 	std::string hoverText;
 	std::string consoleText;
+	std::function<void(const std::string &)> hoverTextHandler;
 	bool enteringText;
 
 	CGStatusBar(std::shared_ptr<CIntObject> background_, EFonts Font = FONT_SMALL, ETextAlignment Align = ETextAlignment::CENTER, const ColorRGBA & Color = Colors::WHITE);
@@ -163,6 +164,8 @@ public:
 	void showAll(Canvas & to) override;
 	void activate() override;
 	void deactivate() override;
+
+	void setHoverTextHandler(std::function<void(const std::string &)> handler);
 
 	// IStatusBar interface
 	void write(const std::string & Text) override;

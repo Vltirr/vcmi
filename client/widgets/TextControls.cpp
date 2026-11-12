@@ -493,11 +493,17 @@ void CGStatusBar::setEnteredText(const std::string & text)
 	setText(text);
 }
 
+void CGStatusBar::setHoverTextHandler(std::function<void(const std::string &)> handler)
+{
+	hoverTextHandler = std::move(handler);
+}
+
 void CGStatusBar::write(const std::string & Text)
 {
 	hoverText = Text;
-
-	if (enteringText == false)
+	if(hoverTextHandler)
+		hoverTextHandler(hoverText);
+	else if(!enteringText)
 		setText(hoverText);
 }
 
@@ -613,6 +619,8 @@ void CGStatusBar::activate()
 
 void CGStatusBar::deactivate()
 {
+	if(hoverTextHandler)
+		clear();
 	ENGINE->setStatusbar(nullptr);
 
 	if (enteringText)

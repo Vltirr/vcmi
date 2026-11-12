@@ -347,6 +347,7 @@ EShortcut ShortcutHandler::findShortcut(const std::string & identifier ) const
 		{"spellbookTabAdventure",    EShortcut::SPELLBOOK_TAB_ADVENTURE   },
 		{"spellbookTabCombat",       EShortcut::SPELLBOOK_TAB_COMBAT      },
 		{"spellbookSearchFocus",     EShortcut::SPELLBOOK_SEARCH_FOCUS    },
+		{"spellbookToggleFavorites", EShortcut::SPELLBOOK_TOGGLE_FAVORITES},
 		{"listHeroUp",               EShortcut::LIST_HERO_UP              },
 		{"listHeroDown",             EShortcut::LIST_HERO_DOWN            },
 		{"listHeroTop",              EShortcut::LIST_HERO_TOP             },

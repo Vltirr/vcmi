@@ -13,6 +13,7 @@
 #include "../widgets/IVideoHolder.h"
 
 class CGHeroInstance;
+class SpellbookSchoolTabs;
 class CGTownInstance;
 class CSpell;
 
@@ -63,19 +64,27 @@ class CSpellWindow : public CWindowObject, public IVideoHolder
 	class InteractiveArea : public CIntObject
 	{
 		std::function<void()> onLeft;
+		std::function<void()> onRight;
+		std::function<bool(const Point &)> excludesPoint;
 		CSpellWindow * owner;
+		bool turnOnRelease = false;
 
 		std::string hoverText;
 		std::string helpText;
+		void activateLeft();
 	public:
 		void clickPressed(const Point & cursorPosition) override;
+		void clickReleased(const Point & cursorPosition) override;
 		void showPopupWindow(const Point & cursorPosition) override;
 		void hover(bool on) override;
 
-		InteractiveArea(const Rect &myRect, const std::function<void()> & funcL, int helpTextId, CSpellWindow * _owner);
+		InteractiveArea(const Rect &myRect, const std::function<void()> & funcL, int helpTextId, CSpellWindow * _owner, bool turnOnRelease = false);
 		InteractiveArea(const Rect &myRect, const std::function<void()> & funcL, std::string textId, CSpellWindow * _owner);
 		InteractiveArea(const Rect &myRect, const std::function<void()> & funcL, CSpellWindow * _owner);
 		void setHelp(const std::string & hover, const std::string & help);
+		void setSchoolAction(SpellSchool school);
+		void setHitExclusion(std::function<bool(const Point &)> predicate);
+		bool receiveEvent(const Point & position, int eventType) const override;
 	};
 
 	std::shared_ptr<CPicture> leftCorner;
@@ -85,9 +94,8 @@ class CSpellWindow : public CWindowObject, public IVideoHolder
 	std::shared_ptr<InteractiveArea> leftCornerArea;
 	std::shared_ptr<InteractiveArea> rightCornerArea;
 
-	std::shared_ptr<CAnimImage> schoolTab;
+	std::shared_ptr<SpellbookSchoolTabs> schoolTab;
 	std::vector<std::shared_ptr<CAnimImage>> schoolTabCustom;
-	std::shared_ptr<CPicture> schoolTabAnyDisabled;
 	std::shared_ptr<CAnimImage> schoolPicture;
 	std::shared_ptr<CPicture> schoolPictureCustom;
 
@@ -111,13 +119,17 @@ class CSpellWindow : public CWindowObject, public IVideoHolder
 	std::shared_ptr<IImage> levelHelpBackground;
 	std::shared_ptr<Favorites> favorites;
 	unsigned selectedLevels = 0;
-	int levelHelpTab = -1;
+	bool positionedHelp = false;
+	std::string hoverHelp;
+	Rect hoverHelpAnchor;
+	uint32_t hoverHelpDelay = 0;
 	bool enhancedLayout = false;
 
 	void buildEnhancedBackground(bool archive);
 	void buildLevelTabs();
 	void selectLevel(int level, bool additive);
-	void drawLevelHelp(Canvas & to);
+	void setHoverHelp(const std::string & text);
+	void drawHoverHelp(Canvas & to);
 	void updateContextRibbon();
 
 	std::shared_ptr<CToggleButton> showAllSpells;
@@ -146,6 +158,10 @@ class CSpellWindow : public CWindowObject, public IVideoHolder
 
 	bool battleSpellsOnly; //if true, only battle spells are displayed; if false, only adventure map spells are displayed
 	SpellSchool selectedTab;
+	std::vector<SpellSchool> additionalSchools;
+	bool matchesSchool(const CSpell & spell) const;
+	bool hasSchoolHeader() const;
+	void addSchool(SpellSchool school);
 	int currentPage; //changes when corners are clicked
 	std::vector<const CSpell *> mySpells; //all spels in this spellbook
 	std::optional<PlayerColor> archiveOwner;
@@ -203,6 +219,7 @@ public:
 	int pagesWithinCurrentTab();
 
 	void keyPressed(EShortcut key) override;
+	void tick(uint32_t msPassed) override;
 
 	void show(Canvas & to) override;
 	void showAll(Canvas & to) override;

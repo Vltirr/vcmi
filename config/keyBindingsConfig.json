@@ -257,6 +257,7 @@
 		"spellbookTabAdventure":    "A",
 		"spellbookTabCombat":       "C",
 		"spellbookSearchFocus":     "Tab",
+		"spellbookToggleFavorites": "F",
 		"townOpenBlacksmith":       "L",
 		"townOpenFort":             "F",
 		"townOpenGarrisonedHero":   "Shift+H",
