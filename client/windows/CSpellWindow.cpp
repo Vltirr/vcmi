@@ -1154,7 +1154,7 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 		background->setPlayerColor(GAME->interface()->playerID);
 
 	const std::string variant = archiveTown ? "archive" : isBigSpellbook ? "large" : "normal";
-	const auto layoutConfigPath = JsonPath::builtin("config/widgets/spellbookUI.json");
+	const auto layoutConfigPath = JsonPath::builtin("config/spellbookUI.json");
 	if(settings["general"]["enableUiEnhancements"].Bool() && CResourceHandler::get()->existsResource(layoutConfigPath))
 	{
 		const JsonNode layoutConfig(layoutConfigPath);
