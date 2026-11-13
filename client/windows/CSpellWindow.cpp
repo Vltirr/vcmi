@@ -727,23 +727,23 @@ void CSpellWindow::buildEnhancedBackground(bool archive)
 
 namespace
 {
-std::shared_ptr<CPicture> makeSpellbookRibbon(const std::shared_ptr<IImage> & original, const Rect & source, Point position, const std::string & emblem = {})
+std::shared_ptr<CPicture> makeSpellbookRibbon(const std::shared_ptr<IImage> & original, Point position, const std::string & emblem = {}, Point emblemOffset = Point(0, 0))
 {
+	const Rect source(417, 406, 37, 45);
 	auto image = std::make_shared<CanvasImage>(Point(37, 47));
 	auto canvas = image->getCanvas();
 	canvas.drawColor(Rect(0, 0, 37, 47), ColorRGBA(0, 0, 0, 0));
-	const int top = source.h == 41 ? 1 : 0;
 	for(int y = 0; y < source.h; ++y)
 	{
 		const int notch = std::max(0, y - (source.h - 10));
 		if(notch == 0)
-			canvas.draw(original, Point(0, top + y), Rect(source.x, source.y + y, source.w, 1));
+			canvas.draw(original, Point(0, y), Rect(source.x, source.y + y, source.w, 1));
 		else
 		{
 			const int width = (source.w / 2) * (10 - notch) / 10;
 			if(width > 0)
 				for(const int x : {0, source.w - width})
-					canvas.draw(original, Point(x, top + y), Rect(source.x + x, source.y + y, width, 1));
+					canvas.draw(original, Point(x, y), Rect(source.x + x, source.y + y, width, 1));
 		}
 	}
 	std::shared_ptr<CPicture> picture;
@@ -751,10 +751,8 @@ std::shared_ptr<CPicture> makeSpellbookRibbon(const std::shared_ptr<IImage> & or
 		picture = std::make_shared<CPicture>(image, position);
 	else
 	{
-		canvas.draw(original, Point(3, 0), Rect(420, 406, 31, 35));
 		auto symbol = ENGINE->renderHandler().loadImage(ImagePath::builtin(spellbookArt + "context/" + emblem + "-symbol.png"), EImageBlitMode::SIMPLE);
-		const Point offset((37 - symbol->dimensions().x) / 2, emblem == "combat" ? 2 : 4);
-		picture = std::make_shared<SpellbookLayeredPicture>(image, position, symbol, offset);
+		picture = std::make_shared<SpellbookLayeredPicture>(image, position, symbol, emblemOffset);
 	}
 	picture->removeUsedEvents(CIntObject::LCLICK | CIntObject::SHOW_POPUP);
 	return picture;
@@ -1225,7 +1223,7 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 		if(enhancedLayout)
 		{
 			auto spellbook = ENGINE->renderHandler().loadImage(ImagePath::builtin("SpelBack"), EImageBlitMode::OPAQUE);
-			availabilityBookmark = makeSpellbookRibbon(spellbook, bookmarkArtwork, bookmarkPosition);
+			availabilityBookmark = makeSpellbookRibbon(spellbook, bookmarkPosition);
 		}
 		else if(archiveTown)
 			availabilityBookmark = std::make_shared<CPicture>(background->getSurface(), Rect(575, 465, 37, 45), bookmarkPosition.x, bookmarkPosition.y);
@@ -1236,10 +1234,14 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 		}
 		availabilityBookmark->removeUsedEvents(LCLICK | SHOW_POPUP);
 		const std::array bookmarkIcons = {"spellbook/allSpellsIcon.png", "spellbook/castableSpellsIcon.png"};
+		const auto moduleBook = ImagePath::builtin("lncl/spellbook/allSpellsIcon.png");
 		for(size_t i = 0; i < availabilityBookmarkIcons.size(); ++i)
 		{
-			availabilityBookmarkIcons[i] = std::make_shared<CPicture>(ImagePath::builtin(bookmarkIcons[i]), bookmarkPosition + Point(7, 5));
-			availabilityBookmarkIcons[i]->scaleTo(Point(23, 23));
+			const bool useModuleBook = i == 0 && CResourceHandler::get()->existsResource(moduleBook.addPrefix("SPRITES/"));
+			const auto icon = useModuleBook ? moduleBook : ImagePath::builtin(bookmarkIcons[i]);
+			availabilityBookmarkIcons[i] = std::make_shared<CPicture>(icon, bookmarkPosition + Point(7, 5));
+			if(!useModuleBook)
+				availabilityBookmarkIcons[i]->scaleTo(Point(23, 23));
 			availabilityBookmarkIcons[i]->removeUsedEvents(LCLICK | SHOW_POPUP);
 		}
 		availabilityBookmarkIcons[1]->disable();
@@ -1283,26 +1285,17 @@ CSpellWindow::CSpellWindow(const CGHeroInstance * _myHero, CPlayerInterface * _m
 	const int schoolHeaderX = leftSpellColumn + (favorites ? (isBigSpellbook ? 6 : 5) : 0);
 	schoolPicture = std::make_shared<CAnimImage>(AnimationPath::builtin("Schools"), 0, 0, schoolHeaderX, 74 + offT);
 
-	const Point manaPosition = enhancedLayout ? footerRibbon(isBigSpellbook, 2).topLeft() + Point(18, 20) : isBigSpellbook ? Point(592, 485) : Point(434, 426);
+	const Point manaPosition = enhancedLayout ? footerRibbon(isBigSpellbook, 2).topLeft() + Point(17, 18) : isBigSpellbook ? Point(592, 485) : Point(434, 426);
 	if(enhancedLayout)
 	{
 		const auto original = ENGINE->renderHandler().loadImage(ImagePath::builtin("SpelBack"), EImageBlitMode::OPAQUE);
 		const auto contextPosition = footerRibbon(isBigSpellbook, 1).topLeft();
-		contextRibbons[0] = makeSpellbookRibbon(original, Rect(220, 405, 37, 47), contextPosition, "combat");
-		contextRibbons[1] = makeSpellbookRibbon(original, Rect(354, 406, 37, 41), contextPosition, "adventure");
+		contextRibbons[0] = makeSpellbookRibbon(original, contextPosition, "combat", Point(6, 4));
+		contextRibbons[1] = makeSpellbookRibbon(original, contextPosition, "adventure", Point(3, 4));
 		// Keep these pictures owned alongside the other footer controls.
 		if(hasPersonalSpellbook)
-			footerArtwork[0] = makeSpellbookRibbon(original, Rect(417, 406, 37, 45), footerRibbon(isBigSpellbook, 2).topLeft());
-		const auto closePath = ImagePath::builtin(spellbookArt + "context/close-ribbon.png");
-		if(CResourceHandler::get()->existsResource(closePath.addPrefix("SPRITES/")))
-		{
-			auto cloth = ENGINE->renderHandler().loadImage(closePath, EImageBlitMode::SIMPLE);
-			auto symbol = ENGINE->renderHandler().loadImage(ImagePath::builtin(spellbookArt + "context/close-symbol.png"), EImageBlitMode::SIMPLE);
-			footerArtwork[1] = std::make_shared<SpellbookLayeredPicture>(cloth, footerRibbon(isBigSpellbook, 3).topLeft(), symbol, Point(5, 6));
-			footerArtwork[1]->removeUsedEvents(LCLICK | SHOW_POPUP);
-		}
-		else
-			footerArtwork[1] = makeSpellbookRibbon(original, Rect(478, 406, 37, 47), footerRibbon(isBigSpellbook, 3).topLeft());
+			footerArtwork[0] = makeSpellbookRibbon(original, footerRibbon(isBigSpellbook, 2).topLeft());
+		footerArtwork[1] = makeSpellbookRibbon(original, footerRibbon(isBigSpellbook, 3).topLeft(), "close", Point(2, 1));
 		updateContextRibbon();
 	}
 	mana = std::make_shared<CLabel>(manaPosition.x, manaPosition.y, enhancedLayout ? FONT_TINY : FONT_SMALL, ETextAlignment::CENTER, Colors::YELLOW, hasPersonalSpellbook ? std::to_string(myHero->mana) : "");
